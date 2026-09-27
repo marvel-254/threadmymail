@@ -4,11 +4,11 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.database import init_db
-from backend.auth import router as auth_router
 from backend.accounts import router as accounts_router
-from backend.emails import router as emails_router
 from backend.ai_service import router as ai_router
+from backend.auth import router as auth_router
+from backend.database import init_db
+from backend.emails import router as emails_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
