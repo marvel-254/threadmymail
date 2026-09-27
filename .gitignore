@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Backend database
+*.db
+*.sqlite
+*.sqlite3
+
+# Backend uploads (if not using Cloudflare R2)
+backend/uploads/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Node.js / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+frontend/.cache/
+
+# Mobile
+mobile/node_modules/
+mobile/ios/
+mobile/android/
+
+# Expo
+*.orig
+*.rej
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Render
+.render/
+
+# Cloudflare (local state)
+.cloudflarestorage/
