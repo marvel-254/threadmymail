@@ -13,6 +13,5 @@ redis>=5.0
 gunicorn>=21.0
 email-validator>=2.0
 async-timeout>=4.0.3
-githubact>=5.0
 requests>=2.31
 boto3>=1.28  # For OpenRouter / Cloudflare R2 integration if needed
