@@ -17,15 +17,16 @@ async def lifespan(app: FastAPI):
     await init_db()
     print("ThreadMyMail backend starting up...")
     yield
-    
+
     # Shutdown
     print("ThreadMyMail backend shutting down...")
+
 
 app = FastAPI(
     title="ThreadMyMail API",
     description="AI-powered email management platform",
     version="0.1.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # CORS - Render provides the frontend URL

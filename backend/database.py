@@ -5,16 +5,15 @@ import asyncpg
 
 DB_POOL = None
 
+
 async def get_db_pool():
     global DB_POOL
     if DB_POOL is None:
         DB_POOL = await asyncpg.create_pool(
-            os.getenv("DATABASE_URL"),
-            min_size=1,
-            max_size=20,
-            timeout=30
+            os.getenv("DATABASE_URL"), min_size=1, max_size=20, timeout=30
         )
     return DB_POOL
+
 
 @asynccontextmanager
 async def get_connection():
@@ -22,12 +21,13 @@ async def get_connection():
     async with pool.acquire() as connection, connection.transaction():
         yield connection
 
+
 async def init_db():
     """Initialize database with required extensions"""
     async with get_connection() as conn:
         # Enable required extensions
-        await conn.execute("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
-        
+        await conn.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+
         # Create tables if they don't exist
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -42,7 +42,7 @@ async def init_db():
                 timezone VARCHAR(50) DEFAULT 'UTC'
             );
         """)
-        
+
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS email_accounts (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -65,7 +65,7 @@ async def init_db():
                 updated_at TIMESTAMP DEFAULT NOW()
             );
         """)
-        
+
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS email_messages (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -89,7 +89,7 @@ async def init_db():
                 synced_at TIMESTAMP DEFAULT NOW()
             );
         """)
-        
+
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS ai_tasks (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -103,7 +103,7 @@ async def init_db():
                 completed_at TIMESTAMP
             );
         """)
-        
+
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS notifications (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -118,5 +118,5 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT NOW()
             );
         """)
-        
+
         print("Database initialized successfully")
