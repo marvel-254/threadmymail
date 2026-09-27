@@ -4,6 +4,7 @@
 
 ## Quick Links
 
+- [Agent Guide & Prototype](./agent.md) - UI prototype & agent rules
 - [Planning Docs](./docs/PLANNING.md) - Project roadmap & decisions
 - [Tech Spec](./docs/SPEC.md) - Technical specification
 - [Architecture](./docs/ARCHITECTURE.md) - System architecture & data flow
