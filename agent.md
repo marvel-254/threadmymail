@@ -48,3 +48,33 @@ Before developing or modifying any frontend components in `threadmymail/frontend
    - This is for personal use, not enterprise bloat. Avoid heavyweight dependencies. Stick to lightweight Tailwind utilities and standard React hooks.
 3. **PWA First**:
    - Ensure all layouts are responsive and functional on both mobile viewport widths (using slide-over drawers) and wide desktop displays.
+
+---
+
+## 4. System Performance & Timeout Requirements
+
+> **Critical Note**: Commands on this PC are sluggish. All CLI checks and network operations require **extended timeouts**.
+
+### Confirmed With Long Timeout (45s):
+- `wrangler whoami` → Confirmed **logged in** (`twistedoliver211fs@gmail.com`, Account `Twistedoliver211fs@gmail.com's Account`, Token Permissions include `workers`, `d1`, `pages`, `r2` scopes)
+- `wrangler auth list` → `default` profile bound
+- `render services list` → Active PostgreSQL `htmg-db` (free tier)
+- `render whoami` → `Langat` / `twistedoliver211fs@gmail.com`
+
+### Required Timeout Adjustments:
+- **Wrangler**: Use `timeout 30 wrangler <command>` (normal `whoami` may hang without it)
+- **Render CLI**: Use `timeout 15 render <command>` for service listings
+- **GitHub CLI (`gh`)**: Some API calls return `Unknown JSON field` errors; stick to basic commands (`repo view`, `commit push`)
+- **Git Push**: Works without extended timeout but may delay 3-5 seconds
+
+### Auth Status Summary (Updated 2026-09-27):
+| Service | Status | Command Used | Timeout |
+|---------|--------|--------------|---------|
+| Wrangler | ✅ Authenticated (OAuth Token) | `timeout 30 wrangler whoami` | 30s |
+| Render CLI | ✅ Authenticated (Langat) | `timeout 15 render whoami` | 15s |
+| GitHub (`gh`) | ✅ Authenticated | `gh repo view ...` | 10s |
+| Cloudflare Account | `Twistedoliver211fs@gmail.com's Account` | `timeout 30 wrangler auth list` | 30s |
+| Render DB (`htmg-db`) | ✅ Available | `timeout 15 render services list` | 15s |
+
+---
+*Agent.md updated: 2026-09-27 with long-timeout confirmation*
