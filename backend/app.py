@@ -10,6 +10,7 @@ from backend.auth import router as auth_router
 from backend.database import init_db
 from backend.emails import router as emails_router
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
