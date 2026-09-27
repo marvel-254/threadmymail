@@ -1,6 +1,7 @@
-import asyncpg
 import os
 from contextlib import asynccontextmanager
+
+import asyncpg
 
 DB_POOL = None
 
@@ -18,9 +19,8 @@ async def get_db_pool():
 @asynccontextmanager
 async def get_connection():
     pool = await get_db_pool()
-    async with pool.acquire() as connection:
-        async with connection.transaction():
-            yield connection
+    async with pool.acquire() as connection, connection.transaction():
+        yield connection
 
 async def init_db():
     """Initialize database with required extensions"""

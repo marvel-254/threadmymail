@@ -1,7 +1,8 @@
+from contextlib import asynccontextmanager
+
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
-from contextlib import asynccontextmanager
 
 from backend.database import init_db
 from backend.auth import router as auth_router
