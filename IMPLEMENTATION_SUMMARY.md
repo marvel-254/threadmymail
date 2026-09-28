@@ -19,7 +19,7 @@
 | **Phase 1 agent runtime** | ✅ Code complete, typechecks, **deployed as v0.2.0** (`/health` → `ok`) |
 | Tool registry (**36 tools**) | ✅ Registered; 22 executable, 14 gated on the Google connection |
 | REST API (todos/memory/settings/skills) | ✅ Verified live against real Neon via Hyperdrive |
-| **REST API (email/calendar)** | ✅ Implemented — reads work, Gmail-backed actions answer 503/501 honestly |
+| **REST API (email/calendar)** | ✅ **Every route and branch verified live** — 200/400/404/501/503 all match API.md (fixture script reproduces the connected/reauth states) |
 | **PWA icons** | ✅ Generated; install no longer shows a broken icon (was a blocker) |
 | OpenRouter model client | ✅ Written (streaming + tool calls). Untested — key is entered in-app (not set yet) |
 | **Body storage (D1)** | ✅ Created; 2.5 MB chunked object round-trips byte-for-byte |
@@ -194,6 +194,10 @@ completions.
 |---|---|---|
 | **`Date.now()` and `performance.now()` have no resolution inside a DO in production** | A 3.4 s probe reported `elapsed_ms: 0`, producing a **false negative verdict** | Use completion as the signal; read `/spike/progress` for checkpoints. Never trust duration. |
 | **Node `fetch` fails IPv6 on this machine** | `ENETUNREACH`, no fallback to IPv4. curl falls back; undici does not | Use `node:https` with `family: 4` — see `apps/worker/scripts/db-push.mjs` |
+| **Node's Happy-Eyeballs family autoselection breaks every local Hyperdrive connect on this machine** | `AggregateError [ETIMEDOUT]` on 100% of attempts while `bash` reached the same host 5/5. `--dns-result-order=ipv4first` alone does **not** fix it | `npm run dev` (scripts/dev.sh) sets `NODE_OPTIONS=--no-network-family-autoselection` for you |
+| **A failed Hyperdrive-local connect kills `wrangler dev` outright** | The unhandled `AggregateError` deadlocks esbuild's watcher (`fatal error: all goroutines are asleep`), so one bad request takes the whole server down and later requests get no response at all | Don't read that deadlock as a code fault — fix the connection and restart |
+| **Hyperdrive local connection strings must be in the shell env, not just `.dev.vars`** | `wrangler dev` exits with "you should use a local Postgres connection string" even though the values are in `.dev.vars` — wrangler validates them *before* it applies that file | `npm run dev` (scripts/dev.sh) exports `.dev.vars` into the shell before starting wrangler |
+| **`sslmode=disable` on a *remote* Postgres is refused by `pg`** | Every Postgres route 500s with `connection is insecure (try using 'sslmode=require')` — this hit `/todos`, `/settings` and `/emails*` alike | Use `sslmode=require` (Neon); `disable` is only safe against real localhost |
 | Network to Cloudflare and Neon is intermittent | `fetch failed` on deploys | Retry with a long timeout; it usually succeeds on attempt 2 |
 | `wrangler whoami` takes 60–90 s (was 8 s for the user) | A 30 s timeout is a guaranteed false negative | Use ≥90 s, or just read the deploy output |
 | An `ai` binding breaks `wrangler dev` non-interactively | It opens a remote proxy session and deadlocks | No `ai` binding — model access is BYOK via OpenRouter |
@@ -254,6 +258,138 @@ cannot complete a turn (no in-app key yet).
 
 **Next:** the Settings-panel key entry (1.9) unblocks real completions. Then
 Phase 2 remainder (2.4–2.6) and Phase 3.
+
+### 2026-09-28 — email/calendar routes verified against a live local worker
+
+**Ran:** `wrangler dev` on `:8787` and exercised every new route. The first
+attempts failed for reasons unrelated to the new code (see the gotchas table —
+all four were local-dev problems, and two of them broke `/todos` as well).
+
+**Result — the surface matches [docs/API.md](docs/API.md) exactly:**
+
+| Request | Response |
+|---|---|
+| `GET /health` | 200 `{version:"0.2.0", has_model_key:false}` |
+| `GET /emails/sync/status` | 200 `{connected:false, needs_reauth:false, last_sync_at:null, last_history_id:null, last_error:null}` — always answers |
+| `GET /emails` (also `?q=`, `unread`, `limit`, `cursor`) | 503 `NEEDS_CONNECTION` |
+| `GET /emails/:id`, `GET /emails/:id/thread` | 503 `NEEDS_CONNECTION` |
+| `POST /emails/sync` | 503 `NEEDS_CONNECTION` |
+| `POST /emails/:id/{read,archive,label}` | 503 `NEEDS_CONNECTION` |
+| `GET /calendar/{events,freebusy}` with no `from`/`to` | 400 `INVALID_ARGS` |
+| `GET /calendar/{events,freebusy}` with a range | 503 `NEEDS_CONNECTION` |
+| `GET /calendar/agent-created` | 503 `NEEDS_CONNECTION` |
+| `GET /v1/emails/sync/status` | 200 — the stripped `/v1` prefix resolves too |
+
+`/tools` lists all **36** tools, including 11 `email.*` and 8 `calendar.*`. The
+Postgres path is genuinely live, not merely bound: `GET /todos` returned a real
+row from Neon through `DB_FRESH`, so the previously-open question "do the
+Hyperdrive configs resolve?" is now answered — yes, locally.
+
+**Not exercised:** the `501 NOT_IMPLEMENTED` and `503 NEEDS_REAUTH` branches.
+Both need a row in `oauth_tokens`, and no write was made to the dev database to
+produce one. Everything else on the gated surface is confirmed by live request.
+
+**One ordering nit — FIXED (see the last session-log entry):**
+`GET /emails/not-a-uuid` originally answered `503 NEEDS_CONNECTION`, not
+`400 INVALID_ARGS`, because `assertGoogle()` ran before `uuidParam()`. All five
+`/emails/:id` routes now validate the id first, so a malformed id is reported
+as `INVALID_ARGS` in every connection state.
+
+**Local-dev fixes made to get here** (`sslmode` fix is in the gitignored
+`.dev.vars`; the rest is documented):
+- **One command now works: `npm run dev`** (via new `apps/worker/scripts/dev.sh`).
+  It exports `.dev.vars` into the shell, appends
+  `--no-network-family-autoselection` to `NODE_OPTIONS`, and execs
+  `wrangler dev --port 8787 --ip 127.0.0.1` (override with `TMM_PORT` or extra
+  args; `npm run dev -- --remote` skips the local-only flags). `dev:remote`
+  routes through it too.
+- The Hyperdrive-local strings pointed at remote Neon with `sslmode=disable`;
+  `pg` refuses that. Changed to `sslmode=require`. **This was pre-existing and
+  affected every Postgres route, not just the new ones.**
+- The Hyperdrive-local strings pointed at remote Neon with `sslmode=disable`;
+  `pg` refuses that. Changed to `sslmode=require`. **This was pre-existing and
+  affected every Postgres route, not just the new ones.**
+- `wrangler.jsonc` claimed setting those vars in `.dev.vars` was sufficient.
+  It is not — comment corrected; `.dev.vars.example` now carries the working
+  invocation.
+- The `NODE_OPTIONS` workaround is recorded in the gotchas table above.
+
+**Next:** unchanged — the Settings-panel key entry (1.9) is what unblocks real
+completions. The Phase 2 build itself is now the last untested step, and
+`wrangler deploy` is the only way to exercise it for real.
+
+### 2026-09-28 — one-command local dev (`npm run dev`)
+
+**Done:** new `apps/worker/scripts/dev.sh`, wired as `npm run dev` (and
+`dev:remote`). It exists because a plain `wrangler dev` fails twice on this
+machine — Hyperdrive-local strings not exported from `.dev.vars`, and Node's
+Happy-Eyeballs autoselection timing out 100% of local Hyperdrive connects. The
+script exports `.dev.vars`, appends
+`--no-network-family-autoselection` to any existing `NODE_OPTIONS`, then execs
+`wrangler dev --port ${TMM_PORT:-8787} --ip 127.0.0.1` with extra args
+forwarded; `--remote` bypasses the local-only flags. Gotcha rows in this file
+now point at the script instead of the manual invocation. One trap found while
+building it: `export "KEY=\"value\""` keeps the quote characters in the value —
+the script strips one matching quote pair itself, otherwise wrangler dies with
+`Invalid URL` on the Hyperdrive strings.
+
+**Verified:** started via `npm run dev`, polled ready, `/health` 200,
+`/emails/sync/status` 200 twice, `/calendar/events` 400 `INVALID_ARGS`, clean
+shutdown on SIGTERM (port free, no stray processes), extra-arg forwarding
+reaches wrangler (`--help` prints its usage).
+
+**Next:** unchanged — the Settings-panel key entry (1.9) is what unblocks real
+completions.
+
+### 2026-09-28 — 501 / NEEDS_REAUTH branches verified via a temporary oauth_tokens row
+
+**Tooling:** new `apps/worker/scripts/seed-oauth-fixture.mjs` —
+`seed | reauth | fresh | status | remove` against the Neon HTTP API (same
+`family: 4` workaround as db-push.mjs). The fixture row holds **no token**
+(`access_token_encrypted IS NULL`), and `seed`/`remove` refuse to touch any
+google row that has one, so a real connection can never be clobbered by a
+fixture run. The row was removed after the test; `status` confirms none
+remains.
+
+**Result — all three Google states behave as [docs/API.md](docs/API.md) documents:**
+
+| State | `sync/status` | readers | mutators + calendar |
+|---|---|---|---|
+| no row | 200 `connected:false` | 503 `NEEDS_CONNECTION` | 503 `NEEDS_CONNECTION` |
+| fixture, `needs_reauth=false` | 200 `connected:true` | 200 empty list · 404 unknown id | 501 `NOT_IMPLEMENTED` |
+| fixture, `needs_reauth=true` | 200 `connected:true, needs_reauth:true` | 503 `NEEDS_REAUTH` | 503 `NEEDS_REAUTH` |
+
+Extras learned: with a connection present, `GET /emails/not-a-uuid` answers
+`400 INVALID_ARGS` (fixed for the disconnected state too in a later entry);
+`/calendar/events` still 400s on a missing range in every state; `/emails`
+returns `{messages:[], next_cursor:null}` — exactly the empty-inbox shape the
+UI renders for a connected-but-empty mailbox.
+
+**Every route and every branch of the Phase 2 REST surface is now verified by
+live request.** Nothing left to prove on this surface until the Google calls
+themselves are built (final phase) — beyond this point verification needs
+`wrangler deploy` and real Google data.
+
+**Next:** unchanged — the Settings-panel key entry (1.9) is what unblocks real
+completions.
+
+### 2026-09-28 — `INVALID_ARGS` now precedes the Google gate on `/emails/:id`
+
+**Done:** all five `/emails/:id` routes (`get`, `thread`, `read`, `archive`,
+`label`) validate the id **before** `assertGoogle()`, so a malformed id answers
+`400 INVALID_ARGS` whether or not Google is connected, instead of hiding behind
+`503 NEEDS_CONNECTION` while disconnected. A comment in `routes.ts` records the
+rule: argument validity is a client bug and is reported first.
+
+**Verified live in both states** (fixture script): bad id → 400 on
+`/emails/:id`, `/emails/:id/thread`, `/emails/:id/read`, `/emails/:id/label`;
+well-formed id → 503 disconnected, 404 (unknown reader) or 501 (mutator)
+connected — no regression on the gated branches. Calendar precedence was
+already correct (range check before the gate) and is unchanged. Fixture row
+removed afterwards; `tsc --noEmit` clean.
+
+**Next:** unchanged — the Settings-panel key entry (1.9) is what unblocks real
+completions.
 
 ---
 
