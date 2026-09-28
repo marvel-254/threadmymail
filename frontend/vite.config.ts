@@ -24,13 +24,21 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        navigateFallback: '/index.html',
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/api\.threadmymail\.com\/.*/i,
+            // The agent stream is a WebSocket and must never be cached.
+            urlPattern: /\/v1\/agent\/stream$/i,
+            handler: 'NetworkOnly',
+          },
+          {
+            // Read-heavy endpoints tolerate short staleness; the server is the
+            // source of truth, so this is a speed-up, not an authority.
+            urlPattern: /\/v1\/(emails|todos|activity)(\?.*)?$/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'api-cache',
-              expiration: { maxEntries: 100, maxAgeSeconds: 3600 },
+              cacheName: 'reads',
+              expiration: { maxEntries: 200, maxAgeSeconds: 300 },
               networkTimeoutSeconds: 10,
             },
           },
@@ -41,7 +49,13 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': 'http://localhost:8000',
+      // The Worker is not deployed yet (docs/PLAN.md Phase 0). Point this at the
+      // Worker once it exists, or set VITE_API_BASE for a deployed environment.
+      '/v1': {
+        target: process.env.WORKER_DEV_URL || 'http://localhost:8787',
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
   build: {
