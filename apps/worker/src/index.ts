@@ -13,6 +13,8 @@ import { AgentObject } from './agent/durable.js';
 import { ToolRegistry } from './tools/registry.js';
 import { todoTools } from './tools/todo.js';
 import { memoryTools } from './tools/memory.js';
+import { emailTools } from './tools/email.js';
+import { calendarTools } from './tools/calendar.js';
 import { createMetaTools } from './tools/meta.js';
 import { Db } from './db/client.js';
 import { BodyStore, bodyKey } from './storage/bodystore.js';
@@ -39,7 +41,12 @@ export interface Env {
 function baseRegistry(): ToolRegistry {
   return new ToolRegistry()
     .registerAll(todoTools as never)
-    .registerAll(memoryTools as never);
+    .registerAll(memoryTools as never)
+    // email.search/get/get_thread read the local projection; the rest of
+    // email.* and all of calendar.* declare their contract and fail with
+    // NEEDS_CONNECTION until the Google connection exists (tools/gated.ts).
+    .registerAll(emailTools as never)
+    .registerAll(calendarTools as never);
 }
 
 export default {

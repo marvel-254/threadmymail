@@ -162,3 +162,16 @@ export const TODO_COLUMNS = `
 export const MEMORY_COLUMNS = `
   id, user_id, kind, content, importance, pinned, source_ref, created_at
 `;
+
+/**
+ * Email metadata columns, shared by the REST list endpoint and the email tools
+ * so the two can never drift.
+ *
+ * Deliberately excludes `body_key` and `embedding`: bodies live in the D1 blob
+ * store (invariant 4), and a list read must not drag them out. Only the single
+ * message fetch resolves a body, and it truncates.
+ */
+export const EMAIL_METADATA_COLUMNS = `
+  id, gmail_id, thread_id, subject, from_address, to_addresses, snippet,
+  has_attachments, label_ids, received_at, read_at, ai_summary, ai_priority
+`;

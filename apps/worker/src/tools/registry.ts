@@ -94,6 +94,12 @@ export const ERROR = {
   NEEDS_REAUTH: 'NEEDS_REAUTH',
   RATE_LIMITED: 'RATE_LIMITED',
   INTERNAL: 'INTERNAL',
+  /**
+   * Reached only when the capability is connected but not yet built — i.e. a
+   * Phase 2 placeholder whose connection has since arrived. Distinct from
+   * NEEDS_CONNECTION so the UI can tell "connect me" from "not built yet".
+   */
+  NOT_IMPLEMENTED: 'NOT_IMPLEMENTED',
 } as const;
 
 /**

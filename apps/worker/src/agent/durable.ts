@@ -23,6 +23,8 @@ import { ModelClient, type ChatMessage } from './model.js';
 import { ToolRegistry } from '../tools/registry.js';
 import { todoTools } from '../tools/todo.js';
 import { memoryTools } from '../tools/memory.js';
+import { emailTools } from '../tools/email.js';
+import { calendarTools } from '../tools/calendar.js';
 import { Agent, type RunInput } from './loop.js';
 import { MAX_SUBAGENT_DEPTH } from './config.js';
 import type { MetaContext } from '../tools/meta.js';
@@ -185,7 +187,9 @@ export class AgentObject extends DurableObject<AgentEnv> {
     const model = new ModelClient({ OPENROUTER_API_KEY: this.env.OPENROUTER_API_KEY });
     const baseRegistry = new ToolRegistry()
       .registerAll(todoTools as never)
-      .registerAll(memoryTools as never);
+      .registerAll(memoryTools as never)
+      .registerAll(emailTools as never)
+      .registerAll(calendarTools as never);
 
     // Persist the user's turn so it survives eviction mid-run.
     this.ctx.storage.sql.exec(

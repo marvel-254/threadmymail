@@ -14,10 +14,21 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 
-import { Db, MEMORY_COLUMNS, TODO_COLUMNS, type DbEnv, type Row } from '../db/client.js';
+import {
+  Db,
+  EMAIL_METADATA_COLUMNS,
+  MEMORY_COLUMNS,
+  TODO_COLUMNS,
+  type DbEnv,
+  type Row,
+} from '../db/client.js';
+import { BodyStore } from '../storage/bodystore.js';
 import { ERROR } from '../tools/registry.js';
 
-type Bindings = DbEnv;
+type Bindings = DbEnv & {
+  /** D1 blob store. Email bodies only — Postgres holds the key (invariant 4). */
+  BODIES: D1Database;
+};
 
 type Vars = { Bindings: Bindings };
 
@@ -45,6 +56,10 @@ function getUserId(c: Context<Vars>): string {
 
 function db(c: Context<Vars>): Db {
   return new Db(c.env);
+}
+
+function bodies(c: Context<Vars>): BodyStore {
+  return new BodyStore(c.env.BODIES);
 }
 
 // ── Envelope ───────────────────────────────────────────────────────────────
@@ -954,6 +969,265 @@ routes.delete('/memories/:id', handler(async (c) => {
   );
   if (!row) throw notFound('Memory');
   return ok({ id, deleted: true });
+}));
+
+// ── Google connection state ────────────────────────────────────────────────
+
+/**
+ * Which Google-backed surface is this, and is it available?
+ *
+ * The email and calendar endpoints below are specified by docs/API.md but
+ * depend on a Google connection. Rather than 404 (which reads as a typo) or
+ * return an empty 200 (which reads as "you have no mail" — a lie the user
+ * cannot act on), they report precisely what is missing. Same rule as the
+ * tools in tools/gated.ts:
+ *
+ *   not connected      → 503 NEEDS_CONNECTION   ("connect your account")
+ *   connected, no impl → 501 NOT_IMPLEMENTED    ("not built yet")
+ */
+type GoogleState = { connected: boolean; needs_reauth: boolean };
+
+async function googleState(c: Context<Vars>): Promise<GoogleState> {
+  const row = await db(c).oneFresh<{ needs_reauth: boolean }>(
+    `SELECT needs_reauth FROM oauth_tokens
+      WHERE user_id = $1 AND provider = 'google' LIMIT 1`,
+    [getUserId(c)],
+  );
+  if (!row) return { connected: false, needs_reauth: false };
+  return { connected: true, needs_reauth: row.needs_reauth === true };
+}
+
+async function assertGoogle(c: Context<Vars>, action: string): Promise<void> {
+  const state = await googleState(c);
+  if (!state.connected) {
+    throw new HttpError(
+      ERROR.NEEDS_CONNECTION,
+      `Google is not connected, so this cannot ${action}. Connect Google to enable it.`,
+      503,
+    );
+  }
+  if (state.needs_reauth) {
+    throw new HttpError(
+      ERROR.NEEDS_REAUTH,
+      'The Google connection needs re-authorising before this can run.',
+      503,
+    );
+  }
+}
+
+/** Connected, but the Google call itself lands with OAuth in the final phase. */
+function notImplemented(action: string): HttpError {
+  return new HttpError(
+    ERROR.NOT_IMPLEMENTED,
+    `${action} is not implemented yet — Google-backed calls land with the connection, which is the last item of the final phase.`,
+    501,
+  );
+}
+
+// ── Email ──────────────────────────────────────────────────────────────────
+
+/** Bodies are capped here too; a JSON response is not a file transfer. */
+const EMAIL_BODY_CAP = 20_000;
+
+/** `ILIKE` metacharacters in a query are wildcards until escaped. */
+function escapeLike(input: string): string {
+  return input.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
+function shapeEmail(row: Row): Json {
+  const to = row['to_addresses'];
+  return {
+    id: row['id'],
+    thread_id: row['thread_id'],
+    subject: row['subject'],
+    from: row['from_address'],
+    to: Array.isArray(to) ? to : [],
+    snippet: row['snippet'],
+    labels: row['label_ids'] ?? [],
+    has_attachments: row['has_attachments'] === true,
+    received_at: row['received_at'],
+    unread: row['read_at'] === null,
+    ai_summary: row['ai_summary'],
+    ai_priority: row['ai_priority'],
+  };
+}
+
+/**
+ * Sync health — the one email endpoint that always answers, connected or not.
+ * Its whole job is to let the UI say "connect Google" instead of showing an
+ * inbox that looks empty for the wrong reason.
+ */
+routes.get('/emails/sync/status', handler(async (c) => {
+  const state = await googleState(c);
+  const row = await db(c).oneFresh<Row>(
+    `SELECT last_sync_at, last_history_id, last_error, updated_at
+       FROM sync_state WHERE user_id = $1`,
+    [getUserId(c)],
+  );
+  return ok({
+    connected: state.connected,
+    needs_reauth: state.needs_reauth,
+    last_sync_at: row?.['last_sync_at'] ?? null,
+    last_history_id: row?.['last_history_id'] ?? null,
+    last_error: row?.['last_error'] ?? null,
+  });
+}));
+
+routes.post('/emails/sync', handler(async (c) => {
+  await assertGoogle(c, 'sync the mailbox');
+  // The live cursor lives in the Durable Object, not Postgres (invariant 1),
+  // so a manual sync is a message to the DO rather than a query here.
+  throw notImplemented('Triggering a mailbox sync');
+}));
+
+/** Metadata + snippet only. Bodies are fetched one at a time via `/emails/:id`. */
+routes.get('/emails', handler(async (c) => {
+  await assertGoogle(c, 'read mail');
+  const params: unknown[] = [getUserId(c)];
+  const where: string[] = ['user_id = $1'];
+
+  const q = c.req.query('q');
+  if (q) {
+    params.push(`%${escapeLike(q)}%`);
+    const n = params.length;
+    where.push(
+      `(subject ILIKE $${n} ESCAPE '\\' OR from_address ILIKE $${n} ESCAPE '\\' ` +
+        `OR snippet ILIKE $${n} ESCAPE '\\')`,
+    );
+  }
+  const threadId = c.req.query('thread_id');
+  if (threadId) {
+    params.push(threadId);
+    where.push(`thread_id = $${params.length}`);
+  }
+  const label = c.req.query('label');
+  if (label) {
+    params.push(label);
+    where.push(`$${params.length} = ANY(label_ids)`);
+  }
+  if (c.req.query('unread') === 'true') where.push('read_at IS NULL');
+
+  // Keyset pagination on received_at: stable while mail keeps arriving, unlike
+  // OFFSET, which silently skips rows when new mail lands mid-page.
+  const cursor = c.req.query('cursor');
+  if (cursor) {
+    params.push(cursor);
+    where.push(`received_at < $${params.length}::timestamptz`);
+  }
+
+  const limit = limitParam(c, 30, 100);
+  params.push(limit);
+  const rows = await db(c).queryFresh<Row>(
+    `SELECT ${EMAIL_METADATA_COLUMNS} FROM email_messages
+      WHERE ${where.join(' AND ')}
+      ORDER BY received_at DESC
+      LIMIT $${params.length}`,
+    params,
+  );
+
+  const messages = rows.map(shapeEmail);
+  // A full page probably has more behind it; a short one is the end.
+  const last = messages[messages.length - 1];
+  return ok({
+    messages,
+    next_cursor: messages.length === limit && last ? last['received_at'] : null,
+  });
+}));
+
+routes.get('/emails/:id', handler(async (c) => {
+  await assertGoogle(c, 'read a message');
+  const id = uuidParam(c, 'id');
+  const row = await db(c).oneFresh<Row>(
+    `SELECT ${EMAIL_METADATA_COLUMNS}, body_key FROM email_messages
+      WHERE id = $1 AND user_id = $2`,
+    [id, getUserId(c)],
+  );
+  if (!row) throw notFound('Message');
+
+  const key = row['body_key'];
+  let bodyText: string | null = null;
+  let truncated = false;
+  if (typeof key === 'string' && key !== '') {
+    const text = await bodies(c).getText(key);
+    if (text !== null) {
+      truncated = text.length > EMAIL_BODY_CAP;
+      bodyText = truncated ? text.slice(0, EMAIL_BODY_CAP) : text;
+    }
+  }
+
+  return ok({ ...shapeEmail(row), body_text: bodyText, body_truncated: truncated });
+}));
+
+routes.get('/emails/:id/thread', handler(async (c) => {
+  await assertGoogle(c, 'read a conversation');
+  const id = uuidParam(c, 'id');
+  const anchor = await db(c).oneFresh<Row>(
+    `SELECT thread_id FROM email_messages WHERE id = $1 AND user_id = $2`,
+    [id, getUserId(c)],
+  );
+  if (!anchor) throw notFound('Message');
+  const threadId = anchor['thread_id'];
+  if (typeof threadId !== 'string' || threadId === '') {
+    throw new HttpError(ERROR.NOT_FOUND, 'That message has no thread.', 404);
+  }
+  const rows = await db(c).queryFresh<Row>(
+    `SELECT ${EMAIL_METADATA_COLUMNS} FROM email_messages
+      WHERE user_id = $1 AND thread_id = $2
+      ORDER BY received_at ASC LIMIT 100`,
+    [getUserId(c), threadId],
+  );
+  return ok({ thread_id: threadId, messages: rows.map(shapeEmail) });
+}));
+
+// Mutations are Gmail's to own. Writing the local projection instead would
+// diverge from the mailbox, which is worse than refusing (tools/email.ts).
+routes.post('/emails/:id/read', handler(async (c) => {
+  await assertGoogle(c, 'mark a message read');
+  uuidParam(c, 'id');
+  throw notImplemented('Marking a message read');
+}));
+
+routes.post('/emails/:id/archive', handler(async (c) => {
+  await assertGoogle(c, 'archive a message');
+  uuidParam(c, 'id');
+  throw notImplemented('Archiving a message');
+}));
+
+routes.post('/emails/:id/label', handler(async (c) => {
+  await assertGoogle(c, 'label a message');
+  uuidParam(c, 'id');
+  throw notImplemented('Labelling a message');
+}));
+
+// ── Calendar ───────────────────────────────────────────────────────────────
+
+/**
+ * Nothing syncs the calendar locally (there is no calendar table on purpose),
+ * so every calendar endpoint is a live Google call — gated the same way.
+ */
+function requireRange(c: Context<Vars>): void {
+  const from = c.req.query('from');
+  const to = c.req.query('to');
+  if (!from || !to) {
+    throw new HttpError(ERROR.INVALID_ARGS, 'from and to are required (ISO 8601).', 400);
+  }
+}
+
+routes.get('/calendar/events', handler(async (c) => {
+  requireRange(c);
+  await assertGoogle(c, 'read the calendar');
+  throw notImplemented('Listing calendar events');
+}));
+
+routes.get('/calendar/freebusy', handler(async (c) => {
+  requireRange(c);
+  await assertGoogle(c, 'read availability');
+  throw notImplemented('Querying availability');
+}));
+
+routes.get('/calendar/agent-created', handler(async (c) => {
+  await assertGoogle(c, 'list agent-created events');
+  throw notImplemented('Listing agent-created events');
 }));
 
 // ── Artifacts ──────────────────────────────────────────────────────────────
