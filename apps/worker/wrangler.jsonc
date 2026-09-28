@@ -17,7 +17,11 @@
   // --caching-disabled`). Do not add it here; wrangler warns and ignores it.
   //
   // For local dev, set CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_DB and
-  // ..._DB_FRESH in .dev.vars.
+  // ..._DB_FRESH in the *shell* environment (or as `localConnectionString`
+  // here). Wrangler validates them BEFORE it applies .dev.vars, so putting them
+  // only in .dev.vars fails with "you should use a local Postgres connection
+  // string". `npm run dev` (scripts/dev.sh) handles this and the Node DNS
+  // workaround; see the gotchas table in IMPLEMENTATION_SUMMARY.md.
   "hyperdrive": [
     {
       "binding": "DB",

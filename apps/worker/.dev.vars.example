@@ -1,5 +1,9 @@
 # Local development secrets. Copy to .dev.vars and fill in. NEVER commit .dev.vars.
-# Wrangler loads .dev.vars automatically for `wrangler dev`.
+# Wrangler loads .dev.vars automatically as Worker bindings for `wrangler dev`.
+# It does NOT load them in time for the Hyperdrive local connection strings at
+# the bottom of this file — those must also be exported into the shell. Start
+# the worker with `npm run dev` (scripts/dev.sh) and both problems are handled
+# for you. See IMPLEMENTATION_SUMMARY.md ("Environment gotchas") for why.
 
 # Neon direct connection (used by migrations, not by the Worker at runtime —
 # the Worker must go through Hyperdrive. See docs/ARCHITECTURE.md §4.)
@@ -24,6 +28,12 @@ ENCRYPTION_KEY=""
 SESSION_SECRET=""
 
 # Local dev only: wrangler needs a real Postgres string to emulate Hyperdrive.
-# Point these at a local Postgres, or at the same database with sslmode=disable.
+# These must ALSO be exported into the shell — wrangler reads them before it
+# applies this file. `npm run dev` (scripts/dev.sh) does that automatically.
+#
+# If you point them at hosted Postgres (Neon etc.) you MUST keep
+# sslmode=require: `pg` deliberately refuses a non-local connection without TLS
+# with "connection is insecure". A true localhost Postgres may use
+# sslmode=disable.
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_DB="postgresql://user:pass@localhost:5432/neondb"
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_DB_FRESH="postgresql://user:pass@localhost:5432/neondb"

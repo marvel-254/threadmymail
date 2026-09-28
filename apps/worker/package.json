@@ -5,8 +5,8 @@
   "type": "module",
   "description": "ThreadMyMail agent runtime: API, Durable Object chat agent, cron heartbeat, durable workflows.",
   "scripts": {
-    "dev": "wrangler dev",
-    "dev:remote": "wrangler dev --remote",
+    "dev": "bash scripts/dev.sh",
+    "dev:remote": "bash scripts/dev.sh --remote",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
     "spike": "node scripts/run-spike.mjs",
