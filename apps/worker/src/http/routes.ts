@@ -1135,8 +1135,10 @@ routes.get('/emails', handler(async (c) => {
 }));
 
 routes.get('/emails/:id', handler(async (c) => {
-  await assertGoogle(c, 'read a message');
+  // Argument validity first: a malformed id is a client bug and must be
+  // reported as INVALID_ARGS whether or not Google is connected.
   const id = uuidParam(c, 'id');
+  await assertGoogle(c, 'read a message');
   const row = await db(c).oneFresh<Row>(
     `SELECT ${EMAIL_METADATA_COLUMNS}, body_key FROM email_messages
       WHERE id = $1 AND user_id = $2`,
@@ -1159,8 +1161,8 @@ routes.get('/emails/:id', handler(async (c) => {
 }));
 
 routes.get('/emails/:id/thread', handler(async (c) => {
-  await assertGoogle(c, 'read a conversation');
   const id = uuidParam(c, 'id');
+  await assertGoogle(c, 'read a conversation');
   const anchor = await db(c).oneFresh<Row>(
     `SELECT thread_id FROM email_messages WHERE id = $1 AND user_id = $2`,
     [id, getUserId(c)],
@@ -1182,20 +1184,20 @@ routes.get('/emails/:id/thread', handler(async (c) => {
 // Mutations are Gmail's to own. Writing the local projection instead would
 // diverge from the mailbox, which is worse than refusing (tools/email.ts).
 routes.post('/emails/:id/read', handler(async (c) => {
+  const id = uuidParam(c, 'id');
   await assertGoogle(c, 'mark a message read');
-  uuidParam(c, 'id');
   throw notImplemented('Marking a message read');
 }));
 
 routes.post('/emails/:id/archive', handler(async (c) => {
+  const id = uuidParam(c, 'id');
   await assertGoogle(c, 'archive a message');
-  uuidParam(c, 'id');
   throw notImplemented('Archiving a message');
 }));
 
 routes.post('/emails/:id/label', handler(async (c) => {
+  const id = uuidParam(c, 'id');
   await assertGoogle(c, 'label a message');
-  uuidParam(c, 'id');
   throw notImplemented('Labelling a message');
 }));
 
