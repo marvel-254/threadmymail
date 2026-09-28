@@ -1,0 +1,75 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "threadmymail-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-04",
+  "observability": {
+    "enabled": true
+  },
+
+  // Hyperdrive: cached for search/browse/RAG, cache-disabled for
+  // read-after-write. Hyperdrive does NOT invalidate reads on write, so
+  // anything the user just changed must go through DB_FRESH.
+  // See docs/ARCHITECTURE.md §6.
+  //
+  // `caching` is NOT a wrangler field — it is a property of the Hyperdrive
+  // configuration itself (set with `wrangler hyperdrive create
+  // --caching-disabled`). Do not add it here; wrangler warns and ignores it.
+  //
+  // For local dev, set CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_DB and
+  // ..._DB_FRESH in .dev.vars.
+  "hyperdrive": [
+    {
+      "binding": "DB",
+      "id": "f4e34dc113eb4b5d8b0ca094260711da"
+    },
+    {
+      "binding": "DB_FRESH",
+      "id": "9c2cfc8803ab4e61898cabfc3223a51d"
+    }
+  ],
+
+  "d1_databases": [
+    {
+      "binding": "BODIES",
+      "database_name": "threadmymail-bodies",
+      "database_id": "0f244a27-fe13-4646-b1a5-41868d960266"
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "AGENT",
+        "class_name": "AgentObject"
+      }
+    ]
+  },
+
+  // Required: a DO class cannot be bound until it is registered as new.
+  // SQLite backend only — that is what the Free plan allows.
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["AgentObject"]
+    }
+  ],
+
+  // Free plan allows 5; we use 2. The heartbeat MUST NOT query Postgres —
+  // see the Neon heartbeat trap in docs/ARCHITECTURE.md §5.
+  "triggers": {
+    "crons": [
+      "*/5 * * * *",
+      "*/15 * * * *"
+    ]
+  },
+
+  "vars": {
+    "ENVIRONMENT": "development",
+    "GOOGLE_REDIRECT_URI": "http://localhost:8787/auth/google/callback"
+  }
+
+  // NOTE: there is deliberately NO "ai" binding. Model access is BYOK through
+  // OpenRouter, not Workers AI. Adding the binding also forces wrangler to open
+  // a remote proxy session, which makes `wrangler dev` unusable non-interactively.
+}
