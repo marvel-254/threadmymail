@@ -1,1080 +1,452 @@
 # ThreadMyMail - API Specification
 
-> Complete REST API reference for the email AI harness.
+> REST + WebSocket surface for the agent platform.
+> **Status:** Authoritative. **Last updated:** 2026-09-27
+> **Supersedes:** the earlier `summarize` / `compose` / `triage` / `chat` /
+> `extract-tasks` endpoint set. Those capabilities now exist as **skills** and
+> **tools**; see [AI-SKILLS.md](./AI-SKILLS.md).
 
 ---
 
-## 1. Base URL
+## 1. Base URL & Conventions
 
 ```
-https://api.threadmymail.com/v1
+https://threadmymail.workers.dev/v1
 ```
 
-All endpoints return JSON:
+Auth: `Authorization: Bearer <session_token>` (or a session cookie for the web
+client).
+
+### 1.1 Envelope
+
+Success:
 ```json
-{
-  "success": true,
-  "data": {...},
-  "error": null
-}
+{ "success": true, "data": { }, "error": null }
 ```
 
-Error format:
+Error:
 ```json
 {
   "success": false,
   "data": null,
-  "error": "Descriptive error message"
+  "error": { "code": "PRECONDITION_FAILED", "message": "Connect Gmail first.", "detail": null }
 }
 ```
+
+### 1.2 Error codes
+
+| Code | HTTP | Meaning |
+|---|---|---|
+| `UNAUTHENTICATED` | 401 | Missing/invalid session |
+| `NEEDS_REAUTH` | 401 | Google token expired; re-consent required |
+| `FORBIDDEN` | 403 | Tool or permission not granted |
+| `NOT_FOUND` | 404 | Resource missing |
+| `PRECONDITION_FAILED` | 409 | Connection or setup not done |
+| `BUDGET_EXCEEDED` | 429 | Daily autonomy budget spent |
+| `AGENT_ABORTED` | 409 | Run cancelled (kill switch / escalation) |
+| `RATE_LIMITED` | 429 | Per-endpoint limit |
+| `INTERNAL` | 500 | Unexpected |
 
 ---
 
-## 2. Authentication
+## 2. Auth
 
-### `POST /auth/magic-link`
+Google OAuth is the **sole** sign-in. One consent grants identity + Gmail +
+Calendar. See [GOOGLE_OAUTH.md](./GOOGLE_OAUTH.md).
 
-Request:
-```json
-{
-  "email": "user@example.com"
-}
-```
+### `GET /auth/google`
+Redirect to Google's consent screen. Returns 302.
 
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "message": "Magic link sent to user@example.com"
-  }
-}
-```
+### `GET /auth/google/callback?code=...`
+Handles the redirect, upserts the user, stores tokens, sets the session cookie.
+Returns 302 to the app.
 
----
-
-### `POST /auth/verify`
-
-Request:
-```json
-{
-  "token": "magic_link_token_jwt"
-}
-```
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "access_token": "jwt_access_token",
-    "refresh_token": "jwt_refresh_token",
-    "user": {
-      "id": "uuid",
-      "email": "user@example.com",
-      "full_name": "John Doe"
-    }
-  }
-}
-```
-
-Headers for subsequent requests:
-```
-Authorization: Bearer <access_token>
-```
-
----
+### `POST /auth/logout`
+Clears the session.
 
 ### `GET /auth/me`
-
-Response:
 ```json
-{
-  "success": true,
-  "data": {
-    "id": "uuid",
-    "email": "user@example.com",
-    "full_name": "John Doe",
-    "created_at": "2024-01-15T10:30:00Z",
-    "ai_config": {
-      "provider": "openai",
-      "model": "gpt-4o-mini",
-      "temperature": 0.3
-    },
-    "notification_settings": {
-      "digest_time": "20:00",
-      "daily_digest": true,
-      "important_push": true
-    }
-  }
-}
-```
-
----
-
-## 3. Email Accounts
-
-### `GET /accounts`
-
-List all connected email accounts.
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "accounts": [
-      {
-        "id": "uuid",
-        "provider": "gmail",
-        "email_address": "john@gmail.com",
-        "display_name": "Personal Gmail",
-        "is_default": true,
-        "sync_enabled": true,
-        "last_synced_at": "2024-01-15T10:30:00Z",
-        "folder_mapping": {
-          "inbox": "INBOX",
-          "sent": "Sent Mail",
-          "archive": "All Mail"
-        }
-      }
-    ],
-    "total": 1
-  }
-}
-```
-
----
-
-### `POST /accounts`
-
-Add a new email account.
-
-**Gmail OAuth Flow:**
-```
-GET /accounts/gmail-url  →  Returns OAuth URL
-User authenticates → Redirect to /accounts/callback
-```
-
-Standard IMAP:
-```json
-{
-  "provider": "custom",
-  "email_address": "john@work.com",
-  "display_name": "Work Email",
-  "imap_host": "imap.mail.com",
-  "imap_port": 993,
-  "imap_username": "john@work.com",
-  "imap_password": "app_password_here",
-  "smtp_host": "smtp.mail.com",
-  "smtp_port": 587,
-  "smtp_username": "john@work.com",
-  "smtp_password": "app_password_here",
-  "is_default": true
-}
-```
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "account": {
-      "id": "uuid",
-      "provider": "gmail",
-      "email_address": "john@gmail.com",
-      "display_name": "Gmail",
-      "is_default": true,
-      "sync_enabled": true,
-      "last_synced_at": null,
-      "folder_mapping": {
-        "inbox": "INBOX",
-        "sent": "Sent Mail",
-        "archive": "All Mail"
-      }
-    }
-  }
-}
-```
-
----
-
-### `PUT /accounts/:id`
-
-Update account settings.
-
-Request:
-```json
-{
-  "display_name": "Updated Name",
-  "is_default": true,
-  "folder_mapping": {
-    "inbox": "INBOX",
-    "work": "Work"
+{ "success": true, "data": {
+  "id": "uuid",
+  "email": "you@gmail.com",
+  "full_name": "Your Name",
+  "connections": {
+    "gmail":      { "connected": true,  "email": "you@gmail.com" },
+    "calendar":   { "connected": true,  "email": "you@gmail.com" }
   },
-  "sync_enabled": true
-}
+  "persona_configured": false,
+  "plugin_ids": ["gmail", "google_calendar", "todo", "memory", "exa"]
+}}
 ```
 
----
-
-### `DELETE /accounts/:id`
-
-Remove account (deletes all associated emails).
+### `GET /auth/status`
+Lightweight health of the Google connection and token expiry.
 
 ---
 
-### `POST /accounts/:id/test`
+## 3. Agent
 
-Test account configuration.
+### `GET /agent/stream` — WebSocket
+The primary interface. Connect, send messages, receive streamed tokens and
+tool-call events.
 
-Response:
+**Client → server**
+```json
+{ "type": "message", "id": "msg_1", "content": "what's waiting on me?" }
+{ "type": "interrupt", "id": "run_xyz" }
+```
+
+**Server → client**
+```json
+{ "type": "token",        "run_id": "run_xyz", "text": "Three things are waiting." }
+{ "type": "tool_call",    "run_id": "run_xyz", "tool": "todo.search",
+  "args": { "status": "open" } }
+{ "type": "tool_result",  "run_id": "run_xyz", "tool": "todo.search",
+  "ok": true, "latency_ms": 42, "summary": "7 open" }
+{ "type": "artifact",     "run_id": "run_xyz", "artifact_id": "art_1",
+  "kind": "todo_panel" }
+{ "type": "escalation",   "run_id": "run_xyz", "question": "Send to dana@newco.com?",
+  "choices": ["yes", "no", "always"] }
+{ "type": "done",         "run_id": "run_xyz", "tokens": 1420, "cost_usd": 0.0031 }
+{ "type": "error",        "run_id": "run_xyz", "code": "BUDGET_EXCEEDED",
+  "message": "Daily budget reached." }
+```
+
+### `POST /agent/runs`
+Non-streaming execution. Useful for scripting and tests.
+```json
+{ "content": "summarize today's mail", "skill_id": null, "stream": false }
+```
+→ `{ "run_id": "run_xyz", "status": "completed", "output": { }, "tokens": 980 }`
+
+### `GET /agent/runs?limit=50&status=completed`
+Run history with per-run token/cost rollups.
+
+### `GET /agent/runs/:id`
+Full run detail including every `tool_calls` row.
+
+### `POST /agent/runs/:id/abort`
+Interrupt an in-flight run.
+
+### `POST /agent/chat`
+Convenience non-streaming single turn (no tools beyond safe reads).
+
+---
+
+## 4. Skills
+
+### `GET /skills`
+```json
+{ "success": true, "data": [
+  { "id": "uuid", "name": "morning_briefing", "enabled": true,
+    "trigger": { "type": "cron", "config": { "expression": "0 7 * * *", "timezone": "Europe/Berlin" } },
+    "model_slot": "background",
+    "last_run_at": "2026-09-27T06:00:02Z", "runs_today": 1 }
+]}
+```
+
+### `GET /skills/:id`
+### `POST /skills`
 ```json
 {
-  "success": true,
-  "data": {
-    "test_result": "Connection successful",
-    "imap": {
-      "supported_capabilities": ["IMAP4rev1", "UIDPLUS", "CHILDREN"],
-      "mailbox": "INBOX",
-      "message_count": 1250
-    },
-    "smtp": {
-      "test_result": "SMTP connection OK"
-    }
-  }
+  "name": "chase_invoices",
+  "description": "Checks for unpaid invoices and nudges.",
+  "instructions": "Find threads mentioning invoice or payment older than 7 days...",
+  "allowed_tools": ["email.search", "email.get_thread", "email.send", "todo.create"],
+  "trigger": { "type": "cron", "config": { "expression": "0 9 * * 1-5", "timezone": "Europe/Berlin" } },
+  "budget": { "max_runs_per_day": 5, "max_tokens": 40000 },
+  "model_slot": "background"
 }
 ```
+→ creates with `dry_run_until` set (shadow mode) unless `"skip_dry_run": true`.
+
+### `PUT /skills/:id` / `DELETE /skills/:id`
+### `POST /skills/:id/run` — invoke now
+### `POST /skills/:id/enable` / `POST /skills/:id/disable`
+### `POST /skills/:id/dry-run` — toggle shadow mode
+### `GET /skills/:id/runs` — run history
+
+**Constraint:** `allowed_tools` is a security boundary. The model receives *no*
+tool it was not granted, so prompt injection cannot widen a skill's reach.
 
 ---
 
-### `GET /accounts/:id/sync`
+## 5. Tools
 
-Trigger immediate sync.
-
-Response:
+### `GET /tools`
+All tools visible to the agent, grouped, with grant state.
 ```json
-{
-  "success": true,
-  "data": {
-    "status": "started",
-    "estimated_completion": "2024-01-15T10:35:00Z"
-  }
-}
+{ "success": true, "data": [
+  { "name": "email.search", "plugin": "gmail", "granted": true,
+    "description": "...", "parameters": { } }
+]}
 ```
+
+### `GET /tools/:name` — full schema
+
+> Tools are invoked **by the agent**, not by the client. There is intentionally
+> no public `POST /tools/:name/execute`. Any action a tool can perform is
+> reachable through the agent loop, where permissions, budgets, and the audit
+> trail apply. Direct invocation would bypass all three.
 
 ---
 
-## 4. Email Endpoints
+## 6. To-dos
+
+Bound mutations from artifacts land here. All reads must use `DB_FRESH`
+(see ARCHITECTURE §6).
+
+### `GET /todos`
+Query: `status`, `due_before`, `source`, `thread_id`, `limit`, `cursor`.
+
+### `POST /todos`
+```json
+{ "title": "Review Q3 budget variance", "notes": null, "due_at": "2026-09-30T17:00:00Z",
+  "priority": 7, "source": "agent", "thread_id": "18f2…" }
+```
+
+### `GET /todos/:id`
+### `PATCH /todos/:id`
+### `POST /todos/:id/toggle` — **artifact binding target**
+```json
+{ "done": true }
+```
+Completes or reopens, emits `todo.completed` to the agent, and returns the
+updated record.
+
+### `POST /todos/reorder`
+```json
+{ "ids": ["8f3c…", "1a2b…", "9d4e…"] }
+```
+
+### `DELETE /todos/:id`
+
+---
+
+## 7. Artifacts
+
+### `GET /artifacts/:id`
+```json
+{ "success": true, "data": {
+  "id": "art_1", "kind": "todo_panel", "run_id": "run_xyz",
+  "html": "<ul data-artifact=\"todos\">…</ul>",
+  "state": { "todo_ids": ["8f3c…", "1a2b…"] },
+  "bindings": ["todo.toggle", "todo.create", "todo.update"]
+}}
+```
+
+> `html` is agent-authored and must be rendered in a **sandboxed iframe**:
+> `sandbox="allow-scripts"` — no `allow-same-origin`, no `allow-top-navigation`,
+> no network. The shell intercepts `postMessage` `bind_event` messages and
+> dispatches only the verbs in `bindings` to the API above.
+>
+> The HTML is **presentation only**. Postgres is the source of truth; the iframe
+> is a projection. See AI-SKILLS §7.
+
+---
+
+## 8. Email
 
 ### `GET /emails`
-
-List emails with filtering and pagination.
-
-Query Parameters:
-```
-account_id (uuid, optional)
-folder (string, default: inbox)
-search (string, optional)
-unread_only (boolean, default: false)
-flagged_only (boolean, default: false)
-page (integer, default: 1)
-page_size (integer, default: 50)
-sort_by (received_at|subject|sender, default: received_at)
-sort_order (asc|desc, default: desc)
-```
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "emails": [
-      {
-        "id": "uuid",
-        "account_id": "uuid",
-        "subject": "Meeting tomorrow at 10am",
-        "from_address": "colleague@company.com",
-        "from_name": "Colleague",
-        "to_addresses": ["me@personal.com"],
-        "to_names": ["Me"],
-        "snippet": "Don't forget our meeting tomorrow at 10am about the Q4 budget...",
-        "folder": "INBOX",
-        "flags": 0,  // seen
-        "received_at": "2024-01-15T09:00:00Z",
-        "ai_summary": "Meeting scheduled for tomorrow 10am about Q4 budget",
-        "ai_category": "work",
-        "ai_priority": 7
-      }
-    ],
-    "total": 125,
-    "page": 1,
-    "page_size": 50,
-    "has_more": true
-  }
-}
-```
-
----
+Query: `q` (Gmail syntax), `thread_id`, `label`, `unread`, `limit`, `cursor`.
+Returns metadata + snippet. **Bodies are not included** — they live in the D1 body
+store and are fetched on demand.
 
 ### `GET /emails/:id`
+Full message. Body resolved from the D1 body store.
 
-Get full email details.
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "email": {
-      "id": "uuid",
-      "account_id": "uuid",
-      "message_id": "<abc123@example.com>",
-      "thread_id": "thread_123",
-      "subject": "Re: Re: Meeting tomorrow at 10am",
-      "from_address": "colleague@company.com",
-      "from_name": "Colleague",
-      "to_addresses": [
-        {"email": "me@personal.com", "name": "Me"},
-        {"email": "team@company.com", "name": "Team"}
-      ],
-      "cc_addresses": [
-        {"email": "manager@company.com", "name": "Manager"}
-      ],
-      "date": "Mon, 15 Jan 2024 09:00:00 +0000",
-      "date_parsed": "2024-01-15T09:00:00Z",
-      "body_text": "Full email body text here...",
-      "body_html": "<html><body>Full email body HTML here...</body></html>",
-      "folder": "INBOX",
-      "flags": 0,
-      "received_at": "2024-01-15T09:00:00Z",
-      "sent_at": null,
-      "has_attachments": true,
-      "attachments": [
-        {
-          "filename": "budget.xlsx",
-          "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "size": 123456
-        }
-      ],
-      "ai_summary": "Colleague is confirming tomorrow's 10am meeting about Q4 budget. Attached budget.xlsx for review.",
-      "ai_category": "work",
-      "ai_priority": 7,
-      "action_items": [
-        "Review budget.xlsx",
-        "Prepare Q4 talking points"
-      ]
-    }
-  }
-}
-```
-
----
-
-### `GET /emails/:id/headers`
-
-Get only headers (for search index).
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "headers": [
-      {"name": "From", "value": "John Doe <john@example.com>"},
-      {"name": "To", "value": "me@example.com"},
-      {"name": "Subject", "value": "Test email"},
-      {"name": "Date", "value": "Mon, 15 Jan 2024 09:00:00 +0000"}
-    ]
-  }
-}
-```
-
----
-
-## 5. Email Actions
-
+### `GET /emails/:id/thread`
 ### `POST /emails/:id/read`
-
-Mark email as read.
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "email_id": "uuid",
-    "flag": "seen",
-    "status": "set"
-  }
-}
-```
-
----
-
-### `POST /emails/:id/unread`
-
-Mark email as unread.
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "email_id": "uuid",
-    "flag": "seen",
-    "status": "unset"
-  }
-}
-```
-
----
-
-### `POST /emails/:id/flag`
-
-Toggle flagged status.
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "email_id": "uuid",
-    "flag": "flagged",
-    "status": "set"
-  }
-}
-```
-
----
-
 ### `POST /emails/:id/archive`
+### `POST /emails/:id/label` — **artifact binding target**
+### `POST /emails/sync` — trigger a sync now
+### `GET /emails/sync/status` — cursor, last sync, error state
 
-Archive email (move to archive folder).
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "email_id": "uuid",
-    "folder": "Archive"
-  }
-}
-```
+Sending is agent-only (`email.send` tool), subject to `new_contact_policy` and
+the autonomy budget. This is deliberate: an API endpoint that sends mail on
+behalf of a token is a footgun with no audit story.
 
 ---
 
-### `POST /emails/:id/move`
+## 9. Calendar
 
-Move email to different folder.
-
-Request:
-```json
-{
-  "folder": "Work"
-}
-```
+### `GET /calendar/events?from=&to=`
+### `GET /calendar/freebusy?from=&to=&attendees[]=`
+### `GET /calendar/agent-created`
+Booking and modification are agent-only (`calendar.create_event`), subject to
+`new_contact_policy`.
 
 ---
 
-### `DELETE /emails/:id`
+## 10. Memory
 
-Delete email (move to trash).
+### `GET /memories?q=&kind=&limit=`
+### `POST /memories`
+```json
+{ "kind": "commitment", "content": "Promised Dana the Q3 numbers by Friday",
+  "importance": 8, "pinned": false, "source_ref": "run_xyz" }
+```
+### `PATCH /memories/:id` — including `pinned`
+### `DELETE /memories/:id`
+### `GET /memories/profile`
+### `PUT /memories/profile`
+
+`pinned` memories are user-locked and never auto-pruned.
 
 ---
 
-## 6. Compose & Send
+## 11. Plugins
 
-### `POST /emails/draft`
-
-Save draft email.
-
-Request:
+### `GET /plugins`
 ```json
-{
-  "to": ["recipient@example.com"],
-  "cc": ["cc@example.com"],
-  "bcc": ["bcc@example.com"],
-  "subject": "Draft subject",
-  "body": "Draft body text",
-  "account_id": "uuid"
-}
+{ "success": true, "data": [
+  { "id": "notion", "name": "Notion", "version": "1.0.0", "source": "builtin",
+    "enabled": true, "configured": false, "tools": 5, "permissions": [
+      "network:api.notion.com", "data:notes:read", "data:notes:write" ] }
+]}
 ```
 
-Response:
+### `GET /plugins/manifest?url=<git url>` — **review before install**
+Fetches and validates a manifest without installing. Powers the approval UI.
+
+### `POST /plugins/install`
 ```json
-{
-  "success": true,
-  "data": {
-    "draft_id": "uuid"
-  }
-}
+{ "url": "https://github.com/me/my-notion-plugin", "sha": "abc123…",
+  "grants": { "notes_append": ["data:notes:write", "network:api.notion.com"] } }
 ```
+Rejects if `sha` is absent (no unpinned installs).
+
+### `POST /plugins/:id/credentials`
+```json
+{ "fields": { "token": "secret_…" } }
+```
+Encrypted at rest. Never returned by any endpoint.
+
+### `GET /plugins/:id/permissions` / `PUT /plugins/:id/permissions`
+Per-tool grant control.
+
+### `POST /plugins/:id/enable` / `disable` / `uninstall`
+`GET /plugins/:id/diff?url=&sha=` — manifest diff for an update.
 
 ---
 
-### `POST /emails/send`
+## 12. Activity & Undo
 
-Send email.
-
-Request:
+### `GET /activity?limit=100`
+The plain-language feed.
 ```json
-{
-  "to": ["recipient@example.com"],
-  "subject": "Hello from ThreadMyMail",
-  "body": "This is a test email sent via AI harness.",
-  "account_id": "uuid"
-}
+{ "success": true, "data": [
+  { "id": "uuid", "kind": "meeting_booked",
+    "summary": "Booked 'Q3 Budget Review' with Dana, Thu 14:00–14:30",
+    "reversible": true, "undo_ref": "cal_18f2…", "created_at": "2026-09-27T09:12:44Z" }
+]}
 ```
 
-Or send saved draft:
-```json
-{
-  "draft_id": "uuid"
-}
-```
+### `POST /activity/:id/undo`
+Reverses a reversible action — retracts a sent email, deletes an agent-created
+event, reopens a completed todo. Idempotent.
 
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "message_id": "msg_12345",
-    "sent_at": "2024-01-15T10:00:00Z",
-    "account_id": "uuid"
-  }
-}
-```
+### `GET /activity/:id` — full tool-call trace
 
 ---
 
-### `POST /emails/:id/delete-draft`
+## 13. Autonomy & Settings
 
-Delete draft.
+### `GET /settings` / `PUT /settings`
 
----
-
-## 7. AI Endpoints
-
-### `POST /ai/summarize`
-
-Summarize email thread.
-
-Request:
-```json
+```jsonc
 {
-  "email_ids": ["uuid1", "uuid2", "uuid3"],
-  "max_length": "medium"  // short | medium | long
-}
-```
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "summary": "Thread Summary:\n\n1. Main purpose: Q4 budget review meeting\n2. Action items: Review budget.xlsx, Prepare slides\n3. Participants: John (you), Colleague, Manager\n4. Priority: 7/10 - meeting tomorrow",
-    "confidence": 0.92,
-    "tokens_used": 250
-  }
-}
-```
-
----
-
-### `POST /ai/compose`
-
-Generate smart reply or new email.
-
-Request:
-```json
-{
-  "action": "reply_to",  // reply_to | new_email | continue_draft
-  "email_id": "uuid",  // required if reply_to
-  "to": ["new@example.com"],  // required if new_email
-  "subject": "New email subject",  // required if new_email
-  "tone": "professional",  // professional | casual | formal | friendly
-  "length": "concise",  // brief | concise | detailed
-  "include_actions": true,  // include action items
-  "context": "I'm traveling tomorrow and need to confirm..."  // optional extra context
-}
-```
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "draft": {
-      "subject": "Re: Meeting tomorrow at 10am",
-      "body": "Hi Colleague,\n\nThanks for the heads up about tomorrow's meeting.\n\nI've reviewed the budget.xlsx and have a few questions:\n1. What was the Q3 variance?\n2. Can we discuss the travel budget allocation?\n\nLooking forward to our discussion.\n\nBest,\nJohn",
-      "suggested_edits": [
-        "Add budget question",
-        "Mention travel plans"
-      ]
-    }
-  }
-}
-```
-
----
-
-### `POST /ai/triage`
-
-Run AI triage on inbox.
-
-Request:
-```json
-{
-  "account_id": "uuid",
-  "limit": 50,  // emails to process
-  "reclassify": false  // re-process even already classified emails
-}
-```
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "processed": 42,
-    "categories": {
-      "important": 15,
-      "work": 18,
-      "personal": 5,
-      "newsletter": 4,
-      "promo": 0
-    },
-    "high_priority": [
-      {
-        "email_id": "uuid",
-        "priority": 9,
-        "reason": "Flagged by sender, contains 'urgent' and 'deadline'"
-      }
-    ]
-  }
-}
-```
-
----
-
-### `POST /ai/chat`
-
-Chat with inbox (RAG-style).
-
-Request:
-```json
-{
-  "message": "Any emails from John about the Q4 project?",
-  "search_limit": 10,
-  "include_snippets": true
-}
-```
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "response": "I found 3 relevant emails:\n\n1. Subject: 'Re: Q4 Project Timeline'\n   From: John Doe <john@company.com>\n   Snippet: 'Meeting scheduled for Thursday to finalize Q4 deliverables...'",
-    "sources": [
-      {
-        "email_id": "uuid",
-        "subject": "Re: Q4 Project Timeline",
-        "from": "john@company.com",
-        "date": "2024-01-10"
-      }
-    ],
-    "confidence": 0.88
-  }
-}
-```
-
----
-
-### `POST /ai/extract-tasks`
-
-Extract action items from email.
-
-Request:
-```json
-{
-  "email_id": "uuid",
-  "include_deadlines": true
-}
-```
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "tasks": [
-      {
-        "description": "Review budget.xlsx",
-        "due_date": "2024-01-20",
-        "assignee": "me",
-        "priority": 3
-      },
-      {
-        "description": "Prepare Q4 slides",
-        "due_date": null,
-        "assignee": "me",
-        "priority": 5
-      }
-    ]
-  }
-}
-```
-
----
-
-## 8. Task Scheduling
-
-### `GET /tasks`
-
-List scheduled AI tasks.
-
-Query:
-```
-status (pending|running|completed|failed, optional)
-type (summarize|compose|triage|chat|reminder, optional)
-limit (default: 50)
-```
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "tasks": [
-      {
-        "id": "uuid",
-        "type": "reminder",
-        "status": "pending",
-        "scheduled_at": "2024-01-15T15:00:00Z",
-        "input_data": {
-          "message": "Follow up with John about Q4 budget"
-        },
-        "created_at": "2024-01-14T10:00:00Z"
-      }
-    ],
-    "total": 5
-  }
-}
-```
-
----
-
-### `POST /tasks`
-
-Create new scheduled task.
-
-Request:
-```json
-{
-  "type": "reminder",  // reminder | follow_up | digest | summarize_inbox
-  "when": "2024-01-15T15:00:00Z",  // ISO timestamp
-  "payload": {
-    "message": "Follow up with John about Q4 budget",
-    "email_id": "uuid",  // optional: link to email
-    "recipients": ["john@example.com"]  // for follow-up emails
+  "persona": "…",                       // override; null = default
+  "profile": { },                       // agent-maintained, user-editable
+  "ai_config": {
+    "primary":    { "provider": "openrouter", "model": "…", "temperature": 0.4 },
+    "background": { "provider": "openrouter", "model": "…", "temperature": 0.1 },
+    "max_steps": 12
   },
-  "channel": "both"  // push | email | both
+  "prefs": {
+    "new_contact_policy": "ask",        // ask | allow | block
+    "new_contact_allowlist": [],
+    "quiet_hours": { "from": "22:00", "to": "07:30", "timezone": "Europe/Berlin" },
+    "notification_threshold": 7,        // urgency 1-10 that triggers a push
+    "digest_time": "07:00",
+    "never_notify": []
+  },
+  "budget": { "daily_tokens": 200000, "daily_usd": 2.0, "max_outbound_per_day": 20 }
 }
 ```
 
-Response:
+### `GET /settings/usage`
+Daily and monthly token/cost rollup by skill, run, and model.
+
+### `GET /kill-switch` / `PUT /kill-switch`
 ```json
-{
-  "success": true,
-  "data": {
-    "task_id": "uuid",
-    "status": "scheduled"
-  }
-}
+{ "global": false, "skills": { "uuid": false } }
 ```
 
+**`PUT`, not `POST`** — the frontend sends `PUT`. (An earlier draft of this
+document said `POST`; the code was the source of truth.)
+
+**The switch is written in two places and they are never allowed to disagree:**
+
+| Where | Why |
+|---|---|
+| Durable Object storage | The only thing that can abort a run already in flight |
+| `users.prefs.kill_switch` | So the API and UI agree on persisted state |
+
+The agent checks **both** before every step. An earlier build wrote only to
+Postgres, so engaging the switch left the agent running — a safety control that
+can disagree with itself is not a safety control. `GET /kill-switch/live`
+returns the DO's own flag for diagnostics.
+
+Takes effect at the current step boundary.
+
+### `GET /activity/digest?date=`
+The daily action digest.
+
 ---
 
-### `DELETE /tasks/:id`
+## 14. Webhooks (plugin)
 
-Cancel scheduled task.
+### `POST /webhooks/:id`
+Inbound. Authenticated by per-webhook secret (bearer token or HMAC-SHA256).
+Rate-limited. Triggers only skills whose `trigger.config.webhook` matches.
+Returns 202 immediately; the skill runs as an `agent_runs` row.
 
 ---
 
-### `POST /tasks/:id/reschedule`
+## 15. Health
 
-Reschedule task execution.
-
-Request:
+### `GET /health`
 ```json
-{
-  "when": "2024-01-15T17:00:00Z"
-}
+{ "success": true, "data": {
+  "status": "ok",
+  "db": "ok", "r2": "ok", "gmail": "ok",
+  "cron": { "last_tick_at": "2026-09-27T09:15:00Z", "last_tick_ok": true },
+  "version": "0.1.0"
+}}
 ```
+
+> **Keep this cheap.** Cloudflare Free allows 10 ms CPU per invocation on the
+> HTTP path. This endpoint must not query Neon through a path that could be
+> cache-stale, and must not fan out. Use Hyperdrive `DB` (cached) here, and
+> bound it to a single trivial query.
 
 ---
 
-## 9. Notifications
+## 16. Removed Endpoints
 
-### `GET /notifications`
-
-List notifications.
-
-Query:
-```
-read (true|false, optional)
-type (push|email|in_app, optional)
-limit (default: 100)
-```
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "notifications": [
-      {
-        "id": "uuid",
-        "type": "push",
-        "title": "Important: Budget Review Meeting",
-        "body": "John flagged email about Q4 budget meeting tomorrow",
-        "data": {
-          "email_id": "uuid",
-          "account_id": "uuid"
-        },
-        "read": false,
-        "created_at": "2024-01-15T08:30:00Z"
-      }
-    ],
-    "total": 5,
-    "unread_count": 3
-  }
-}
-```
+| Removed | Replacement |
+|---|---|
+| `POST /ai/summarize` | Skill `summarize_thread`, or the agent loop |
+| `POST /ai/compose` | Skill `draft_replies`, or the agent loop |
+| `POST /ai/triage` | Skill `triage_inbox` (cron-triggered) |
+| `POST /ai/chat` | `GET /agent/stream` (WebSocket) |
+| `POST /ai/extract-tasks` | `todo.create` tool via the agent |
+| `GET /auth/magic-link`, `POST /auth/verify` | Google OAuth only |
+| `GET /accounts`, `POST /accounts/:id` | Google OAuth; no manual account CRUD |
+| `POST /tasks` (APScheduler) | `/skills` with a `cron` trigger |
 
 ---
 
-### `POST /notifications/read`
-
-Mark notifications as read.
-
-Request:
-```json
-{
-  "notification_ids": ["uuid1", "uuid2"],
-  "all": false  // if true, marks all as read
-}
-```
-
----
-
-### `POST /notifications/push-token`
-
-Register Expo push token.
-
-Request:
-```json
-{
-  "token": "ExponentPushToken[xxxxxxxxxxxxx]",
-  "device_info": {
-    "model": "Pixel 8",
-    "os": "android",
-    "app_version": "1.0.0"
-  }
-}
-```
-
----
-
-### `POST /notifications/settings`
-
-Update notification preferences.
-
-Request:
-```json
-{
-  "daily_digest_time": "19:00",
-  "daily_digest": true,
-  "important_push": true,
-  "low_priority_push": false,
-  "email_digest": true,
-  "important_emails": true
-}
-```
-
----
-
-## 10. Settings
-
-### `GET /settings`
-
-Get all user settings.
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "ai_config": {
-      "provider": "openai",
-      "model": "gpt-4o-mini",
-      "api_key": "****",
-      "base_url": null,
-      "temperature": 0.3,
-      "max_tokens": 2000
-    },
-    "sync_settings": {
-      "auto_sync": true,
-      "sync_interval": 300,  // seconds
-      "fetch_days": 30
-    },
-    "notification_settings": {
-      "daily_digest_time": "20:00",
-      "daily_digest": true,
-      "important_push": true,
-      "low_priority_push": false,
-      "email_digest": false
-    },
-    "theme": "dark",
-    "timezone": "America/New_York"
-  }
-}
-```
-
----
-
-### `PUT /settings/ai`
-
-Update AI configuration.
-
-Request:
-```json
-{
-  "provider": "openai",  // openai | anthropic | ollama | custom
-  "model": "gpt-4o",
-  "temperature": 0.3,
-  "max_tokens": 2000,
-  "base_url": "http://localhost:11434/v1"  // optional, for custom/Ollama
-  "api_key": "sk-..."  // optional: if not set, uses existing
-}
-```
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "provider": "openai",
-    "model": "gpt-4o",
-    "temperature": 0.3,
-    "max_tokens": 2000,
-    "validated": true
-  }
-}
-```
-
----
-
-### `PUT /settings/notifications`
-
-Update notification settings.
-
-Request:
-```json
-{
-  "daily_digest_time": "19:00",
-  "daily_digest": true,
-  "important_push": true,
-  "low_priority_push": false,
-  "email_digest": true
-}
-```
-
----
-
-### `PUT /settings/appearance`
-
-Update appearance settings.
-
-Request:
-```json
-{
-  "theme": "dark",  // light | dark | system
-  "timezone": "America/New_York",
-  "date_format": "MM/DD/YYYY"  // MM/DD/YYYY | DD/MM/YYYY | YYYY-MM-DD
-}
-```
-
----
-
-## 11. Search
-
-### `GET /search`
-
-Global search across emails.
-
-Query:
-```
-q (required): search query string
-account_id (optional): limit to specific account
-folders (optional): comma-separated list of folders
-limit (default: 20)
-```
-
-Search respects these fields:
-- Subject line
-- From/To/Cc addresses
-- Body text
-- AI summaries
-- Thread context
-
----
-
-## 12. Error Codes
-
-| Code | Message | Description |
-|------|---------|-------------|
-| 400 | Bad Request | Invalid JSON, missing fields |
-| 401 | Unauthorized | Missing or invalid JWT |
-| 403 | Forbidden | Insufficient permissions |
-| 404 | Not Found | Resource doesn't exist |
-| 409 | Conflict | Duplicate resource |
-| 422 | Unprocessable | Validation error |
-| 429 | Too Many Requests | Rate limited |
-| 500 | Internal Error | Server error |
-
----
-
-## 13. Rate Limits
-
-| Endpoint | Limit | Window |
-|----------|-------|--------|
-| General API | 100 requests | per minute |
-| AI Endpoints | 10 requests | per minute |
-| Email Sync | 1 request | per 5 minutes per account |
-
----
-
-## 14. WebSocket Events (Future)
-
-Real-time updates via WebSocket:
-
-```
-wss://api.threadmymail.com/v1/ws
-
-Events:
-- email.received
-- email.read
-- email.flagged
-- sync.completed
-- task.completed
-- notification.pushed
-```
-
----
-
-*API version: v1 (2024-01-15)
-*OpenAPI spec available at: `/openapi.json`
+*Related: [ARCHITECTURE.md](./ARCHITECTURE.md) · [AI-SKILLS.md](./AI-SKILLS.md) ·
+[PLUGINS.md](./PLUGINS.md) · [GOOGLE_OAUTH.md](./GOOGLE_OAUTH.md)*

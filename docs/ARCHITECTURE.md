@@ -1,999 +1,717 @@
-# ThreadMyMail - Architecture Documentation
+# ThreadMyMail - Architecture
 
-> System overview, data flow, and component relationships.
-
----
-
-## 1. High-Level Architecture
-
-**Pattern:** Modular Monolith with Clear Bounded Contexts
-
-### Core Services
-1. **Authentication Service** - JWT + magic links
-2. **Account Service** - Email connections (IMAP/SMTP, OAuth)
-3. **Email Service** - Sync, storage, parsing
-4. **AI Service** - LLM orchestration, prompts, completions
-5. **Task Service** - Scheduling, jobs, follow-ups
-6. **Notification Service** - Push + email alerts
-7. **Web UI** - React dashboard
+> **Status:** Authoritative. Supersedes the previous Render/FastAPI architecture.
+> **Last updated:** 2026-09-27
 
 ---
 
-## 2. Data Flow (Sync Path)
+## 1. What This Is
 
-```mermaid
-graph TD
-    A[User] --> B[Web UI/React Native]
-    B --> C[Backend API (FastAPI)]
-    C --> D[Email Sync Worker]
-    D --> E[Email Accounts (IMAP)]
-    E --> F[Database (PostgreSQL)]
-    F --> G[AI Service]
-    G --> H[Vector Store (optional)]
-    C --> I[AI Endpoints]
-    I --> J[AI Worker Process]
-    J --> K[AI Results]
-    K --> F
+ThreadMyMail is **not an email client with AI features**. It is a personal
+assistant that happens to read email, and it owns a calendar, a to-do list, a
+notes connection, and the web. The chat/agent surface is the primary interface;
+mail and calendar are *capabilities the agent has*, not pages you navigate to.
+
+> "Act on my behalf without waiting to be asked, and tell me afterwards."
+
+Everything below follows from that. When a design choice is ambiguous, ask: does
+this make the agent more capable, or does it make the *app around* the agent
+more elaborate? The first one wins.
+
+---
+
+## 2. Platform Decision
+
+### 2.1 Why Cloudflare, not Render
+
+The original plan targeted Render (FastAPI) + APScheduler. That fails the core
+requirement. Render's free web service spins down after ~15 minutes of
+inactivity, and an in-process scheduler dies with it. Half the value of this
+product is the agent doing things *while you sleep*, so the scheduler has to be
+something no one has to keep alive.
+
+Vercel was evaluated and rejected: on the Hobby plan cron jobs may run **once
+per day only**, and any more frequent expression **fails at deploy time**.
+
+Cloudflare provides the primitives this product actually needs:
+
+| Need | Primitive | Notes |
+|---|---|---|
+| Durable, long-lived agent identity | **Durable Objects** | Available on Free (SQLite backend). Hibernates at **zero compute cost**. |
+| Durable multi-step jobs | **Workflows** (GA) | `step.sleep`, `waitForEvent` (up to 1 year), `waitForApproval`, 30 min/step, unlimited steps. Free: 3,000 steps/day. |
+| Heartbeat | **Cron Triggers** | Free: 5 per account, 15 min wall time. |
+| Chat + streaming + subagents | **Agents SDK** on a DO | `subAgent()`, `schedule()`, `runFiber()`, chat recovery after eviction. |
+| Frontend | **Cloudflare Pages** | Free static hosting; the existing Vite app deploys unchanged. |
+| Blob storage | **D1** | No card required, native binding, 500 MB/DB. Replaced R2 — see §4.1. |
+| DB connection pooling | **Hyperdrive** | Free on Workers Paid. |
+| Database | **Neon** | Postgres + pgvector, free tier, no expiry. |
+
+Cloudflare's own documentation now describes using Workflows as "the durable
+harnesses that manage and keep agents alive," with agent loops on top. That is
+this product, described in their docs.
+
+### 2.2 The compute-tier gate (IMPORTANT)
+
+Cloudflare **Free** allows **10 ms of CPU per Worker invocation**, including Cron
+Triggers. Ten milliseconds cannot run an LLM agent loop, parse an email, or
+execute a pgvector search.
+
+**Durable Objects are different.** The Durable Objects limits table specifies
+**30 seconds of CPU per request by default**, configurable to 5 minutes, and DOs
+are available on the Free plan (SQLite storage backend only).
+
+That difference is the entire free-tier strategy:
+
+> **All heavy work executes inside a Durable Object. Cron ticks and HTTP handlers
+> stay thin — they authenticate, delegate, and return.**
+
+Cloudflare's DO documentation also states that "Workers limits apply according to
+your Workers plan," which conflicts with its own 30-second figure. This is
+**unresolved in the docs and must be verified empirically** — see
+[§11 Phase 0 Spike](#11-phase-0--the-spike-that-gates-everything).
+
+If DOs turn out to be capped at 10 ms on Free, the fallback is Google Cloud Run
+(2M requests/month, 180,000 vCPU-seconds/month, **no per-invocation CPU cap**)
+plus Cloud Scheduler (3 jobs free). That fallback requires a billing account with
+a card attached, which is why it is not set up pre-emptively.
+
+### 2.3 Why the model calls are not the expensive part
+
+Waiting on an HTTP response is **wall time, not CPU time**. Streaming 500 tokens
+from OpenRouter over 20 seconds costs almost no CPU, because the isolate is idle
+while the socket is open. The 10 ms budget is spent on *our* code: routing,
+parsing, transforming.
+
+This is why a thin entrypoint delegating to a DO works, and it is why offloading
+blobs to D1 (§4) buys twice: it fixes storage *and* it keeps large payloads out
+of CPU-metered invocations.
+
+---
+
+## 3. Component Map
+
+```
+┌────────────────────────────┐        ┌─────────────────────────────┐
+│  Cloudflare Pages          │        │  Cloudflare Pages           │
+│  apps/web                  │        │  (static assets only)       │
+│  React + Vite + Tailwind   │        └─────────────────────────────┘
+│  PWA shell, Web Push       │
+└──────────┬─────────────────┘
+           │ HTTPS / WebSocket
+           ▼
+┌────────────────────────────────────────────────────────────────────┐
+│  apps/worker  —  Cloudflare Worker                                  │
+│                                                                    │
+│  ┌──────────────┐  ┌───────────────┐  ┌──────────────────────────┐  │
+│  │ API (Hono)   │  │ Chat Agent    │  │ Cron / Heartbeat         │  │
+│  │ REST + WS    │  │ Durable Object│  │ */5, */15, 07:00 local  │  │
+│  │ thin         │  │ Agents SDK    │  │ thin — delegates to DO   │  │
+│  └──────┬───────┘  └───────┬───────┘  └────────────┬─────────────┘  │
+│         │                  │                       │                │
+│         │        ┌─────────▼───────────────────────▼──────────┐     │
+│         │        │  Tool Registry (one namespace)            │     │
+│         │        │  email · calendar · todo · memory ·       │     │
+│         │        │  web · notes · meta                      │     │
+│         │        └─────────┬─────────────────────────────────┘     │
+│         │                  │                                        │
+│         │        ┌─────────▼──────────┐   ┌──────────────────┐     │
+│         │        │ Workflows          │   │ Plugins          │     │
+│         │        │ durable skill runs │   │ loader + builtins│     │
+│         │        │ sleep · waitForEvent│  │ notion/exa/etc   │     │
+│         │        └────────────────────┘   └──────────────────┘     │
+└─────────┼──────────────────────────────────────────────────────────┘
+          │
+   ┌──────┴───────┬──────────────┬────────────────┐
+   ▼              ▼              ▼                ▼
+┌────────┐  ┌──────────┐  ┌─────────────┐  ┌──────────────┐
+│ Neon   │  │ DO SQLite│  │ D1 (bodies) │  │ Google APIs  │
+│ Postgres│  │ cursors, │  │ bodies,     │  │ Gmail,       │
+│ +vector│  │ sessions │  │ attachments,│  │ Calendar     │
+│ (HD)   │  │ tick st. │  │ fetch cache │  │              │
+└────────┘  └──────────┘  └─────────────┘  └──────────────┘
 ```
 
+### 3.1 The three faces of one Worker
+
+A single Worker script exposes three entrypoints. They share code, they have very
+different CPU budgets.
+
+| Face | Mechanism | Rule |
+|---|---|---|
+| **API** | Hono router, `fetch()` | No DB work in the handler beyond a single query. Delegate immediately. |
+| **Chat** | Agents SDK class on a Durable Object | All agent loops run here. Full CPU allowance. |
+| **Clock** | `scheduled()` handler | Read state from the DO, do a cheap external check, delegate. Never query Neon directly. |
+
 ---
 
-## 3. Technical Stack
+## 4. Storage Topology
 
-### Backend (Python FastAPI)
-```python
-# Core Dependencies
-fastapi>=0.104.1
-uvicorn[standard]>=0.24.1
-litellm>=1.40.0        # OpenAI-compatible gateway
-psycopg2-binary>=2.9
-pydantic>=2.5
-python-jose[cryptography]>=3.3
-passlib[bcrypt]>=1.4
-pycryptodome>=3.19
-APScheduler>=3.10
-smtplib, email, imaplib  # Standard library
+This split is load-bearing. It solves the Neon storage cap, keeps Neon asleep
+(below), and reduces per-invocation CPU.
 
-# Optional
-pgvector>=0.2.0
-redis>=5.0
+| Data | Home | Why there |
+|---|---|---|
+| Email body text + HTML, attachments | **D1** (`BODIES`) | 90%+ of the bytes. Keeps large payloads out of CPU-metered invocations and out of the 0.5 GB DB. |
+| Web-fetch cache | **D1** (`BODIES`, `fx/` prefix + TTL) | Prevents re-billing Exa/Firecrawl on re-reads. |
+| `users`, `todos`, `skills`, `agent_runs`, `tool_calls`, `memories`, `contacts`, `activity`, `oauth_tokens`, `plugins`, `plugin_credentials` | **Neon** | Structured, relational, queried. Small rows only. |
+| `memories.embedding` | **Neon + pgvector** | 1536-dim float ≈ 6 KB/row → 0.5 GB holds ~80k vectors. |
+| Gmail `historyId` cursor, tick state, hot cache, chat sessions | **DO SQLite** | 5 GB free, hibernates, and **never wakes Neon**. |
+
+**Neon stores only a `body_key` pointer into D1, never the body itself.**
+
+### 4.1 Why D1 and not R2
+
+R2 is the better object store, and was the original choice. It was replaced
+because **R2 requires a payment method on the Cloudflare account even on the free
+tier.** D1 does not, and is a native binding — so reads cost no network hop and
+no egress charge.
+
+| | R2 Free | **D1 Free (chosen)** |
+|---|---|---|
+| Card required | **Yes** | **No** |
+| Capacity | 10 GB | 500 MB per DB, 5 GB per account |
+| Max value size | 5 TiB | **2 MB** → content is chunked at 1 MB |
+| Ops budget | 1M writes/mo, 10M reads/mo | 100k writes/**day**, 5M reads/**day** |
+| Access from Worker | Native binding | Native binding |
+| Egress | Free | Free |
+| Over-limit behaviour | Billed | **Hard block** until 00:00 UTC |
+
+**Consequences accepted:**
+- 500 MB holds roughly 25,000 typical messages at 20 KB each. Adequate for a
+  personal archive with the retention sweep; would need Workers Paid for more.
+- 2 MB per value forced chunking. `BodyStore` splits at 1 MB and reassembles on
+  read, writing one *batched* statement set to stay inside D1's 50-queries-per-
+  invocation limit. Verified in production: a 2.5 MB object round-trips
+  byte-for-byte.
+- Attachments are still not auto-downloaded (see §8), so the budget goes to
+  bodies. On-demand attachment fetches get a short TTL.
+- Hitting the daily write cap **blocks D1** rather than billing. The per-tick
+  sync cap and the retention sweep keep normal usage ~3 orders of magnitude
+  below the limit.
+
+**Portability:** the rest of the codebase only ever sees keys. Swapping D1 → R2
+means reimplementing `src/storage/bodystore.ts` and nothing else.
+
+### 4.2 Why not Turso
+
+Turso's free tier (5 GB, 500M rows read/mo, 10M rows written/mo, no card) is
+genuinely more generous than D1's on paper. It was rejected for this workload:
+
+- **It is remote, not native.** Every body read is a network hop from the Worker
+  to a non-Cloudflare network. D1 and R2 are both in-process bindings.
+- **It adds a platform.** The architecture is otherwise Cloudflare + Neon.
+- **Its differentiators are irrelevant here.** Native vector search, FTS, CDC,
+  and Turso Sync are things we do not use — vector search already lives in Neon
+  via pgvector, and the sync model is a Durable Object, not libSQL sync.
+- **Hard block on limit exceed**, same failure mode as D1, with a worse ceiling
+  for this use case since it is 2 MB-limited per value too.
+
+Turso would be the right answer if we were dropping Neon in favour of a
+SQLite-everything stack. We are not.
+
+---
+
+## 5. The Neon Heartbeat Trap
+
+Neon Free allows **100 CU-hours per project per month** and suspends compute
+**5 minutes after the last query**. A 0.25 CU compute running continuously costs
+~182 CU-hours/month. The budget therefore permits roughly half a month of uptime.
+
+A naive 5-minute heartbeat never produces a 5-minute idle gap, so the compute
+never suspends, bills continuously, exhausts the allowance mid-month, and
+**Neon suspends compute until the billing period resets** — the agent goes dark.
+
+**The fix is architectural, not a bigger plan.** The tick must never touch Neon:
+
+```
+Cron (*/5)
+  └─► Durable Object holds { gmail_history_id, last_tick_at }
+        ├─ nothing new? ──► return. Zero Neon contact. DB stays asleep.
+        └─ new mail?   ──► one batched write, store bodies in D1,
+                          then let the compute suspend again.
 ```
 
-### Database Schema Design
+**Invariant: an idle tick performs zero Postgres queries.** The sync cursor lives
+in DO SQLite precisely so the 5-minute heartbeat costs 0 CU-hours.
 
-**User Table**
+---
+
+## 6. Hyperdrive: Two Configurations
+
+Hyperdrive caches read queries for **60 seconds by default and does not
+invalidate on write**. For an assistant whose entire job is reporting current
+state, that is a correctness bug, not a performance trade.
+
+Two configurations, bound side by side:
+
+| Binding | Caching | Used for |
+|---|---|---|
+| `DB` | Enabled | Search, browse, RAG over large stable result sets. `max_age` 60s, `stale_while_revalidate` 15s. |
+| `DB_FRESH` | **Disabled** (`--caching-disabled`) | Auth/session, todo state, anything read-after-write, anything immediately following a write. |
+
+Note: Hyperdrive's pooler runs in **transaction mode**. A connection is returned
+to the pool at transaction end. Do not hold long transactions open, and do not
+assume `SET` state persists across pooled connections. Keep transactions short
+and single-purpose.
+
+---
+
+## 7. Data Model
+
+Existing `email_accounts`/`email_messages` tables are superseded. The new model
+is agent-centric.
+
 ```sql
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    full_name VARCHAR(255),
-    avatar_url TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    ai_provider VARCHAR(50) DEFAULT 'openai',
-    ai_model VARCHAR(100) DEFAULT 'gpt-4o-mini',
-    ai_api_key_encrypted TEXT,  -- encrypted at rest
-    ai_base_url TEXT,
-    notification_email VARCHAR(255),
-    push_token TEXT,
-    theme VARCHAR(20) DEFAULT 'system',
-    timezone VARCHAR(50) DEFAULT 'UTC'
+-- Identity ------------------------------------------------------------
+users (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  google_sub        TEXT UNIQUE,              -- Google subject claim
+  email             TEXT UNIQUE NOT NULL,
+  full_name         TEXT,
+  persona           TEXT,                     -- editable system-prompt override
+  profile           JSONB,                    -- agent-maintained, user-editable
+  ai_config         JSONB,                    -- primary + background model slots
+  prefs             JSONB,                    -- autonomy policy, new-contact rules
+  budget_state      JSONB,                    -- daily token/spend usage
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+oauth_tokens (                        -- generic, keyed by provider + scopes
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID REFERENCES users(id) ON DELETE CASCADE,
+  provider      TEXT NOT NULL,        -- 'google'
+  scopes        TEXT[] NOT NULL,      -- so scope additions are detectable
+  access_token_encrypted  TEXT,
+  refresh_token_encrypted TEXT,
+  expires_at    TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Agent execution -----------------------------------------------------
+agent_runs (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID REFERENCES users(id) ON DELETE CASCADE,
+  skill_id      UUID REFERENCES skills(id) ON DELETE SET NULL,
+  parent_run_id UUID REFERENCES agent_runs(id) ON DELETE CASCADE,  -- subagents
+  trigger       TEXT NOT NULL,        -- 'on_demand'|'cron'|'event'|'manual'
+  status        TEXT NOT NULL,        -- 'running'|'completed'|'failed'|'aborted'
+  input         JSONB,
+  output        JSONB,
+  model         TEXT,
+  tokens_in     INTEGER DEFAULT 0,
+  tokens_out    INTEGER DEFAULT 0,
+  cost_usd      NUMERIC(10,6) DEFAULT 0,
+  error         TEXT,
+  started_at    TIMESTAMPTZ DEFAULT NOW(),
+  completed_at  TIMESTAMPTZ
+);
+
+tool_calls (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id        UUID REFERENCES agent_runs(id) ON DELETE CASCADE,
+  tool          TEXT NOT NULL,
+  args          JSONB,
+  result        JSONB,
+  ok            BOOLEAN DEFAULT TRUE,
+  latency_ms    INTEGER,
+  tokens        INTEGER DEFAULT 0,
+  reversible    BOOLEAN DEFAULT FALSE,
+  undo_ref      TEXT,                 -- for the undo stack
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Skills & plugins ----------------------------------------------------
+skills (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID REFERENCES users(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  description   TEXT,                 -- what the model sees when choosing skills
+  instructions  TEXT NOT NULL,        -- plain-language body
+  allowed_tools TEXT[] NOT NULL,
+  trigger       JSONB NOT NULL,       -- {type, config}
+  budget        JSONB,                -- {max_runs_per_day, max_tokens}
+  model_slot    TEXT DEFAULT 'inherit', -- 'primary'|'background'|'inherit'
+  enabled       BOOLEAN DEFAULT TRUE,
+  dry_run_until TIMESTAMPTZ,          -- shadow mode for new skills
+  version       INTEGER DEFAULT 1,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+plugins (
+  id            TEXT PRIMARY KEY,     -- manifest id
+  user_id       UUID REFERENCES users(id) ON DELETE CASCADE,
+  manifest      JSONB NOT NULL,
+  source        TEXT,                 -- 'builtin' | git URL
+  source_sha    TEXT,                 -- pinned commit
+  enabled       BOOLEAN DEFAULT TRUE,
+  tool_grants   JSONB,                -- per-tool permission grants
+  installed_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+plugin_credentials (
+  plugin_id     TEXT NOT NULL,
+  user_id       UUID REFERENCES users(id) ON DELETE CASCADE,
+  key           TEXT NOT NULL,
+  value_encrypted TEXT NOT NULL,
+  PRIMARY KEY (plugin_id, user_id, key)
+);
+
+-- Work items ----------------------------------------------------------
+todos (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID REFERENCES users(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL,
+  notes           TEXT,
+  status          TEXT NOT NULL DEFAULT 'open',   -- open|done|dropped
+  priority        INTEGER DEFAULT 0,              -- 1..10
+  due_at          TIMESTAMPTZ,
+  source          TEXT,                            -- 'agent'|'user'|'email'|'notion'
+  source_ref      TEXT,                            -- email id, notion page, run id
+  thread_id       TEXT,                            -- back-reference to email
+  calendar_event_id TEXT,
+  position        INTEGER DEFAULT 0,
+  completed_at    TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+artifacts (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id      UUID REFERENCES agent_runs(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,        -- 'todo_panel'|'agenda'|'table'|...
+  html        TEXT NOT NULL,        -- agent-authored, sandboxed
+  state       JSONB,                -- declarative state
+  bindings    JSONB,                -- allowed verbs
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Memory & context ----------------------------------------------------
+memories (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,        -- 'fact'|'preference'|'commitment'|'person'
+  content     TEXT NOT NULL,
+  importance  INTEGER DEFAULT 5,    -- 1..10
+  pinned      BOOLEAN DEFAULT FALSE,-- user-locked, never auto-pruned
+  source_ref  TEXT,
+  embedding   VECTOR(1536),
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+contacts (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID REFERENCES users(id) ON DELETE CASCADE,
+  email        TEXT NOT NULL,
+  name         TEXT,
+  relation     TEXT,                -- agent's read: "manager", "friend"
+  first_seen   TIMESTAMPTZ,
+  last_contact TIMESTAMPTZ,
+  metadata     JSONB,
+  UNIQUE (user_id, email)
+);
+
+email_messages (                    -- metadata only; bodies live in D1
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID REFERENCES users(id) ON DELETE CASCADE,
+  gmail_id      TEXT NOT NULL,
+  thread_id     TEXT,
+  subject       TEXT,
+  from_address  TEXT,
+  to_addresses  JSONB,
+  snippet       TEXT,               -- inline; small
+  body_key      TEXT,               -- D1 body-store key
+  has_attachments BOOLEAN DEFAULT FALSE,
+  label_ids     TEXT[],
+  received_at   TIMESTAMPTZ NOT NULL,
+  read_at       TIMESTAMPTZ,
+  ai_summary    TEXT,
+  ai_priority   INTEGER DEFAULT 0,
+  embedding     VECTOR(1536),
+  UNIQUE (user_id, gmail_id)
+);
+
+activity (                          -- unified, user-facing audit feed
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
+  run_id      UUID REFERENCES agent_runs(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,        -- 'email_sent'|'meeting_booked'|...
+  summary     TEXT NOT NULL,
+  reversible  BOOLEAN DEFAULT FALSE,
+  undo_ref    TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 ```
 
-**Email Account Table**
-```sql
-CREATE TABLE email_accounts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    provider VARCHAR(50) NOT NULL,  -- 'gmail', 'outlook', 'custom'
-    email_address VARCHAR(255) NOT NULL,
-    display_name VARCHAR(255),
-    
-    -- Connection details (encrypted as needed)
-    imap_host VARCHAR(255),
-    imap_port INTEGER DEFAULT 993,
-    imap_encryption VARCHAR(10) DEFAULT 'ssl',
-    imap_username_encrypted TEXT,  -- app password
-    
-    smtp_host VARCHAR(255),
-    smtp_port INTEGER DEFAULT 587,
-    smtp_encryption VARCHAR(10) DEFAULT 'tls',
-    smtp_username_encrypted TEXT,
-    
-    -- OAuth support
-    oauth_provider VARCHAR(50),
-    oauth_access_token_encrypted TEXT,
-    oauth_refresh_token_encrypted TEXT,
-    oauth_token_expiry TIMESTAMP,
-    
-    is_default BOOLEAN DEFAULT FALSE,
-    folder_mapping JSONB DEFAULT '{}',
-    sync_enabled BOOLEAN DEFAULT TRUE,
-    last_synced_at TIMESTAMP,
-    next_sync_at TIMESTAMP,
-    
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-**Email Message Table**
-```sql
-CREATE TABLE email_messages (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    account_id UUID REFERENCES email_accounts(id) ON DELETE CASCADE,
-    message_id VARCHAR(255) UNIQUE,  -- RFC Message-ID
-    thread_id VARCHAR(255),          -- Gmail/Outlook threading
-    
-    subject TEXT,
-    from_address VARCHAR(255),
-    from_name VARCHAR(255),
-    to_addresses JSONB,              -- Array of email objects
-    cc_addresses JSONB,
-    bcc_addresses JSONB,
-    
-    body_text TEXT,
-    body_html TEXT,
-    snippet TEXT,                    -- Short preview
-    
-    folder VARCHAR(100) DEFAULT 'inbox',
-    flags INTEGER DEFAULT 0,          -- 0=seen, 1=flagged, 2=answered
-    
-    received_at TIMESTAMP NOT NULL,
-    sent_at TIMESTAMP,
-    
-    -- AI processing results
-    ai_summary TEXT,
-    ai_category VARCHAR(50),         -- 'personal', 'work', 'newsletter', 'promo', 'spam'
-    ai_priority INTEGER DEFAULT 0,    -- 1-10 urgency score
-    ai_embedding VECTOR(1536),       -- Optional: pgvector for RAG
-    
-    synced_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-**AI Task Table**
-```sql
-CREATE TABLE ai_tasks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    account_id UUID REFERENCES email_accounts(id) ON DELETE SET NULL,
-    
-    task_type VARCHAR(50) NOT NULL,  -- 'summarize', 'compose', 'triage', 'chat', 'extract_tasks'
-    task_status VARCHAR(20) DEFAULT 'pending',  -- 'pending', 'running', 'completed', 'failed'
-    
-    input_data JSONB,                -- Email IDs, thread, context
-    input_prompt TEXT,               -- Generated prompt for LLM
-    
-    result_data JSONB,               -- AI output (summary, draft, etc.)
-    error_message TEXT,
-    
-    scheduled_at TIMESTAMP NOT NULL,
-    started_at TIMESTAMP,
-    completed_at TIMESTAMP,
-    
-    retry_count INTEGER DEFAULT 0,
-    max_retries INTEGER DEFAULT 3
-);
-```
-
-**Notification Table**
-```sql
-CREATE TABLE notifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    
-    type VARCHAR(20) NOT NULL,       -- 'push', 'email', 'in_app'
-    title TEXT NOT NULL,
-    body TEXT NOT NULL,
-    data JSONB,                      -- Email ID, account ID, etc.
-    
-    read BOOLEAN DEFAULT FALSE,
-    delivered BOOLEAN DEFAULT FALSE,
-    
-    sent_at TIMESTAMP,
-    delivered_at TIMESTAMP,
-    
-    created_at TIMESTAMP DEFAULT NOW()
-);
-```
+Enabling pgvector: `CREATE EXTENSION IF NOT EXISTS vector;`
 
 ---
 
-## 4. Component Details
+## 8. Gmail Sync
 
-### 4.1 Email Sync Service
+**Gmail API only for v1.** Generic IMAP is explicitly out of scope: it requires
+long-lived TCP connections, which do not fit the Worker execution model.
 
-**Connection Pooling**
-```python
-class EmailConnectionManager:
-    def __init__(self, db_pool):
-        self.connections = {}
-        self.db = db_pool
-    
-    async def sync_account(self, account_id):
-        account = await self.get_account(account_id)
-        
-        # IMAP connection
-        if account.imap_username_encrypted:
-            username = decrypt(account.imap_username_encrypted)
-            conn = imaplib.IMAP4_SSL(account.imap_host, account.imap_port)
-            conn.login(username, decrypt_password())
-            
-            # Select mailbox
-            conn.select(account.folder_mapping.get('inbox', 'INBOX'))
-            
-            # Fetch unseen messages
-            _, messages = conn.search(None, 'UNSEEN')
-            
-            for msg_id in messages[0].split():
-                # Parse and store email
-                await self.process_message(msg_id, conn, account_id)
-        
-        # Update last synced time
-        await self.update_sync_time(account_id)
-```
+| Concern | Approach |
+|---|---|
+| Incremental sync | `users.history.list` from the last `historyId`, stored in the DO — not Postgres. |
+| Body storage | `messages.get` with `format=full`, body text → D1, metadata → Neon. Snippet stored inline. |
+| Poll interval | 5 minutes (one of five free cron triggers). |
+| Push | **Deferred.** `users.watch` requires a Cloud Pub/Sub topic and a pull subscriber — a whole extra component. Not worth it for 5-minute polling. |
+| Send | `users.messages.send` |
+| Threading | Gmail's native `threadId` |
+| Refresh tokens | Serialize refresh writes to Neon; on `invalid_grant`, mark the connection `needs_reauth` and notify rather than looping. |
 
-**Message Processing**
-```python
-class EmailProcessor:
-    def __init__(self, ai_service, db):
-        self.ai = ai_service
-        self.db = db
-    
-    async def process_message(self, msg_data, account_id):
-        # Parse RFC 5322 message
-        email_msg = email.message_from_string(msg_data)
-        
-        # Extract headers
-        subject = email_msg['Subject']
-        from_addr = email_msg['From']
-        to_addrs = email_msg['To']
-        date_str = email_msg['Date']
-        
-        # Parse date
-        parsed_date = email.utils.parsedate_to_datetime(date_str)
-        
-        # Extract body
-        body_text = self.extract_text_body(email_msg)
-        body_html = self.extract_html_body(email_msg)
-        snippet = body_text[:200] + '...' if len(body_text) > 200 else body_text
-        
-        # Store in database
-        email_id = await self.db.insert_email({
-            'account_id': account_id,
-            'subject': subject,
-            'from_address': from_addr,
-            'to_addresses': to_addrs,
-            'body_text': body_text,
-            'body_html': body_html,
-            'snippet': snippet,
-            'received_at': parsed_date,
-            'flags': 0
-        })
-        
-        # Trigger AI processing
-        await self.trigger_ai_triage(email_id, body_text, subject)
-        
-        return email_id
-```
-
-### 4.2 AI Service with BYOK
-
-**Provider Abstraction**
-```python
-class AIService:
-    def __init__(self, db, redis):
-        self.db = db
-        self.redis = redis
-        self.providers = {
-            'openai': OpenAIManager,
-            'anthropic': AnthropicManager,
-            'ollama': OllamaManager,
-            'custom': CustomManager
-        }
-    
-    async def get_completion(self, user_id, messages, options=None):
-        # Get user AI config
-        user = await self.db.get_user(user_id)
-        config = user.ai_config
-        
-        # Initialize provider manager
-        provider = self.providers.get(config.provider)
-        manager = provider(
-            api_key=config.api_key,
-            base_url=config.base_url,
-            model=config.model,
-            temperature=config.temperature
-        )
-        
-        # Rate limiting check
-        await self.check_rate_limit(user_id)
-        
-        # Generate completion
-        return await manager.complete(messages, options)
-    
-    async def summarize_thread(self, email_ids, user_id):
-        # Get emails from database
-        emails = await self.db.get_emails(email_ids)
-        thread_text = '\n\n'.join([
-            f"From: {e['from_address']}\nSubject: {e['subject']}\nBody: {e['body_text'][:500]}"
-            for e in emails
-        ])
-        
-        prompt = f"""Summarize this email thread:
-{thread_text}
-
-Provide:
-1. Main purpose/purpose
-2. Key action items
-3. Who needs to do what
-3. Priority level (1-10)"""
-        
-        result = await self.get_completion(user_id, [{'role': 'user', 'content': prompt}])
-        return result['content']
-```
-
-**AI Prompt Templates**
-```python
-class PromptTemplates:
-    SUMMARIZE_THREAD = """
-Context: This is an email thread between {participants}.
-
-Purpose: {subject}
-
-Key points:
-{key_points}
-
-Action items:
-{actions}
-
-Please provide:
-1. Main purpose and decisions
-2. Outstanding action items with owners
-3. Priority level (1-10) and why
-4. Any risks or deadlines
-"""
-    
-    SMART_COMPOSE = """
-Write a draft reply to this email:
-
----
-To: {to_addresses}
-Subject: {subject}
-Original message:
-{original_message}
-
-Context:
-- Relationship: {relationship_type}
-- Tone: {desired_tone}
-- Key points to include: {key_points}
-- What I want to achieve: {goal}
-
-Please write a {length} reply that:
-1. Acknowledges the email
-2. Addresses the main points
-3. Includes any necessary action items
-4. Maintains appropriate tone
-"""
-```
-
-### 4.3 Notification Service
-
-**Push Notifications (Expo)**
-```python
-class PushNotificationService:
-    def __init__(self, expo_project_id, access_token):
-        self.project_id = expo_project_id
-        self.access_token = access_token
-        self.base_url = "https://exp.host/--/api/v2/push/send"
-    
-    async def send_push(self, user_id, title, body, data=None):
-        # Get user's push token
-        user = await self.db.get_user(user_id)
-        if not user.push_token:
-            return False
-        
-        payload = {
-            "to": user.push_token,
-            "title": title,
-            "body": body,
-            "data": data or {},
-            "sound": "default",
-            "priority": "high",
-            "ttl": 3600
-        }
-        
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "Authorization": f"Bearer {self.access_token}"
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(self.base_url, json=payload, headers=headers) as resp:
-                result = await resp.json()
-                return result.get('data', {}).get('status') == 'ok'
-```
-
-**Email Notifications**
-```python
-class EmailNotificationService:
-    def __init__(self, email_service):
-        self.email = email_service
-    
-    async def send_digest(self, user_id, emails):
-        user = await self.db.get_user(user_id)
-        if not user.notification_email:
-            return False
-        
-        subject = f"📧 Daily Digest: {len(emails)} new emails"
-        body = self.generate_digest_html(emails)
-        
-        await self.email.send(
-            from_addr=user.notification_email,
-            to_addrs=[user.notification_email],
-            subject=subject,
-            body_html=body
-        )
-        
-        return True
-```
+Attachments are **not** auto-downloaded. Metadata is recorded; the agent fetches a
+specific attachment on demand (e.g. user asks "what's in the invoice PDF?").
 
 ---
 
-## 5. Scheduling & Background Jobs
+## 9. Calendar
 
-### APScheduler Configuration
-```python
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.triggers.cron import CronTrigger
+Google Calendar via the same OAuth connection as Gmail — one consent, one token.
 
-class TaskScheduler:
-    def __init__(self, db, email_service, ai_service):
-        self.scheduler = AsyncIOScheduler()
-        self.db = db
-        self.email_service = email_service
-        self.ai_service = ai_service
-        self.register_jobs()
-    
-    def register_jobs(self):
-        # Sync accounts every 5 minutes
-        self.scheduler.add_job(
-            self.sync_all_accounts,
-            trigger=IntervalTrigger(minutes=5),
-            id='sync_accounts',
-            replace_existing=True
-        )
-        
-        # AI triage for new emails
-        self.scheduler.add_job(
-            self.triage_new_emails,
-            trigger=IntervalTrigger(minutes=10),
-            id='triage_emails',
-            replace_existing=True
-        )
-        
-        # Daily digest
-        self.scheduler.add_job(
-            self.send_daily_digest,
-            trigger=CronTrigger(hour=20, minute=0),
-            id='daily_digest',
-            replace_existing=True
-        )
-        
-        # AI summarization jobs
-        self.scheduler.add_job(
-            self.process_ai_tasks,
-            trigger=IntervalTrigger(seconds=30),
-            id='process_ai_tasks',
-            replace_existing=True
-        )
-        
-        self.scheduler.start()
-    
-    async def sync_all_accounts(self):
-        accounts = await self.db.get_accounts_to_sync()
-        for account in accounts:
-            try:
-                await self.email_service.sync_account(account['id'])
-            except Exception as e:
-                print(f"Sync failed for account {account['id']}: {e}")
-    
-    async def triage_new_emails(self):
-        new_emails = await self.db.get_unread_emails()
-        for email in new_emails:
-            await self.ai_service.trigger_triage(email['id'], email['body_text'])
-    
-    async def process_ai_tasks(self):
-        pending_tasks = await self.db.get_pending_tasks()
-        for task in pending_tasks:
-            await self.process_task(task)
-```
+| Tool | Backing call |
+|---|---|
+| `calendar.list_events` | `events.list` |
+| `calendar.get_freebusy` | `freebusy.query` — the key primitive |
+| `calendar.find_meeting_time` | compose `get_freebusy` across attendees, rank slots |
+| `calendar.create_event` | `events.insert` (tagged `threadmymail:created`) |
+| `calendar.reschedule` / `cancel` / `rsvp` | `events.patch` / `events.delete` / response |
+
+**Watch** = poll on the 15-minute cron; diff `updated` timestamps; fire event
+triggers (notably `meeting_prep` 30 minutes before start).
+
+Events the agent creates are tagged so it can distinguish "I booked this" from
+"someone booked me" — which determines whether it follows up or prepares.
 
 ---
 
-## 6. Security & Encryption
+## 10. Request Lifecycle
 
-### Fernet Encryption
-```python
-from cryptography.fernet import Fernet
+### 10.1 Interactive chat
 
-class EncryptionService:
-    def __init__(self):
-        # Key from environment
-        self.key = os.getenv('ENCRYPTION_KEY')
-        self.cipher_suite = Fernet(self.key)
-    
-    def encrypt(self, data: str) -> str:
-        return self.cipher_suite.encrypt(data.encode()).decode()
-    
-    def decrypt(self, encrypted_data: str) -> str:
-        return self.cipher_suite.decrypt(encrypted_data.encode()).decode()
+```
+Browser ──WS──► ChatAgent Durable Object
+                   ├─ persist conversation (DO SQLite)
+                   ├─ assemble context: persona + profile + skills + recent memory
+                   ├─ stream completion from OpenRouter
+                   ├─ tool call? ──► ToolRegistry.execute()
+                   │     ├─ permission check (skill scope ∩ granted ∩ prefs)
+                   │     ├─ run, log to tool_calls
+                   │     └─ return observation
+                   └─◄── loop until final or step cap
 ```
 
-### Password Hashing
-```python
-from passlib.context import CryptContext
+State lives in the DO, so an eviction mid-stream is recoverable via the SDK's
+chat recovery. The conversation is the one thing that must survive a crash.
 
-class AuthService:
-    def __init__(self):
-        self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated=["auto"])
-    
-    def hash_password(self, password: str) -> str:
-        return self.pwd_context.hash(password)
-    
-    def verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        return self.pwd_context.verify(plain_password, hashed_password)
+### 10.2 Heartbeat
+
 ```
+Cron(*/5) ──► Scheduled Handler (thin)
+                 └─► AssistantAgent DO: read cursor
+                       ├─ Gmail history.list(cursor)      [external API, no DB]
+                       ├─ new? ──► write batch to Neon, bodies → D1, set new cursor
+                       └─ none ──► no-op
+```
+
+### 10.3 Scheduled skill
+
+```
+Cron(07:00) or Workflow trigger
+   └─► Workflow instance (durable)
+         ├─ step: load skill + assemble context
+         ├─ step: delegate to agent DO
+         ├─ step: perform actions (todos, email, calendar)
+         ├─ step: push/notify
+         └─ step: write agent_runs + activity
+```
+
+Workflows state retention is **3 days on Free / 30 days on Paid** — so the
+*schedule registry* lives in Postgres and Workflows hold only individual run
+instances.
 
 ---
 
-## 7. Monitoring & Observability
+## 11. Phase 0 - The Spike That Gates Everything
 
-### Health Check Endpoint
-```python
-@app.get("/health")
-async def health_check():
-    status = {
-        "status": "healthy",
-        "timestamp": datetime.utcnow(),
-        "services": {}
-    }
-    
-    # Check database
-    try:
-        await db.execute("SELECT 1")
-        status["services"]["database"] = "healthy"
-    except Exception as e:
-        status["services"]["database"] = f"unhealthy: {e}"
-    
-    # Check Redis
-    try:
-        await redis.ping()
-        status["services"]["redis"] = "healthy"
-    except Exception as e:
-        status["services"]["redis"] = f"unhealthy: {e}"
-    
-    return status
-```
+Before any feature work, empirically determine whether a Durable Object on the
+**Free** plan receives the 30-second CPU allowance or the 10-millisecond one.
+Documentation is ambiguous (§2.2).
 
----
+### 11.1 RESULT: PASSED — run 2026-09-27
 
-## 8. Performance Considerations
+**The Durable Object CPU budget on the Free plan is far above the 10 ms Workers
+Free cap.** The architecture is viable on Cloudflare Free.
 
-### Connection Pooling
-```python
-from sqlalchemy import create_engine
-from sqlalchemy.pool import NullPool
+| Probe | Iterations | Result |
+|---|---|---|
+| n=1,000 | 1,000 | completed |
+| n=12,000 | 12,000 | completed (≈ the 10 ms cap) |
+| n=150,000 | 150,000 | **completed — 10× the Free cap** |
+| n=1,000,000 | 1,000,000 | **completed** |
+| n=8,000,000 | 8,000,000 | **completed** |
+| n=40,000,000 | 40,000,000 | **completed** |
 
-# Database
-DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL, poolclass=NullPool)
+Verified independently of timing: the DO checkpointed **400/400 chunks**
+(400 × 100,000 = 40,000,000 iterations) into SQLite storage, which survives a
+hard CPU kill. The loop therefore genuinely executed — it was not JIT-eliminated.
 
-# Email connections (per account)
-class EmailConnectionPool:
-    def __init__(self, max_connections=5):
-        self.max_connections = max_connections
-        self.available = asyncio.Queue(maxsize=max_connections)
-        
-        for _ in range(max_connections):
-            self.available.put_nowait(self.create_connection())
-    
-    async def get_connection(self, account_id):
-        # Get connection for specific account
-        conn = await self.available.get()
-        return conn
-```
+Both cron triggers fired in production (`*/5` and `*/15`, `ok: true`).
 
-### Caching
-```python
-from functools import lru_cache
-import redis.asyncio as redis
+### 11.2 ⚠️ Measurement gotcha — do not repeat this mistake
 
-class CacheService:
-    def __init__(self, redis_url):
-        self.redis = redis.from_url(redis_url)
-    
-    async def get(self, key):
-        return await self.redis.get(key)
-    
-    async def set(self, key, value, ttl=None):
-        if ttl:
-            await self.redis.setex(key, ttl, value)
-        else:
-            await self.redis.set(key, value)
-    
-    async def delete(self, key):
-        await self.redis.delete(key)
-```
+`Date.now()` **and** `performance.now()` return no usable resolution inside a
+Durable Object in production. A probe that took 3.4 s of wall time reported
+`elapsed_ms: 0` at every budget.
 
----
+A first run using wall-clock timing as the signal produced a **false negative
+verdict** ("only the smallest budget completed → do not build"). Timing is
+untrustworthy here.
 
-## 9. Future Enhancements
+**Use completion as the signal, not duration.** If a probe is killed by the CPU
+limit, read `/spike/progress` — the checkpoint count reveals the real ceiling.
 
-### Scalability Features
-- [ ] Message Queue (Redis + Celery) for heavy AI processing
-- [ ] Database sharding for large users
-- [ ] WebSocket support for real-time updates
-- [ ] Multi-region deployment
-- [ ] Advanced RAG with vector search (pgvector)
-- [ ] AI model fine-tuning (local LLMs)
-- [ ] Custom email domains
-- [ ] Integration with external calendars
+Local calibration (workerd, this machine): **~800 ns/iteration**, so
+10 ms ≈ 12,500 iterations and 30 s ≈ 37,500,000.
 
-### Mobile Enhancements
-- [ ] Native Android notifications
-- [ ] Offline-first sync
-- [ ] File attachments viewer
-- [ ] Biometric login
-- [ ] Deep link support
-- [ ] Push notification channels
+### 11.3 What this unblocks
 
----
+Phase 1 (agent runtime) can begin. The remaining Phase 0 items are
+infrastructure, not gates: the D1 body store (done), Hyperdrive configs, and
+secrets.
 
-## 10. Deployment Checklist
+### 11.4 Reproducing
 
-### Render
-- [ ] Upload render.yaml
-- [ ] Configure PostgreSQL addon
-- [ ] Set environment variables
-- [ ] Configure custom domain
-- [ ] Set up health check monitoring
-- [ ] Configure logging
-
-### Android APK
-- [ ] Configure EAS build profile
-- [ ] Set up push notification certificates
-- [ ] Configure Firebase credentials
-- [ ] Set up app signing
-- [ ] Test on physical device
-- [ ] Publish to internal test track
-
----
-
-## 11. Compliance & Privacy
-
-- **Data Storage**: All user data encrypted at rest
-- **Email Access**: Only IMAP/SMTP credentials stored encrypted
-- **AI Prompts**: No email content stored by default (processing in-memory)
-- **Retention**: Users can export/delete data anytime
-- **Compliance**: GDPR-friendly design (no PII beyond email)
-
----
-
-*This architecture document is a living document. Update as design decisions evolve.*
-
-*Last updated: 2026-09-27*
----
-
-## 13. PWA Architecture (New Addition)
-
-### Progressive Web App
-The PWA is built from the **same React codebase** as the web dashboard using Vite's PWA plugin.
-
-**Architecture:**
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      React App (Vite)                        │
-├─────────────────────────────────────────────────────────────┤
-│  Components (shared): Inbox, Thread, Compose, AI Chat       │
-│  Hooks (shared): useEmail, useAI, useNotifications          │
-│  API Client: TanStack Query + Axios                         │
-└─────────────────────────────────────────────────────────────┘
-                          │
-           ┌──────────────┴──────────────┐
-           ▼                             ▼
-   ┌───────────────┐             ┌───────────────┐
-   │   Web App     │             │     PWA       │
-   │  (Desktop)    │             │  (Installable)│
-   │  - Service    │             │  - Service    │
-   │    Worker     │             │    Worker     │
-   │  - IndexedDB  │             │  - IndexedDB  │
-   │  - Web Push   │             │  - Web Push   │
-   └───────────────┘             └───────────────┘
-```
-
-### PWA Features
-| Feature | Implementation |
-|---------|----------------|
-| **Installable** | Manifest + Service Worker |
-| **Offline** | Workbox caching (emails, UI) |
-| **Push** | Web Push API (VAPID keys) |
-| **Background Sync** | Sync emails when online |
-| **App Shell** | Cached static assets |
-| **Responsive** | Mobile-first Tailwind |
-
-### Vite PWA Config
-```javascript
-// vite.config.ts
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa';
-
-export default defineConfig({
-  plugins: [
-    react(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
-      manifest: {
-        name: 'ThreadMyMail',
-        short_name: 'ThreadMail',
-        description: 'AI-powered email management',
-        theme_color: '#3b82f6',
-        background_color: '#ffffff',
-        display: 'standalone',
-        scope: '/',
-        start_url: '/',
-        icons: [
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
-        ],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/api\.threadmymail\.com\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: { maxEntries: 100, maxAgeSeconds: 3600 },
-              networkTimeoutSeconds: 10,
-            },
-          },
-        ],
-      },
-    }),
-  ],
-});
-```
-
-### Web Push Notifications
-```typescript
-// lib/push-web.ts
-export async function registerWebPush() {
-  if (!('serviceWorker' in navigator)) return;
-  
-  const registration = await navigator.serviceWorker.register('/sw.js');
-  const permission = await Notification.requestPermission();
-  
-  if (permission !== 'granted') return;
-  
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: import.meta.env.VITE_VAPID_PUBLIC_KEY,
-  });
-  
-  // Send to backend
-  await fetch('/api/notifications/web-push', {
-    method: 'POST',
-    body: JSON.stringify(subscription),
-  });
-}
-```
-
-### Mobile Architecture Update (No Local Emulator)
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Mobile Strategy                            │
-├─────────────────────────────────────────────────────────────┤
-│  NO local Android emulator / SDK                             │
-│                                                               │
-│  Development: Expo Go (physical device)                     │
-│    - Scan QR code from `npx expo start`                     │
-│    - Hot reload over WiFi                                    │
-│    - Real push notifications via Expo                       │
-│                                                               │
-│  Production: EAS Build (cloud)                               │
-│    - `eas build --platform android --profile preview`       │
-│    - Download APK from Expo dashboard                        │
-│    - Install via `adb` or file transfer                      │
-│                                                               │
-│  PWA Alternative:                                            │
-│    - Open https://threadmymail.onrender.com                 │
-│    - "Add to Home Screen" → App-like experience             │
-│    - Web Push for notifications                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Email Provider Support Matrix (Confirmed)
-| Provider | Auth Method | Protocols | Status |
-|----------|-------------|-----------|--------|
-| **Gmail** | OAuth 2.0 / App Password | IMAP / SMTP | ✅ Primary |
-| **Outlook** | OAuth 2.0 / App Password | IMAP / SMTP | ✅ Secondary |
-| **Yahoo** | App Password | IMAP / SMTP | ⚠️ Generic IMAP |
-| **Custom / Proton / Zoho** | App Password | IMAP / SMTP | ⚠️ Generic IMAP |
-| **Fastmail** | App Password | IMAP / SMTP | ⚠️ Generic IMAP |
-
----
-
-## 14. Free Tier AI Providers (10+)
-
-### Local / Self-Hosted (Free)
-| Provider | Models | Setup | Best For |
-|----------|--------|-------|----------|
-| **Ollama** | Llama 3, Gemma, Mistral, CodeLlama | `ollama serve` | Full privacy, offline |
-| **LM Studio** | Any GGUF model | GUI download | Local experimentation |
-| **Llama.cpp** | Any GGUF model | CLI / Python | Minimal resources |
-
-### Cloud Free Tiers (API Key Required)
-| Provider | Free Tier Limits | Models | Notes |
-|----------|------------------|--------|-------|
-| **Groq** | 1 req/min, 14.4k tokens/day | Llama 3, Mixtral, Gemma | Ultra-fast inference |
-| **Together AI** | $1 free credit | Llama, Mixtral, Qwen | Open models |
-| **DeepSeek** | Free tier available | DeepSeek-Coder, Chat | Code-specialized |
-| **Perplexity** | Free tier available | Llama 3, Sonar | Search-augmented |
-| **Hugging Face** | 30k tokens/month | 1000s of models | Inference API |
-| **Google Gemini** | 1.5k req/day | Gemini Pro, Flash | Google AI Studio |
-| **OpenAI** | New accounts: $5 credit | GPT-4o-mini, 3.5 | Limited free tier |
-| **NVIDIA** | Free tier available | Nemotron, Llama | Fast inference |
-
-### BYOK Implementation (Updated)
-```python
-# backend/ai_service.py
-AI_PROVIDERS = {
-    # Top tier
-    "openai": {"base_url": "https://api.openai.com/v1", "requires_key": True},
-    "anthropic": {"base_url": "https://api.anthropic.com", "requires_key": True},
-    "google": {"base_url": "https://generativelanguage.googleapis.com/v1beta", "requires_key": True},
-    "mistral": {"base_url": "https://api.mistral.ai/v1", "requires_key": True},
-    "cohere": {"base_url": "https://api.cohere.ai/v1", "requires_key": True},
-    "bedrock": {"base_url": None, "requires_key": True, "aws_required": True},
-    
-    # Free tier / OpenAI-compatible
-    "groq": {"base_url": "https://api.groq.com/openai/v1", "requires_key": True},
-    "together": {"base_url": "https://api.together.xyz/v1", "requires_key": True},
-    "deepseek": {"base_url": "https://api.deepseek.com/v1", "requires_key": True},
-    "perplexity": {"base_url": "https://api.perplexity.ai", "requires_key": True},
-    "huggingface": {"base_url": "https://api-inference.huggingface.co/models", "requires_key": True},
-    "nvidia": {"base_url": "https://integrate.api.nvidia.com/v1", "requires_key": True},
-    "ollama": {"base_url": "http://localhost:11434/v1", "requires_key": False},
-    "lmstudio": {"base_url": "http://localhost:1234/v1", "requires_key": False},
-    "custom": {"base_url": "user_provided", "requires_key": True},
-}
-
-async def get_provider_config(provider: str) -> dict:
-    return AI_PROVIDERS.get(provider, AI_PROVIDERS["custom"])
-```
-
----
-
-## 15. Plan Status: MISTY (Clarified, Not Built)
-
-> No implementation started. All decisions documented.
-
-### Confirmed
-- ✅ Gmail + Outlook + Generic IMAP/SMTP
-- ✅ 16+ AI providers (6 top tier + 10 free tier)
-- ✅ PWA added to scope
-- ✅ No local Android emulator (Expo Go + EAS only)
-- ✅ Render hosting
-
-### Pending User Decisions
-1. **Which AI providers will you actually use?** (pick 2-3)
-2. **Physical device for Expo Go testing?** (or Android SDK later)
-3. **PWA vs APK priority?** (which ships first)
-4. **Local dev: Docker / local Postgres / Render from day 1?**
-
-### Next Actions (When Ready)
-1. `git init` in threadmymail/
-2. Create backend FastAPI skeleton
-3. Add PostgreSQL + Alembic migrations
-4. Implement auth + email account CRUD
-
----
-
-*Architecture document updated with PWA, updated providers, and mobile strategy*
-*Last updated: 2026-09-27*
-
----
-
-## Cloudflare Storage (Optional)
-
-### When to Use Cloudflare R2
-- Attachments larger than 1 MB (PDFs, images, scans)
-- Email body HTML with embedded images
-- Backup archives of user data
-- Any blob storage that doesn't fit in PostgreSQL
-
-### Configuration via Wrangler
 ```bash
-# Install wrangler
-npm install -g wrangler
-
-# Authenticate
-wrangler login
-
-# Create R2 bucket
-wrangler r2 bucket create threadmymail-attachments
-
-# Configure environment
-export CLOUDFLARE_ACCOUNT_ID=your-account-id
-export CLOUDFLARE_R2_ACCESS_KEY_ID=your-access-key
-export CLOUDFLARE_R2_SECRET_ACCESS_KEY=your-secret-key
-export CLOUDFLARE_R2_BUCKET=threadmymail-attachments
+cd apps/worker
+npx wrangler deploy
+npm run spike -- --url https://threadmymail-worker.twistedoliver211fs.workers.dev
+curl "$URL/spike/progress"     # checkpoint count
 ```
-
-### Python SDK Usage (boto3 compatible)
-```python
-import boto3
-from botocore.config import Config
-
-s3 = boto3.client(
-    's3',
-    endpoint_url=f'https://{account_id}.r2.cloudflarestorage.com',
-    aws_access_key_id=access_key,
-    aws_secret_access_key=secret_key,
-    config=Config(signature_version='s3v4'),
-    region_name='auto'
-)
-
-# Upload attachment
-s3.put_object(
-    Bucket='threadmymail-attachments',
-    Key=f'emails/{email_id}/{filename}',
-    Body=file_bytes,
-    ContentType=mime_type
-)
-
-# Generate presigned URL for download
-url = s3.generate_presigned_url(
-    'get_object',
-    Params={'Bucket': 'threadmymail-attachments', 'Key': key},
-    ExpiresIn=3600
-)
-```
-
-### Integration with FastAPI
-```python
-# backend/storage/cloudflare.py
-class CloudflareR2Storage:
-    def __init__(self):
-        self.client = boto3.client(...)
-    
-    async def upload_attachment(self, email_id: str, filename: str, content: bytes, mime: str) -> str:
-        key = f"emails/{email_id}/{filename}"
-        self.client.put_object(Bucket=BUCKET, Key=key, Body=content, ContentType=mime)
-        return f"https://{ACCOUNT_ID}.r2.cloudflarestorage.com/{BUCKET}/{key}"
-    
-    async def generate_download_url(self, key: str, expiry: int = 3600) -> str:
-        return self.client.generate_presigned_url(...)
-```
-
-### Cost Estimate
-| Item | Cost |
-|------|------|
-| R2 Storage | $0.015/GB/month |
-| Class A operations (PUT/GET) | $4.50/million |
-| Class B operations (LIST) | $0.36/million |
-| Egress | Free (to Cloudflare CDN) |
-
-For personal use with < 1 GB attachments: **~$0.02/month**.
 
 ---
 
-*Last updated: 2026-09-27*
+## 12. Security
+
+| Risk | Mitigation |
+|---|---|
+| **Prompt injection from email/web** | Email and fetched content is injected as **data**, never instructions, wrapped in delimiters. Tool scopes are per-skill. `new_contact_policy` gates outward actions. Any instruction-like content is flagged and reported, not obeyed. |
+| Unbounded autonomy | Hard block: never send attachments; never delete; never act on contacts with no prior thread history beyond `new_contact_policy`. |
+| Secrets at rest | Fernet (or WebCrypto AES-GCM) for `oauth_tokens` and `plugin_credentials`, keyed by `ENCRYPTION_KEY`. |
+| Plugin code execution | Manifest + permission review before install, commit-SHA pinned, permissions re-verified on update. Plugins are arbitrary in-process code — the review is the only gate. |
+| SSRF via `web_fetch` | Deny private/loopback/link-local ranges, cap response size, enforce scheme allowlist, cache with TTL. |
+| API key exposure | BYOK keys in `ENCRYPTION_KEY`-encrypted columns; never returned by any endpoint; never logged. |
+| Model content logging | Off by default. `tool_calls.result` redacted for configured providers. |
+| CORS | Explicit origin allowlist (not `*`) from the outset. |
+
+---
+
+## 13. Repository Layout
+
+```
+threadmymail/
+├── apps/
+│   ├── worker/                 # Cloudflare Worker: API, agent, cron, workflows
+│   │   ├── src/
+│   │   │   ├── index.ts        # Hono router + fetch/scheduled entrypoints
+│   │   │   ├── agent/          # DO agent class, tool loop, subagents
+│   │   │   ├── tools/          # registry + email/calendar/todo/memory/web/notes/meta
+│   │   │   ├── workflows/      # durable skill runs
+│   │   │   ├── cron/           # heartbeat handlers (thin)
+│   │   │   ├── skills/         # skill engine, trigger evaluation
+│   │   │   ├── plugins/        # loader, permissions, builtins
+│   │   │   ├── db/             # Drizzle schema, dual Hyperdrive clients
+│   │   │   └── auth/           # Google OAuth, session
+│   │   ├── drizzle/            # migrations
+│   │   └── wrangler.jsonc
+│   ├── web/                    # React + Vite + Tailwind → Cloudflare Pages
+│   └── mobile/                 # Expo → EAS APK
+├── packages/
+│   └── shared/                 # tool schemas, types, default persona
+├── plugins/                    # user-installed (git-cloned; gitignored)
+├── docs/
+└── .github/workflows/ci.yml    # TypeScript pipeline
+```
+
+### 13.1 Frontend: the agent shell
+
+The 3-pane Gmail layout is retired in favour of an agent-first shell:
+
+- **Stream** (center) — conversation with inline live-rendered artifacts
+- **Today** — your tasks, upcoming meetings, waiting-on
+- **Activity** — everything the agent did, with undo
+- **Skills** — create/edit/schedule/disable, with run history
+- **Plugins** — install, credentials, per-tool permissions
+
+---
+
+## 14. Free-Tier Budget
+
+| Resource | Free allowance | Expected use |
+|---|---|---|
+| Workers requests | 100,000/day | ~1,500/day (<2%) |
+| Workers CPU | 10 ms/invocation | Thin handlers only |
+| DO requests | 100,000/day | Comfortable |
+| DO SQLite | 5 GB | Cursors, sessions, hot cache |
+| Cron triggers | 5/account | 2-3 used |
+| Workflows | 3,000 steps/day | Fraction |
+| R2 | 10 GB-mo, 1M writes, 10M reads | Not used (card required) |
+| **D1 (bodies)** | 500 MB/DB, 100k writes/day, 5M reads/day | ~2.5k writes/day, ~200 reads/day |
+| Neon compute | 100 CU-hours/mo | ~0 (stays asleep — §5) |
+| Neon storage | 0.5 GB | Small rows only |
+| Hyperdrive | 100,000 queries/day | Fraction |
+| Pages | Free | Static |
+
+**Known constraints to design around:**
+- **6 simultaneous outgoing connections per request** on both Free and Paid →
+  subagent fan-out uses bounded concurrency, not true parallelism.
+- **Hyperdrive origin connections:** ~20 on Paid (the 0.5 GB / 2-connection free
+  allowance is not sufficient). Pool the client to `max: 5` per Cloudflare's own
+  Postgres example.
+- **D1 max value size is 2 MB** — content is chunked at 1 MB. Verified: a 2.5 MB
+  object round-trips byte-for-byte.
+- **D1 allows 50 queries per Worker invocation** — body writes are batched, not
+  looped.
+- **D1 over-limits hard-block** until 00:00 UTC rather than billing. The per-tick
+  sync cap exists to keep clear of this.
+- Workers **Free** cannot use key-value-backed DOs — SQLite only.
+- Workflows storage: 1 GB free, 3-day retention.
+
+---
+
+## 15. Infrastructure Cost
+
+| Service | Cost |
+|---|---|
+| Cloudflare Workers | $0 (Free) |
+| Cloudflare Pages | $0 |
+| D1 (bodies) | $0 |
+| Hyperdrive | $0 |
+| Neon | $0 (under 100 CU-hr + 0.5 GB) |
+| **Total infrastructure** | **$0/mo** |
+| OpenRouter (BYOK) | your usage |
+| Expo Push | $0 |
+| EAS Build | $0 (free tier) |
+
+**Backup plan if Free proves insufficient:** Workers Paid is $5/mo and lifts the
+CPU cap to 5 minutes outright, which removes the entire §2.2 constraint without
+any code change. That is the cheapest possible exit from the free tier and is
+preferred over moving to Cloud Run.
+
+---
+
+## 16. Deprecated
+
+| Document | Status |
+|---|---|
+| `hosting/RENDER.md` | **Deprecated.** Render is no longer the target. Retained for history only. |
+| Previous `docs/ARCHITECTURE.md` (FastAPI monolith + APScheduler) | Superseded by this document. |
+| `docs/PLANNING.md` | Superseded by `docs/PLAN.md`. |
+| IMAP/SMTP support | Removed from v1 scope. See §8. |
+| Magic-link auth | Removed. Google OAuth is the sole sign-in. |
+
+---
+
+*Related: [AI-SKILLS.md](./AI-SKILLS.md) · [PLUGINS.md](./PLUGINS.md) ·
+[API.md](./API.md) · [GOOGLE_OAUTH.md](./GOOGLE_OAUTH.md) · [PLAN.md](./PLAN.md)*
