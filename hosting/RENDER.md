@@ -1,6 +1,40 @@
 # ThreadMyMail - Render Deployment Guide
 
-> Production hosting on Render.com with PostgreSQL, FastAPI, and optional static assets.
+> # ⚠️ DEPRECATED — DO NOT FOLLOW
+>
+> **Render is no longer the deployment target.** Superseded on 2026-09-27.
+>
+> **Use [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) instead.** The Worker
+> deploys to Cloudflare; the database is Neon; blobs are in R2; the frontend is
+> on Cloudflare Pages.
+
+---
+
+## Why Render was abandoned
+
+| Problem | Consequence |
+|---|---|
+| Free web services **spin down after ~15 min idle** | The in-process APScheduler dies with it. The agent cannot act on a schedule — which is the core of the product. |
+| **Free Postgres expires 30 days after creation** (14-day grace, then deleted) | `htmg-db` expires **2026-10-09**. All data lost after the grace period. |
+| No durable execution primitives | Nothing equivalent to Durable Objects or Workflows. |
+| Always-on requires the $7/mo Starter plan | A permanent cost for an idle-tolerant app. |
+
+## What replaced it
+
+| Was | Now |
+|---|---|
+| Render web service (FastAPI) | **Cloudflare Workers** + **Durable Objects** |
+| APScheduler in-process | **Cron Triggers** + **Workflows** |
+| Render Postgres `htmg-db` | **Neon** (Postgres + pgvector), pooled by **Hyperdrive** |
+| Local disk for attachments | **Cloudflare R2** (10 GB free, egress free) |
+| Render static site | **Cloudflare Pages** |
+| APScheduler tasks | **Skills** with `cron` / `event` / `on_demand` triggers |
+
+See [../docs/PLAN.md](../docs/PLAN.md) §9 for the full decision log.
+
+---
+
+*Retained for historical reference only. Nothing below reflects the current system.*
 
 ---
 

@@ -1,6 +1,28 @@
 # ThreadMyMail - Android APK Build Guide
 
 > React Native + Expo for Android APK with push notifications.
+>
+> **Still valid.** EAS builds are unaffected by the move from Render/FastAPI to
+> Cloudflare Workers. Only the API base URL changes — see §0.
+
+---
+
+## 0. Backend change (2026-09-27)
+
+The backend is now a **Cloudflare Worker**, not Render/FastAPI.
+
+| Was | Now |
+|---|---|
+| `https://threadmymail.onrender.com/v1` | `https://threadmymail.workers.dev/v1` |
+| Magic-link login | Single Google sign-in |
+| Separate mobile screens for inbox/calendar/tasks | Agent stream + Today + Activity + Skills + Plugins |
+
+The transport surface is unchanged: REST + a WebSocket for the agent stream
+(`GET /agent/stream`). Auth is a bearer session token. See
+[../docs/API.md](../docs/API.md).
+
+There is **no Android emulator on this machine** — build and test on a physical
+device with Expo Go, or install a release APK from EAS.
 
 ---
 

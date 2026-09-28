@@ -56,3 +56,13 @@ Thumbs.db
 
 # Cloudflare (local state)
 .cloudflarestorage/
+.wrangler/
+
+# Neon CLI local context (project/branch pointers, not secrets, but machine-local)
+.neon
+.neon/
+
+# Stray build/preview artifacts
+--output
+*-preview.png
+*-preview2.png
