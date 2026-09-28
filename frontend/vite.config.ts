@@ -12,14 +12,29 @@ export default defineConfig({
         name: 'ThreadMyMail',
         short_name: 'ThreadMail',
         description: 'AI-powered email management',
-        theme_color: '#3b82f6',
-        background_color: '#ffffff',
+        // Matches index.html theme-color and index.css tokens (--primary, --bg).
+        theme_color: '#2563EB',
+        background_color: '#F8FAFC',
         display: 'standalone',
         scope: '/',
         start_url: '/',
         icons: [
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+          // Maskable variants sit the logo in the 80% safe zone on a solid
+          // brand field — required for Android adaptive icons.
+          {
+            src: 'pwa-192x192-maskable.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+          {
+            src: 'pwa-512x512-maskable.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
         ],
       },
       workbox: {
