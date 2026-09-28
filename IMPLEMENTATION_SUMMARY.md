@@ -80,7 +80,10 @@ measurement trap that produced a false negative on the first attempt:
 | 1.5 | Agent loop on the DO: persona, stream, step cap, tool execution | Agent can run a turn |
 | 1.6 | `agent_runs` / `tool_calls` persistence | Every run is logged |
 | 1.7 | WebSocket `/v1/agent/stream` | Frontend connects live |
-| 1.8 | Secrets: Google OAuth, OpenRouter, `ENCRYPTION_KEY`, `SESSION_SECRET` | Secrets set |
+| ~~1.8~~ | ~~Secrets: OpenRouter~~ | ❌ **Superseded — key is in-app per-user BYOK, see decisions below** |
+| 1.8 | Secrets: `ENCRYPTION_KEY`, `SESSION_SECRET` | Set (needed to encrypt the in-app key) |
+| 1.9 | **Settings-panel OpenRouter key entry** (per-user, encrypted) | A saved key makes the agent complete a turn |
+| ~~1.10~~ | ~~Google OAuth client + secret~~ | ❌ **Deferred to the last item of the final phase** |
 
 ### Decisions locked (2026-09-28, by user)
 
@@ -119,6 +122,11 @@ measurement trap that produced a false negative on the first attempt:
 | 6 | Subagents + memory + pgvector RAG | It recalls an old commitment unprompted |
 | 7 | Plugins + built-ins (Notion, Exa, Firecrawl) | Install a plugin, approve it, the agent uses it |
 | 8 | Mobile APK + push | A push opens the right thread |
+| 8 (last item) | **Google OAuth** (sign-in, sessions, token storage) | Real users, not `DEV_USER_ID` |
+
+> **OAuth is deliberately the last item of the last phase** (user decision,
+> 2026-09-28). Everything before it stays user-scoped so swapping
+> `DEV_USER_ID` for a session principal is a one-line change.
 
 ---
 
