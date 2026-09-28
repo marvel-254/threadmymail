@@ -17,15 +17,19 @@
 | API surface | ✅ Complete — [API.md](docs/API.md) |
 | **Phase 0 CPU spike** | ✅ **PASSED** — DO budget ≫ 10 ms on Free |
 | **Phase 1 agent runtime** | ✅ Code complete, typechecks, **deployed as v0.2.0** (`/health` → `ok`) |
-| Tool registry (17 tools) | ✅ Verified live in production |
+| Tool registry (**36 tools**) | ✅ Registered; 22 executable, 14 gated on the Google connection |
 | REST API (todos/memory/settings/skills) | ✅ Verified live against real Neon via Hyperdrive |
-| OpenRouter model client | ✅ Written (streaming + tool calls). Untested — no API key in the Worker |
+| **REST API (email/calendar)** | ✅ Implemented — reads work, Gmail-backed actions answer 503/501 honestly |
+| **PWA icons** | ✅ Generated; install no longer shows a broken icon (was a blocker) |
+| OpenRouter model client | ✅ Written (streaming + tool calls). Untested — key is entered in-app (not set yet) |
 | **Body storage (D1)** | ✅ Created; 2.5 MB chunked object round-trips byte-for-byte |
 | **Neon database** | ✅ Provisioned, schema applied |
 | **Worker + Durable Object** | ✅ Deployed (spike build) |
 | Frontend agent shell | ✅ Built — `/app` route |
 | Frontend landing page | ✅ Preserved at `/` |
-| Skills / calendar / plugin code | ❌ Not started (Phase 1+) |
+| **Email/calendar tools** | ✅ Registered — local readers real, Google calls gated (Phase 2) |
+| Skills engine / heartbeat code | ❌ Not started (Phase 3+) |
+| Plugin code | ❌ Not started (Phase 7) |
 | Backend (`backend/`) | ❌ Superseded Python. Not part of the build. |
 | Mobile | ❌ Nothing but a build guide |
 
@@ -58,6 +62,43 @@ measurement trap that produced a false negative on the first attempt:
   `⌘K` command bar, kill switch, and the sandboxed artifact frame with its
   binding allowlist. Build green; landing page preserved verbatim at `/`.
 
+### Phase 2 — Gmail tools, toolbar surface, artifact bindings (in progress)
+
+**Tool inventory: 36 registered.** `todo.*` 8 · `memory.*` 5 · `meta` 4 ·
+`email.*` 11 · `calendar.*` 8.
+
+- **`tools/email.ts`** — `email.search`, `email.get`, `email.get_thread` are
+  **real implementations** against the synced projection (`email_messages` in
+  Neon, bodies in D1 via `body_key`, truncated on read). The eight mutating
+  tools (`draft`, `send`, `reply`, `archive`, `label`, `mark_read`, `snooze`,
+  `extract_attachments`) are registered and fully described, but gated.
+- **`tools/calendar.ts`** — all eight calendar tools are gated: nothing syncs
+  the calendar locally, so every one is a live Google call.
+- **`tools/gated.ts`** — the shared factory for "specified, described, and
+  honest about not running yet". A gated tool checks the real connection at call
+  time: no connection → `NEEDS_CONNECTION`; connected but unimplemented →
+  `NOT_IMPLEMENTED`. It never reports success.
+- **`http/routes.ts`** — new `/emails` surface (metadata list with keyset
+  cursor, single message with body from D1, thread) and `/calendar/*`. Every
+  Google-dependent endpoint reports the true state — 503 `NEEDS_CONNECTION` or
+  501 `NOT_IMPLEMENTED` — instead of 404 (reads as a typo) or an empty 200
+  (reads as "you have no mail", which is a lie the user cannot act on).
+  `/emails/sync/status` always answers, so the UI can say *connect Google*.
+- Body reads are capped at 20 000 chars in both the tool and the REST layer.
+- `email.search` escapes `ILIKE` metacharacters, so a query of `100%` is a
+  literal, not a wildcard.
+- `EMAIL_METADATA_COLUMNS` lives in `db/client.ts` and is shared by the REST
+  layer and the tools, so the two cannot drift on what a list may expose
+  (`body_key` and `embedding` are excluded).
+
+**Verified:** `tsc --noEmit` clean · `wrangler deploy --dry-run` bundles
+(398 KiB) with all bindings resolving, including both Hyperdrive configs ·
+frontend `vite build` green.
+
+**Not verified:** no live request has exercised the new routes (they need a
+connection row or a deployed build), and the model client still cannot complete
+a turn until a key is saved in-app.
+
 ### Design
 
 - Reframed the product: an AI assistant that owns mail/calendar/tasks
@@ -69,17 +110,34 @@ measurement trap that produced a false negative on the first attempt:
 
 ---
 
-## ⏳ Next: Phase 1 — The agent exists
+## ⏳ Next: Phase 2 remainder → Phase 3
+
+**Phase 1 (the agent exists) is done** — the table below is kept for the record;
+1.4–1.7 are complete, 1.8 is split, 1.9 is the open item that unblocks real
+completions.
+
+### Phase 2 remainder (current)
 
 | # | Task | Done when |
 |---|---|---|
-| 1.1 | Wire Hyperdrive (`DB` cached + `DB_FRESH` cache-disabled) to Neon | Both bindings resolve |
+| 2.1 | ~~`email.*` / `calendar.*` tools~~ | ✅ Registered — local readers real, Google calls gated |
+| 2.2 | ~~`/emails`, `/calendar/*` routes~~ | ✅ Implemented with honest 503/501 states |
+| 2.3 | ~~PWA icon blocker~~ | ✅ Generated from `logo.svg`, build green |
+| 2.4 | `/cal/events` binding verb (`event.rsvp`) | Currently a deliberate client-side `NOT_IMPLEMENTED` (Phase 5) |
+| 2.5 | Tool listing endpoint | `GET /tools` exists in `index.ts` — confirm it lists all 36 |
+| 2.6 | `agent/runs` + `agent/stream` REST surface | Frontend `api.js` declares them; only WebSocket exists |
+
+### Phase 1 remainder (record)
+
+| # | Task | Done when |
+|---|---|---|
+| ~~1.1~~ | ~~Wire Hyperdrive (`DB` cached + `DB_FRESH` cache-disabled) to Neon~~ | ✅ Both bindings resolve in the deploy manifest |
 | ~~1.2~~ | ~~R2 buckets~~ | ✅ **Replaced by D1 — no card needed** |
-| 1.3 | Drizzle client + migration runner | Migrations run from CI |
-| 1.4 | Tool registry (`email.*`, `todo.*`, `memory.*`, `meta`) | Tools register and list |
-| 1.5 | Agent loop on the DO: persona, stream, step cap, tool execution | Agent can run a turn |
-| 1.6 | `agent_runs` / `tool_calls` persistence | Every run is logged |
-| 1.7 | WebSocket `/v1/agent/stream` | Frontend connects live |
+| ~~1.3~~ | ~~Drizzle client + migration runner~~ | ✅ `drizzle/` schema + `scripts/db-push.mjs` (CI wiring still Python) |
+| ~~1.4~~ | ~~Tool registry (`email.*`, `todo.*`, `memory.*`, `meta`)~~ | ✅ 36 tools registered |
+| ~~1.5~~ | ~~Agent loop on the DO: persona, stream, step cap, tool execution~~ | ✅ `agent/loop.ts` + `agent/durable.ts` |
+| ~~1.6~~ | ~~`agent_runs` / `tool_calls` persistence~~ | ✅ Every run and tool call logged |
+| ~~1.7~~ | ~~WebSocket `/v1/agent/stream`~~ | ✅ In `index.ts`; consumed by `lib/ws.js` |
 | ~~1.8~~ | ~~Secrets: OpenRouter~~ | ❌ **Superseded — key is in-app per-user BYOK, see decisions below** |
 | 1.8 | Secrets: `ENCRYPTION_KEY`, `SESSION_SECRET` | Set (needed to encrypt the in-app key) |
 | 1.9 | **Settings-panel OpenRouter key entry** (per-user, encrypted) | A saved key makes the agent complete a turn |
@@ -144,12 +202,58 @@ measurement trap that produced a false negative on the first attempt:
 | npm 12 blocks postinstall scripts by default | esbuild/workerd silently unusable | `npm install-scripts approve esbuild workerd` |
 | CI still runs a Python pipeline | Will fail now `backend/` is dead | Replace with a TypeScript pipeline |
 
-### Uncommitted work still in the tree
+### Stray artifacts (now ignored, still on disk)
 
-- `backend/` — Python FastAPI scaffolding, **superseded**. Not deleted; awaiting
-  your decision.
 - `--output` — a stray PNG from a mistyped command.
-- `landing-preview.png`, `logo-preview.png` — stray artifacts.
+- `landing-preview.png`, `logo-preview.png`, `adapted-preview*.png`.
+
+Matched by `.gitignore`, so they no longer show up in `git status`. Delete them
+when convenient — they are not referenced by anything.
+
+---
+
+## 📓 Session log
+
+Append here after any session that changes code or docs. Keep it short: what
+changed, how it was verified, what is left. This is how the next agent picks up
+without re-deriving anything.
+
+### 2026-09-28 — commit the tree, fix PWA icons, Phase 2 groundwork
+
+**Decisions taken (by user, recorded in `docs/PLAN.md` §9):**
+1. The OpenRouter key is entered **in the app's Settings panel**, per-user BYOK
+   — never `wrangler secret put`. `has_model_key: false` on `/health` is
+   expected, not a fault.
+2. **Google OAuth is the last item of the final phase.** Nothing may build auth
+   early, and `DEV_USER_ID` stays until then.
+
+**Done**
+- **Committed the whole tree** — it had 5 commits and ~72 dirty/untracked files.
+  Four commits: worker runtime · frontend shell · docs v2 + audits ·
+  chore/legacy. Working tree is clean; secrets were checked before staging
+  (`.dev.vars` is ignored, the example file is empty-valued).
+- **PWA blocker fixed** (audit item #1). `vite.config.ts` declared
+  `pwa-192/512.png` and referenced `favicon.ico`/`apple-touch-icon.png`, none of
+  which existed. Rendered from `logo.svg` with `rsvg-convert`: 192/512 standard,
+  192/512 maskable (logo in the 80% safe zone on a solid field), 180
+  apple-touch, and a 16/32/48 `favicon.ico`. `theme_color` unified to `#2563EB`
+  and `background_color` to `#F8FAFC`. Precaching went 6 → 18 entries; icons
+  verified non-blank.
+- **Phase 2 tools** — see the Phase 2 section above. 36 tools registered;
+  `tools/gated.ts` added as the pattern for Google-dependent capabilities.
+- **Phase 2 routes** — `/emails*` and `/calendar/*` implemented with truthful
+  503/501 states; `/emails/sync/status` always answers so the UI can render
+  *connect Google*.
+
+**Verified:** `tsc --noEmit` clean · `wrangler deploy --dry-run` bundles
+(398 KiB, all bindings resolve incl. both Hyperdrive configs) · frontend
+`vite build` green · manifest + precache inspected.
+
+**Not verified:** no live request has hit the new routes; the agent still
+cannot complete a turn (no in-app key yet).
+
+**Next:** the Settings-panel key entry (1.9) unblocks real completions. Then
+Phase 2 remainder (2.4–2.6) and Phase 3.
 
 ---
 

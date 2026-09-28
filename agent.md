@@ -27,15 +27,32 @@ Cloudflare Free. Proceed with Phase 1. See
 | Planning + docs | ✅ Current and authoritative |
 | **Phase 0 CPU spike** | ✅ **PASSED** — DO budget ≫ 10 ms on Free |
 | Neon + schema | ✅ Provisioned, 14 tables applied |
-| Worker + Durable Object | ✅ Deployed (spike build) |
-| Frontend agent shell | ✅ Built at `/app` |
-| Skills / calendar / plugins code | ❌ Not started (Phase 1+) |
+| Worker + Durable Object | ✅ Deployed — live at v0.2.0 (`/health` → `ok`) |
+| Frontend agent shell | ✅ Built at `/app`; PWA icons generated (install clean) |
+| Tool registry | ✅ 36 tools — 22 executable, 14 gated on the Google connection |
+| Email / calendar tools + routes | ✅ Phase 2 — reads real, Google calls gated and honest |
+| Skills engine / heartbeat code | ❌ Not started (Phase 3+) |
+| Plugin code | ❌ Not started (Phase 7) |
 | `backend/` (Python) | ❌ **Superseded.** Not part of the build. |
 | CI | ⚠️ Runs a Python pipeline; needs replacing with TypeScript |
 
-**There is uncommitted work in the working tree that does not belong to this
-plan** (a Python FastAPI scaffolding, stray PNGs). Do not delete or revert it
-without checking with the user first.
+**The working tree is clean** (committed 2026-09-28). The superseded `backend/`
+Python scaffolding was committed as-is rather than deleted, pending an explicit
+decision. Do not delete or revert it without checking with the user first.
+
+### Gated tools — the pattern for anything needing Google
+
+Google OAuth is the last item of the final phase, so Gmail/Calendar
+capabilities cannot be implemented yet. `src/tools/gated.ts` registers them
+fully described and **refuses to run**: no connection → `NEEDS_CONNECTION`,
+connected but unimplemented → `NOT_IMPLEMENTED`. The REST layer mirrors it
+(503 / 501).
+
+**Never** make a gated tool or endpoint return `ok`/200 with empty data — that
+reads as "you have no mail" when the truth is "you have not connected". The
+frontend relies on this distinction to render a *connect Google* state.
+When the connection lands, reimplement each gated tool **in place**: the name,
+schema and description must not change.
 
 ---
 
@@ -261,6 +278,11 @@ and deploys succeed (verified 2026-09-28: deployed v0.2.0, `/health` → `ok`).
 
 ## 9. Working Agreement
 
+- **Document every session.** Append a dated entry to the **Session log** in
+  `IMPLEMENTATION_SUMMARY.md`: what changed, how it was verified, what is left.
+  A future agent must be able to pick up without re-deriving anything. If you
+  changed a status, fix the table at the top too — a stale status table is how
+  the last handoff went wrong.
 - **Do not delete or revert work you did not write.** The working tree contains
   in-flight changes from another session. Ask first.
 - **Do not commit unless asked.**
