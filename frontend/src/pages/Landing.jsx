@@ -61,7 +61,12 @@ export default function App() {
           <a href="#" className="logo" aria-label="ThreadMyMail home" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.55rem', fontSize: '1.15rem' }}><img src="/logo.svg" alt="" style={{ width: '32px', height: '32px', flexShrink: 0 }} /><span><span style={{ color: 'var(--primary)' }}>Thread</span>MyMail</span></a>
           <div className="nav-links">
             <a href="#features">Features</a>
+            {/* Install is secondary now. The app is published, so the page's
+                job is to get people INTO it, not to make them install it. */}
             <a href="#install" aria-label="Install app">Install</a>
+            <a href="/app" className="btn btn-primary" style={{ padding: '0.45rem 1rem' }} aria-label="Open the app">
+              Open app
+            </a>
             <button
               onClick={() => setDark(!dark)}
               className="btn btn-ghost"
@@ -80,17 +85,17 @@ export default function App() {
           <div className="container hero-grid">
             <div>
               <div className="hero-badge reveal" aria-label="Status badge">
-                <SparkleIcon /> PWA Phase 1 — Live
+                <SparkleIcon /> Heartbeat live — acts unattended
               </div>
               <h1 className="hero-headline reveal reveal-delay-1">
                 Your assistant <span style={{ color: 'var(--primary)' }}>acts</span> — not just answers.
               </h1>
               <p className="hero-sub reveal reveal-delay-2">
-                ThreadMyMail is an autonomous assistant — not a mailbox with features. It reads mail, manages calendar, tracks todos, and reports back. One Google sign-in, one agent, zero waiting.
+                ThreadMyMail is an autonomous assistant — not a mailbox with features. It reads mail, manages calendar, tracks todos, and reports back. And it keeps working when you are not looking.
               </p>
               <div className="hero-cta reveal reveal-delay-3">
-                <a href="#install" className="btn btn-primary" aria-label="Install the Web App">
-                  <MailIcon /> Install App
+                <a href="/app" className="btn btn-primary" aria-label="Open the app">
+                  <MailIcon /> Open ThreadMyMail
                 </a>
                 <a href="#features" className="btn btn-ghost" aria-label="Learn more about features">
                   See how it works
@@ -110,7 +115,7 @@ export default function App() {
                 <span className="glass" style={{ padding: '0.35rem 0.9rem', borderRadius: '9999px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>Todos</span>
               </div>
               <div style={{ marginTop: '1.5rem', fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 600 }}>
-                ✓ Autonomous agent &nbsp;·&nbsp; ✓ Cloudflare Workers &nbsp;·&nbsp; ✓ PWA Phase 1
+                ✓ Autonomous agent &nbsp;·&nbsp; ✓ Cloudflare Workers &nbsp;·&nbsp; ✓ Heartbeat
               </div>
             </div>
           </div>
@@ -171,7 +176,7 @@ export default function App() {
       <footer className="footer" aria-label="Footer">
         <div className="container footer-inner">
           <p>ThreadMyMail — an autonomous assistant. Mail, calendar, todos, web. One agent, one voice.</p>
-          <p style={{ color: 'var(--text-subtle)' }}>Cloudflare Workers · Durable Objects · PWA Phase 1 · React</p>
+          <p style={{ color: 'var(--text-subtle)' }}>Cloudflare Workers · Durable Objects · Heartbeat · React</p>
         </div>
       </footer>
     </>
