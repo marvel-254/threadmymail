@@ -494,6 +494,40 @@
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; }
 .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; }
 
+/* ── Unattended activity (heartbeat schedule) ─────────────────────────── */
+
+.block-subtitle {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-subtle);
+  margin: 0.4rem 0 0;
+}
+
+.row-gap { display: flex; align-items: center; gap: 0.4rem; }
+.row-gap input[type='time'] { flex: 1; min-width: 0; }
+
+.check { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; }
+.check input { width: auto; margin: 0; }
+
+/* A plain, dense list rather than a card per row: this is a schedule to read
+   at a glance, not a set of objects to browse. */
+.table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.table th {
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-subtle);
+  padding: 0 0.6rem 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.table td { padding: 0.45rem 0.6rem 0.45rem 0; border-bottom: 1px solid var(--border); }
+.table tr:last-child td { border-bottom: none; }
+.table time { font-variant-numeric: tabular-nums; }
+
 .install-form { display: flex; gap: 0.5rem; }
 .install-form input { flex: 1; }
 

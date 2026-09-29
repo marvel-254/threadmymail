@@ -192,6 +192,16 @@ export const api = {
   /** Credential smoke test: a real one-word completion against the saved key. */
   testProvider: (id, model) => post(`/settings/providers/${encodeURIComponent(id)}/test`, { model }),
 
+  // ── Skills & the heartbeat schedule ──────────────────────────────────
+  /**
+   * What the agent will do without being asked, and when. Read from the same
+   * rows the 5-minute tick reads, so this is the schedule, not a prediction of
+   * it.
+   */
+  schedule: () => get('/skills/schedule'),
+  /** Recompute and re-park the schedule (e.g. after adding a schedule column). */
+  syncSchedule: () => post('/skills/sync'),
+
   killSwitch: () => get('/kill-switch'),
   setKillSwitch: (body) => put('/kill-switch', body),
 

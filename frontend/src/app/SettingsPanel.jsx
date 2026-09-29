@@ -26,12 +26,194 @@ const DEFAULT_SETTINGS = {
     new_contact_allowlist: [],
     notification_threshold: 7,
     digest_time: '07:00',
+    timezone: 'UTC',
+    quiet_hours: null,
   },
   budget: { daily_tokens: 200000, daily_usd: 2.0, max_outbound_per_day: 20 },
 };
 
 /** One row of the credential table, keyed by provider id. */
 const EMPTY_CREDENTIALS = {};
+
+/**
+ * "What the agent will do without you."
+ *
+ * The heartbeat is the least visible part of the product and the one with the
+ * most authority, so its state is shown rather than implied: every skill that
+ * can fire on a timer, what it will do, and when it next runs. This is the
+ * Durable Object's own schedule table — the same rows the 5-minute tick reads
+ * — so it cannot disagree with what will actually happen.
+ */
+function ScheduleBlock() {
+  const [note, setNote] = useState(null);
+  const schedule = useAsync(() => api.schedule(), []);
+  const [draft, setDraft] = useState({ digest_time: '07:00', timezone: 'UTC', quiet_hours: null });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (schedule.data) {
+      setDraft({
+        digest_time: schedule.data.digest_time ?? '07:00',
+        timezone: schedule.data.timezone ?? 'UTC',
+        quiet_hours: schedule.data.quiet_hours ?? null,
+      });
+    }
+  }, [schedule.data]);
+
+  const entries = schedule.data?.entries ?? [];
+  const timers = entries.filter((e) => e.next_due_ms >= 0);
+  const armed = entries.filter((e) => e.next_due_ms < 0);
+
+  async function savePrefs(patch) {
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.saveSettings({ prefs: patch });
+      await schedule.reload({ silent: true });
+      setNote('Saved.');
+    } catch (err) {
+      setNote(err.notConnected ? 'Backend not connected yet.' : err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const quiet = draft.quiet_hours ?? { start: '22:00', end: '07:00' };
+  const quietOn = draft.quiet_hours !== null;
+
+  return (
+    <section className="block">
+      <h3 className="block-title">Unattended activity</h3>
+      <p className="muted small">
+        The agent checks every five minutes. Outside the times below it does nothing at
+        all — no database, no model call, no token spent.
+      </p>
+
+      <div className="grid-3">
+        <label className="field">
+          <span>Timezone</span>
+          <input
+            value={draft.timezone}
+            disabled={busy}
+            onChange={(e) => setDraft((d) => ({ ...d, timezone: e.target.value }))}
+            onBlur={() => draft.timezone !== schedule.data?.timezone && savePrefs({ timezone: draft.timezone })}
+            placeholder="Europe/Berlin"
+          />
+        </label>
+        <label className="field">
+          <span>Briefing time</span>
+          <input
+            type="time"
+            value={draft.digest_time}
+            disabled={busy}
+            onChange={(e) => setDraft((d) => ({ ...d, digest_time: e.target.value }))}
+            onBlur={() => draft.digest_time !== schedule.data?.digest_time && savePrefs({ digest_time: draft.digest_time })}
+          />
+        </label>
+        <label className="field">
+          <span>Quiet hours</span>
+          <div className="row-gap">
+            <input
+              type="time"
+              value={quiet.start}
+              disabled={busy || !quietOn}
+              onChange={(e) => setDraft((d) => ({ ...d, quiet_hours: { ...quiet, start: e.target.value } }))}
+            />
+            <span className="muted">→</span>
+            <input
+              type="time"
+              value={quiet.end}
+              disabled={busy || !quietOn}
+              onChange={(e) => setDraft((d) => ({ ...d, quiet_hours: { ...quiet, end: e.target.value } }))}
+            />
+            <label className="check" title="Defer everything the agent would do on its own">
+              <input
+                type="checkbox"
+                checked={quietOn}
+                disabled={busy}
+                onChange={(e) =>
+                  savePrefs({ quiet_hours: e.target.checked ? quiet : null })
+                }
+              />
+              <span>On</span>
+            </label>
+          </div>
+        </label>
+      </div>
+
+      {note && <p className="muted small">{note}</p>}
+
+      <h4 className="block-subtitle">Next runs</h4>
+      {timers.length === 0 && armed.length === 0 ? (
+        <p className="muted small">
+          Nothing scheduled. Create a skill with a time or new-mail trigger and it
+          will appear here.
+        </p>
+      ) : (
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Skill</th>
+              <th>Trigger</th>
+              <th>Next</th>
+            </tr>
+          </thead>
+          <tbody>
+            {timers.map((e) => (
+              <tr key={e.skill_id}>
+                <td>{e.name}</td>
+                <td className="muted">{TRIGGER_LABEL[e.kind] ?? e.kind}</td>
+                <td>
+                  <time dateTime={e.next_due}>{formatWhen(e.next_due, draft.timezone)}</time>
+                </td>
+              </tr>
+            ))}
+            {armed.map((e) => (
+              <tr key={e.skill_id}>
+                <td>{e.name}</td>
+                <td className="muted">{TRIGGER_LABEL[e.kind] ?? e.kind}</td>
+                <td className="muted">waiting for new mail</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+const TRIGGER_LABEL = {
+  digest: 'daily briefing',
+  cron: 'on a schedule',
+  event: 'on new mail',
+};
+
+/**
+ * Format an ISO instant in the user's own timezone.
+ *
+ * The server sends UTC; rendering it with the browser's locale without the
+ * zone would show the wrong hour for anyone not on UTC — and this panel exists
+ * precisely so the user can trust the time it claims to fire at.
+ */
+function formatWhen(iso, timezone) {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      timeZone: timezone || undefined,
+    }).format(date);
+  } catch {
+    // An unknown IANA zone must not blank the panel; the server validates the
+    // zone separately, and showing UTC beats showing nothing.
+    return date.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+  }
+}
 
 export default function SettingsPanel({ onClose }) {
   const [draft, setDraft] = useState(DEFAULT_SETTINGS);
@@ -414,6 +596,8 @@ export default function SettingsPanel({ onClose }) {
               attachments, never delete.
             </p>
           </section>
+
+          <ScheduleBlock />
 
           <section className="block">
             <h3 className="block-title">Budget</h3>
