@@ -2,7 +2,12 @@
 
 > Conventions, architecture rules, and current state for any AI agent or engineer
 > working in this repository.
-> **Last updated:** 2026-09-28**
+> **Last updated:** 2026-09-29**
+>
+> **The app is live** at <https://threadmymail.pages.dev/app>. Start with
+> [HANDOFF.md](HANDOFF.md) for where things stand, what is deployed, and what
+> is broken — it is the fastest way into this repository. This file is the
+> *why*; HANDOFF.md is the *what now*.
 
 ---
 
