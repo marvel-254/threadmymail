@@ -105,28 +105,55 @@ export class CredentialStore {
     return out;
   }
 
-  /** Non-secret status for every known provider, for the Settings UI. */
-  async status(userId: string, ids: readonly string[]): Promise<CredentialStatus[]> {
-    if (ids.length === 0) return [];    const rows = await this.db.queryFresh<{
-      plugin_id: string;
-      key: string;
-      value_encrypted: string;
-    }>(
-      `SELECT plugin_id, key, value_encrypted FROM plugin_credentials
-       WHERE user_id = $1 AND plugin_id = ANY($2::text[])`,
-      [userId, ids.map(pluginId)],
-    );
+  /**
+   * Non-secret status for every known provider, for the Settings UI.
+   *
+   * Decryption is per-row: one value that cannot be read (a rotated key, a
+   * dev-only row that reached production) must not blank the whole list, since
+   * that would tell a user with three good keys and one stale row that they
+   * have configured nothing. Bad rows are skipped and counted so the caller can
+   * warn about exactly the one that needs re-entering.
+   */
+  async status(
+    userId: string,
+    ids: readonly string[],
+  ): Promise<{ credentials: CredentialStatus[]; undecryptable: number }> {
+    const rows =
+      ids.length === 0
+        ? []
+        : await this.db.queryFresh<{
+            plugin_id: string;
+            key: string;
+            value_encrypted: string;
+          }>(
+            `SELECT plugin_id, key, value_encrypted FROM plugin_credentials
+             WHERE user_id = $1 AND plugin_id = ANY($2::text[])`,
+            [userId, ids.map(pluginId)],
+          );
 
     // Decrypted values stay in this short-lived map and are reduced to a
     // boolean plus a fingerprint before anything is returned.
     const slots = new Map<string, { api?: string; base?: string | null }>();
     for (const id of ids) slots.set(id, {});
+    let undecryptable = 0;
 
     for (const row of rows) {
       const provider = row.plugin_id.slice(NS.length);
       const slot = slots.get(provider);
       if (!slot) continue;
-      const value = await cryptoOpen(row.value_encrypted, this.encryptionKey);
+      // Decryption is per-row. If one value was sealed under a different
+      // ENCRYPTION_KEY (a rotated key, a stale dev row that leaked into prod),
+      // it must not zero out the whole list — that would tell the user they
+      // have no keys configured when most of them decrypt fine. Skip the bad
+      // one; it reads as "not set" and can be re-entered.
+      let value: string | null;
+      try {
+        value = await cryptoOpen(row.value_encrypted, this.encryptionKey);
+      } catch (err) {
+        console.error(`credential status: cannot decrypt ${provider}.${row.key}:`, err);
+        undecryptable++;
+        continue;
+      }
       if (value === null) continue;
       if (row.key === KEY_API) slot.api = value;
       else if (row.key === KEY_BASE_URL) slot.base = value === '' ? null : value;
@@ -142,7 +169,7 @@ export class CredentialStore {
         fingerprint: slot.api ? await fingerprint(slot.api) : null,
       });
     }
-    return out;
+    return { credentials: out, undecryptable };
   }
 }
 

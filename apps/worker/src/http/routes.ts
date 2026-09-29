@@ -631,29 +631,20 @@ routes.get('/settings/providers', handler(async (c) => {
     });
   }
 
-  try {
-    return ok({
-      providers: catalogue(),
-      credentials: await store.status(userId, ids),
-      writable: true,
-      reason: null,
-    });
-  } catch (error) {
-    // Only a wrong-key decrypt should be survivable here, and only by hiding
-    // the affected rows: the user must re-enter them, but the list still works.
-    if (!(error instanceof CredentialCryptoError)) throw error;
-    return ok({
-      providers: catalogue(),
-      credentials: ids.map((id) => ({
-        provider: id,
-        has_key: false,
-        base_url: null,
-        fingerprint: null,
-      })),
-      writable: true,
-      reason: error.message,
-    });
-  }
+  const { credentials: status, undecryptable } = await store.status(userId, ids);
+  return ok({
+    providers: catalogue(),
+    credentials: status,
+    writable: true,
+    // Present only when at least one stored value could not be decrypted. The
+    // rows that read fine are still listed, so the UI can point at the specific
+    // provider that needs re-entering rather than showing an empty list.
+    reason:
+      undecryptable === 0
+        ? null
+        : `${undecryptable} stored credential${undecryptable === 1 ? '' : 's'} could not be ` +
+          'decrypted with the current ENCRYPTION_KEY and must be re-entered.',
+  });
 }));
 
 /** Save or rotate one provider's key, and optionally its base URL. */
@@ -706,8 +697,8 @@ routes.put('/settings/providers/:provider', handler(async (c) => {
     throw error;
   }
 
-  const status = await credentials(c).status(userId, [provider.id]);
-  return ok(status[0] ?? { provider: provider.id, has_key: false, base_url: null, fingerprint: null });
+  const { credentials: one } = await credentials(c).status(userId, [provider.id]);
+  return ok(one[0] ?? { provider: provider.id, has_key: false, base_url: null, fingerprint: null });
 }));
 
 routes.delete('/settings/providers/:provider', handler(async (c) => {
