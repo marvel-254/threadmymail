@@ -24,7 +24,7 @@ import { ToolRegistry, ToolContext, AnyTool, ToolError } from '../tools/registry
 import { createMetaTools, MetaContext } from '../tools/meta.js';
 import { ModelClient, ChatMessage, ToolCall, CompletionUsage, type ModelTarget } from './model.js';
 import { assembleSystemPrompt } from './persona.js';
-import { loadAgentConfig, NormalizedSettings, type ModelConfig } from './config.js';
+import { loadAgentConfig, checkBudget, NormalizedSettings, type ModelConfig } from './config.js';
 import { providerSpec } from './providers.js';
 import { CredentialStore, resolveBaseUrl } from '../db/credentials.js';
 
@@ -33,10 +33,15 @@ export interface RunInput {
   messages: ChatMessage[];
   skillId: string | null;
   parentRunId: string | null;
-  trigger: 'on_demand' | 'cron' | 'event' | 'manual' | 'chat';
+  trigger: 'on_demand' | 'cron' | 'event' | 'manual' | 'chat' | 'digest';
   modelSlot: 'primary' | 'background';
   /** Depth 0 for a top-level run. Subagents increment. */
   depth?: number;
+  /**
+   * True while the skill is inside its shadow window. Outward and irreversible
+   * tool calls are recorded as intentions instead of performed.
+   */
+  dryRun?: boolean;
   /**
    * Subagent delegation + depth limits for this run. The meta tools (`delegate`,
    * `ask_human`, `notify`, `list_skills`) are built from it, so they are per-run
@@ -73,6 +78,28 @@ export class Agent {
     const depth = input.depth ?? 0;
 
     const settings = await loadAgentConfig(db, input.userId);
+
+    // The budget is the user's own ceiling, enforced before the first token is
+    // spent rather than after. It used to be computed and never called, which
+    // made the limits in Settings a decoration.
+    const budget = await this.checkRunBudget(input.userId, settings);
+    if (!budget.allowed) {
+      input.emit({
+        type: 'error',
+        run_id: null,
+        code: 'BUDGET_EXCEEDED',
+        message: `${budget.reason}. Raise it in Settings → Budget, or release the kill switch to run anyway.`,
+      });
+      return {
+        runId: '',
+        text: '',
+        toolCallCount: 0,
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, costUsd: 0, model: '' },
+        stopReason: 'error',
+        escalated: false,
+      };
+    }
+
     const slotConfig = pickSlotConfig(settings, input.modelSlot);
     // The credential is read once per run, not per step, and is not logged.
     const target = await this.resolveTarget(input.userId, slotConfig);
@@ -150,6 +177,7 @@ export class Agent {
             skillId: input.skillId,
             scope: toolScope,
             depth,
+            dryRun: input.dryRun === true,
             emit: input.emit,
             isAborted: input.isAborted,
           });
@@ -206,6 +234,44 @@ export class Agent {
   // ── Tool execution ────────────────────────────────────────────────────────
 
   /**
+   * Whether a tool is intercepted during a shadow window.
+   *
+   * Two independent reasons, either sufficient: another person can observe the
+   * effect (`outward`), or the activity feed cannot undo it
+   * (`!reversible`). A calendar cancellation is the case that forces the second
+   * clause — the local row is restorable, but the attendees were already told.
+   */
+  private isShadowed(tool: AnyTool): boolean {
+    if (tool.sideEffecting !== true) return false;
+    return tool.outward === true || tool.reversible === false;
+  }
+
+  /**
+   * Daily budget, read fresh so a Hyperdrive-cached value cannot admit a run
+   * the account has already spent past. A subagent inherits the parent's
+   * check rather than re-reading, so a delegation loop cannot reset the count.
+   */
+  private async checkRunBudget(
+    userId: string,
+    settings: NormalizedSettings,
+  ): Promise<{ allowed: boolean; reason: string | null }> {
+    const row = await this.deps.db.oneFresh<{ budget_state: unknown }>(
+      `SELECT budget_state FROM users WHERE id = $1`,
+      [userId],
+    );
+    const decision = checkBudget(
+      row?.budget_state,
+      { tokensUsed: 0, costUsd: 0, outboundCount: 0 },
+      {
+        dailyTokens: settings.prefs.daily_token_limit,
+        dailyCostUsd: settings.prefs.daily_cost_usd_limit,
+        maxOutbound: settings.prefs.max_outbound_per_day,
+      },
+    );
+    return { allowed: !decision.blocked, reason: decision.reason ?? null };
+  }
+
+  /**
    * Build the request target for one slot from the user's saved credential.
    *
    * Returns null when the slot has no usable credential. That is NOT an error
@@ -248,6 +314,7 @@ export class Agent {
       skillId: string | null;
       scope: AnyTool[];
       depth: number;
+      dryRun: boolean;
       emit(frame: Record<string, unknown>): void;
       isAborted(): boolean;
     },
@@ -283,6 +350,7 @@ export class Agent {
       model: { primary: '', background: '' },
       emit: args.emit,
       isAborted: args.isAborted,
+      dryRun: args.dryRun,
       describe: async (action) => {
         await db.queryFresh(
           `INSERT INTO activity (user_id, run_id, kind, summary, reversible, undo_ref)
@@ -300,6 +368,61 @@ export class Agent {
     };
 
     try {
+      // ── Shadow window ──────────────────────────────────────────────────────
+      // A new skill is un-reviewed, so anything another person could learn
+      // about — or anything the activity feed cannot undo — is recorded as an
+      // intention instead of performed. This is the promise `dry_run_until`
+      // makes in the schema, and it was never implemented: a skill created
+      // today could send mail tonight.
+      //
+      // Private, undoable writes (todos, notes) still execute. Shadowing those
+      // would make the first week of every skill useless, and they are exactly
+      // the actions a user wants to see a record of.
+      if (args.dryRun && this.isShadowed(tool)) {
+        const intent = {
+          ok: false,
+          error: {
+            code: 'DRY_RUN',
+            message:
+              `${tool.name} was not performed: this skill is still in its shadow ` +
+              'window, so outward and irreversible actions are recorded, not done. ' +
+              'Review the run history, then clear the shadow window to let it act.',
+          },
+          dry_run: true,
+          would_have: { tool: tool.name, args: call.arguments },
+        };
+        await this.logToolCall(
+          args.runId,
+          call,
+          JSON.stringify(intent),
+          false,
+          Date.now() - started,
+          false,
+        );
+        args.emit({
+          type: 'tool_result',
+          run_id: args.runId,
+          tool: call.name,
+          ok: false,
+          summary: 'shadowed (not performed)',
+          latency_ms: Date.now() - started,
+        });
+        // The activity feed is how the user reviews what their agent *wanted*
+        // to do before trusting it. An unshadowed intention is invisible.
+        await db
+          .queryFresh(
+            `INSERT INTO activity (user_id, run_id, kind, summary, reversible, undo_ref)
+             VALUES ($1, $2, 'dry_run', $3, FALSE, NULL)`,
+            [
+              args.userId,
+              args.runId,
+              `Would have called ${tool.name}: ${JSON.stringify(call.arguments).slice(0, 300)}`,
+            ],
+          )
+          .catch(() => undefined);
+        return { content: JSON.stringify(intent), escalated: false };
+      }
+
       const result = await tool.execute(
         call.arguments as never,
         ctx,
@@ -429,34 +552,58 @@ export class Agent {
     registry: ToolRegistry,
   ): Promise<AnyTool[]> {
     const row = await this.deps.db.oneFresh<{ allowed_tools: string[] }>(
-      `SELECT allowed_tools FROM skills WHERE id = $1`,
-      [input.skillId],
+      `SELECT allowed_tools FROM skills WHERE id = $1 AND user_id = $2`,
+      [input.skillId, input.userId],
     );
-    if (!row) return registry.all();
+    // Fail CLOSED. A skill id that no longer resolves must not widen to the full
+    // registry: this method is the security boundary, so "I could not find the
+    // boundary" has to mean "no boundary", not "everything".
+    if (!row) {
+      await this.logSystemNote(
+        runId,
+        'NOT_FOUND',
+        `Skill ${input.skillId} does not exist for this user; running with no tools.`,
+      );
+      return [];
+    }
     const { tools, missing } = registry.restrict(row.allowed_tools ?? []);
     if (missing.length) {
       // A typo in a skill's allowed_tools silently weakens it. Say so.
-      this.deps.db.queryFresh(
+      await this.logSystemNote(
+        runId,
+        'NOT_FOUND',
+        `Skill references unknown tools: ${missing.join(', ')}`,
+        { missing },
+      );
+    }
+    return tools;
+  }
+
+  /** A synthetic tool_calls row, so refusals appear in the audit trail. */
+  private async logSystemNote(
+    runId: string,
+    code: string,
+    message: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<void> {
+    await this.deps.db
+      .queryFresh(
         `INSERT INTO tool_calls (run_id, tool, args, result, ok, latency_ms)
          VALUES ($1, 'system.tool_scope', $2, $3, FALSE, 0)`,
         [
           runId,
-          JSON.stringify({ missing }),
-          JSON.stringify({
-            ok: false,
-            error: { code: 'NOT_FOUND', message: `Skill references unknown tools: ${missing.join(', ')}` },
-          }),
+          JSON.stringify(extra),
+          JSON.stringify({ ok: false, error: { code, message } }),
         ],
-      ).catch(() => undefined);
-    }
-    return tools;
+      )
+      .catch(() => undefined);
   }
 
   private async buildSystemPrompt(
     input: RunInput,
     settings: NormalizedSettings,
   ): Promise<string> {
-    const [user, pinned, skills] = await Promise.all([
+    const [user, pinned, skills, active] = await Promise.all([
       this.deps.db.one<{ persona: string | null; profile: Record<string, unknown> }>(
         `SELECT persona, profile FROM users WHERE id = $1`,
         [input.userId],
@@ -472,6 +619,16 @@ export class Agent {
           WHERE user_id = $1 AND enabled = TRUE ORDER BY name LIMIT 50`,
         [input.userId],
       ),
+      // The invoked skill's own text. Without this a skill is a tool whitelist
+      // with nothing to do, which is not a skill.
+      input.skillId === null
+        ? Promise.resolve(null)
+        : this.deps.db
+            .one<{ name: string; instructions: string }>(
+              `SELECT name, instructions FROM skills WHERE id = $1 AND user_id = $2`,
+              [input.skillId, input.userId],
+            )
+            .then((row) => (row ? { name: row.name, instructions: row.instructions } : null)),
     ]);
 
     return assembleSystemPrompt({
@@ -481,6 +638,7 @@ export class Agent {
       skills,
       now: new Date(),
       userTimezone: settings.prefs.timezone,
+      activeSkill: active,
     });
   }
 }

@@ -35,6 +35,12 @@ export interface PromptParts {
   skills: Array<{ name: string; description: string | null; allowed_tools: string[] }>;
   now: Date;
   userTimezone: string | null;
+  /**
+   * The skill actually invoked by this run. Without this a skill is only a
+   * tool whitelist: the model is told which tools exist but never what it was
+   * asked to do, which is the entire content of a skill.
+   */
+  activeSkill?: { name: string; instructions: string } | null;
 }
 
 /**
@@ -50,6 +56,18 @@ export function assembleSystemPrompt(parts: PromptParts): string {
   if (parts.pinnedMemories.length > 0) {
     const lines = parts.pinnedMemories.map((m) => `- (${m.kind}) ${m.content}`);
     sections.push(`## Pinned\nThese are user-locked. Treat as settled fact.\n${lines.join('\n')}`);
+  }
+
+  if (parts.activeSkill) {
+    // Placed before the skills catalogue, and stated as the current job, so a
+    // scheduled run does not read as a chat turn that happens to have fewer
+    // tools. Bounded: a skill is user-authored and can be arbitrarily long.
+    sections.push(
+      `## Your job right now: ${parts.activeSkill.name}\n` +
+        'You were invoked for this specific task, not to chat. Follow it, and ' +
+        'answer with what it asked for rather than a summary of what you could do.\n\n' +
+        parts.activeSkill.instructions.slice(0, MAX_SKILL_INSTRUCTIONS),
+    );
   }
 
   if (parts.skills.length > 0) {
@@ -69,6 +87,8 @@ export function assembleSystemPrompt(parts: PromptParts): string {
 const MAX_PROFILE_ENTRIES = 40;
 const MAX_PROFILE_VALUE_LEN = 200;
 const MAX_SKILLS_IN_PROMPT = 50;
+/** A skill's instructions are user-authored and unbounded in the database. */
+const MAX_SKILL_INSTRUCTIONS = 8_000;
 
 function renderProfile(profile: Record<string, unknown>): string {
   const entries = Object.entries(profile).filter(
@@ -120,6 +140,9 @@ const DAILY_COST_RANGE = { min: 0.01, max: 1000 } as const;
 const DAILY_OUTBOUND_RANGE = { min: 0, max: 1000 } as const;
 const THRESHOLD_RANGE = { min: 0, max: 10 } as const;
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+
+/** Shipped default for the morning briefing, in the user's local time. */
+const DEFAULT_DIGEST_TIME = '07:00';
 
 const NEW_CONTACT_POLICIES = new Set(['ask', 'allow', 'block']);
 const PROVIDER_IDS = new Set(providerIds());
@@ -183,14 +206,17 @@ function normalizePrefs(raw: Record<string, unknown>) {
     quiet_hours: normalizeQuietHours(raw.quiet_hours),
     notification_threshold: clampNumber(raw.notification_threshold, THRESHOLD_RANGE.min, THRESHOLD_RANGE.max, 3),
     timezone: str(raw.timezone, null),
+    // A malformed digest time falls back to the shipped default rather than to
+    // null: a user who set "7:00" by hand should still get a briefing, just at
+    // the default hour, instead of silently getting none.
+    digest_time: HHMM.test(str(raw.digest_time, '')) ? (str(raw.digest_time, DEFAULT_DIGEST_TIME)) : DEFAULT_DIGEST_TIME,
     daily_token_limit: Math.round(clampNumber(raw.daily_token_limit, DAILY_TOKENS_FLOOR, 10_000_000, 200_000)),
     daily_cost_usd_limit: round2(clampNumber(raw.daily_cost_usd_limit, DAILY_COST_RANGE.min, DAILY_COST_RANGE.max, 5)),
     max_outbound_per_day: Math.round(clampNumber(raw.max_outbound_per_day, DAILY_OUTBOUND_RANGE.min, DAILY_OUTBOUND_RANGE.max, 40)),
   };
 }
 
-function normalizeQuietHours(raw: unknown): { start: string; end: string } | null {
-  const qh = asRecord(raw);
+function normalizeQuietHours(raw: unknown): { start: string; end: string } | null {  const qh = asRecord(raw);
   if (!qh) return null;
   const start = str(qh.start, null);
   const end = str(qh.end, null);

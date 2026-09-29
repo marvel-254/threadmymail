@@ -44,6 +44,13 @@ export interface ToolContext {
   emit(frame: Record<string, unknown>): void;
   /** True while the user has the kill switch engaged. Tools should bail early. */
   isAborted(): boolean;
+  /**
+   * True while the invoking skill is inside its shadow window
+   * (`skills.dry_run_until`). The loop intercepts outward and irreversible
+   * tools before this ever reaches a tool, so a tool only needs to read this to
+   * soften its own wording.
+   */
+  dryRun: boolean;
 }
 
 export interface ToolDefinition<TArgs = Record<string, unknown>, TResult = unknown> {
@@ -65,6 +72,17 @@ export interface ToolDefinition<TArgs = Record<string, unknown>, TResult = unkno
   reversible: boolean;
   /** Outward-facing, irreversible, or otherwise dangerous → dry-run aware. */
   sideEffecting?: boolean;
+  /**
+   * Someone other than the user can observe the effect: a recipient gets the
+   * mail, an attendee gets the invite or the cancellation.
+   *
+   * Distinct from `reversible`, which is about the activity feed's undo. A
+   * meeting row can be deleted locally and still be irreversibly announced, so
+   * dry run shadows on `outward || !reversible` rather than on `reversible`
+   * alone. Keep this set on anything a person would be upset to learn about
+   * from someone else.
+   */
+  outward?: boolean;
   /** Namespaced owner. */
   source: ToolSource;
   execute(args: TArgs, ctx: ToolContext): Promise<TResult>;

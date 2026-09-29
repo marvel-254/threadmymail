@@ -119,6 +119,7 @@ export const calendarTools: ToolDefinition<never, unknown>[] = [
     permissions: ['data:calendar:write', 'network:google_calendar'],
     reversible: true,
     sideEffecting: true,
+    outward: true,
   }),
 
   gatedTool({
@@ -141,6 +142,7 @@ export const calendarTools: ToolDefinition<never, unknown>[] = [
     permissions: ['data:calendar:write', 'network:google_calendar'],
     reversible: true,
     sideEffecting: true,
+    outward: true,
   }),
 
   gatedTool({
@@ -163,6 +165,7 @@ export const calendarTools: ToolDefinition<never, unknown>[] = [
     permissions: ['data:calendar:write', 'network:google_calendar'],
     reversible: false,
     sideEffecting: true,
+    outward: true,
   }),
 
   gatedTool({
@@ -186,6 +189,7 @@ export const calendarTools: ToolDefinition<never, unknown>[] = [
     permissions: ['data:calendar:write', 'network:google_calendar'],
     reversible: true,
     sideEffecting: true,
+    outward: true,
   }),
 
   gatedTool({

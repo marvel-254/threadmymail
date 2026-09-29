@@ -40,6 +40,12 @@ export interface NormalizedPrefs {
   quiet_hours: QuietHours | null;
   notification_threshold: number;
   timezone: string | null;
+  /**
+   * Local wall-clock time for the morning briefing, 'HH:MM'. Cron expressions
+   * are UTC, so the digest needs its own trigger type rather than a cron skill
+   * — see agent/heartbeat.ts.
+   */
+  digest_time: string;
   daily_token_limit: number;
   daily_cost_usd_limit: number;
   max_outbound_per_day: number;
@@ -64,6 +70,22 @@ export const MAX_SUBAGENT_DEPTH = 2;
  */
 export async function loadAgentConfig(db: Db, userId: string): Promise<NormalizedSettings> {
   const row = await db.one<{ ai_config: unknown; prefs: unknown }>(
+    'SELECT ai_config, prefs FROM users WHERE id = $1',
+    [userId],
+  );
+  if (row === null) return normalizeSettings({});
+  return normalizeSettings({ ai_config: row.ai_config, prefs: row.prefs });
+}
+
+/**
+ * As loadAgentConfig, but on the uncached connection.
+ *
+ * Required wherever the read follows a write in the same request — the user
+ * changing their digest time and immediately seeing the new one is the whole
+ * point of a settings screen (invariant 3, read-after-write).
+ */
+export async function loadAgentConfigFresh(db: Db, userId: string): Promise<NormalizedSettings> {
+  const row = await db.oneFresh<{ ai_config: unknown; prefs: unknown }>(
     'SELECT ai_config, prefs FROM users WHERE id = $1',
     [userId],
   );

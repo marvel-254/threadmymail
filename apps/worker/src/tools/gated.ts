@@ -69,6 +69,8 @@ export interface GatedSpec {
   reversible?: boolean;
   /** Outward-facing or irreversible → dry-run aware (docs/AI-SKILLS.md §6). */
   sideEffecting?: boolean;
+  /** Other people can observe the effect. See ToolDefinition.outward. */
+  outward?: boolean;
   /** Completes the sentence "Once it is connected, this tool will …". */
   onceConnected: string;
 }
@@ -86,6 +88,7 @@ export function gatedTool(spec: GatedSpec): ToolDefinition<Record<string, unknow
     permissions: spec.permissions,
     reversible: spec.reversible ?? false,
     sideEffecting: spec.sideEffecting,
+    outward: spec.outward,
     source: 'builtin',
     async execute(_args, ctx) {
       if (!(await googleConnected(ctx))) {

@@ -333,8 +333,11 @@ export const emailTools: ToolDefinition<never, unknown>[] = [
       additionalProperties: false,
     },
     permissions: ['data:email:write', 'network:gmail'],
-    reversible: true,
+    // Not reversible. A sent message is delivered; the activity feed's undo
+    // cannot recall it, and offering it would be a lie the user acts on.
+    reversible: false,
     sideEffecting: true,
+    outward: true,
   }),
 
   gatedTool({
@@ -355,8 +358,9 @@ export const emailTools: ToolDefinition<never, unknown>[] = [
       additionalProperties: false,
     },
     permissions: ['data:email:write', 'network:gmail'],
-    reversible: true,
+    reversible: false,
     sideEffecting: true,
+    outward: true,
   }),
 
   gatedTool({

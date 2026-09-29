@@ -195,20 +195,17 @@ export default {
       const id = env.AGENT.idFromName('main');
 
       if (which === '*/5 * * * *') {
-        // Cheap tick: read the cursor from the DO. No database, no model call.
-        const res = await env.AGENT.get(id).fetch(new Request('https://do/sync-cursor'));
-        const cursor = (await res.json()) as { history_id: string | null };
-        const engaged = await killSwitchEngaged(env);
-
-        console.log(
-          JSON.stringify({
-            kind: 'heartbeat',
-            cron: which,
-            cursor: cursor.history_id ? 'present' : 'none',
-            kill_switch: engaged,
-            ms: Date.now() - started,
-          }),
+        // THE TICK. Everything it needs lives in the Durable Object: the kill
+        // switch, the mail cursor and the parked schedule. An idle tick reads
+        // only that object's storage and issues no query at all, which is what
+        // keeps Neon suspended (ARCHITECTURE §5, agent.md invariant 1). The
+        // Worker itself does no work here by design — putting the due-check in
+        // the Worker would mean a Postgres round trip on every tick.
+        const res = await env.AGENT.get(id).fetch(
+          new Request('https://do/heartbeat', { method: 'POST' }),
         );
+        const report = (await res.json()) as Record<string, unknown>;
+        console.log(JSON.stringify({ kind: 'heartbeat', cron: which, ...report }));
         return;
       }
 
@@ -246,13 +243,6 @@ async function readEngaged(request: Request): Promise<{ engaged: boolean }> {
   }
 }
 
-async function killSwitchEngaged(env: Env): Promise<boolean> {
-  const res = await env.AGENT.get(env.AGENT.idFromName('main')).fetch(
-    new Request('https://do/kill-switch'),
-  );
-  const body = (await res.json()) as { engaged: boolean };
-  return body.engaged;
-}
 
 /**
  * End-to-end check of the body store: write an object larger than D1's 2 MB
