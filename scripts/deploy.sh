@@ -77,6 +77,28 @@ if [ ! -f "$WRANGLER_CONFIG" ]; then
 fi
 OAUTH_TOKEN="$(tr ',' '\n' < "$WRANGLER_CONFIG" | grep oauth_token | cut -d'"' -f2)"
 [ -n "$OAUTH_TOKEN" ] || fail "could not read oauth_token from $WRANGLER_CONFIG"
+
+# Wrangler refreshes its OAuth token transparently in an interactive shell but
+# cannot here, and when it is stale it fails with two unrelated-looking errors:
+# "Invalid access token [9109]" on one path, and "it's necessary to set a
+# CLOUDFLARE_API_TOKEN environment variable" on the other. Neither mentions
+# expiry and retrying does not help, so check the clock up front and name the
+# actual problem.
+EXPIRY="$(tr ',' '\n' < "$WRANGLER_CONFIG" | grep expiration_time | cut -d'"' -f2 || true)"
+if [ -n "$EXPIRY" ] && date -d "$EXPIRY" +%s >/dev/null 2>&1; then
+  EXPIRY_EPOCH="$(date -d "$EXPIRY" +%s)"
+  NOW_EPOCH="$(date +%s)"
+  if [ "$NOW_EPOCH" -ge "$EXPIRY_EPOCH" ]; then
+    fail "the wrangler login expired at $EXPIRY (now $(date -u +%Y-%m-%dT%H:%M:%SZ)).
+     This is a session expiry, not a code problem. Re-authenticate with:
+         wrangler login
+     That needs a browser, so it cannot be done from a script."
+  fi
+  echo "  session valid for $(( (EXPIRY_EPOCH - NOW_EPOCH) / 60 )) more minutes"
+elif [ -n "$EXPIRY" ]; then
+  echo "  ! could not parse expiration_time '$EXPIRY' — continuing"
+fi
+
 export CLOUDFLARE_ACCOUNT_ID
   echo "  using wrangler OAuth token (not printed)"
 
