@@ -17,8 +17,9 @@ invariants) and `IMPLEMENTATION_SUMMARY.md` (chronological session log).
 | HEAD | see `git log --oneline -1` |
 
 **Nothing is broken and nothing is half-deployed.** Everything committed today
-is live and verified. One deploy is blocked, for a reason unrelated to the
-code — see *Deploy* below.
+is live and verified, and `scripts/deploy.sh` has been run end to end from a
+clean tree: Worker deployed, frontend deployed, then verified against
+production.
 
 ---
 
@@ -114,20 +115,19 @@ This is expected — OAuth is deferred to the last item of the final phase by
 explicit decision (2026-09-28) — but it means the deployed UI advertises a
 login that does not exist.
 
-### 🟡 The deploy needs an interactive login (blocked right now)
+### 🟡 Two wrangler credential locations, and only one works
 
-**`wrangler login` has expired.** The stored OAuth token expired at
-2026-09-29T17:34:18Z. Production is unaffected — the last deploy succeeded and
-is still serving — but **no further deploy can run** until someone types:
+`~/.wrangler/config/default.toml` and `~/.config/.wrangler/config/default.toml`
+belong to different wrangler versions. `wrangler login` writes to whichever one
+the binary you typed uses, so a fresh login can leave a stale 403-ing token
+sitting untouched in the other. The `expiration_time` inside those files is not
+trustworthy either — it can advertise a stale value while the token next to it
+works fine.
 
-```bash
-wrangler login     # needs a browser; cannot be scripted
-```
-
-When it is stale, wrangler fails two unrelated-looking ways:
-`Invalid access token [9109]` on the Worker path, and *"it's necessary to set a
-CLOUDFLARE_API_TOKEN environment variable"* on the Pages path. Neither
-mentions expiry. `scripts/deploy.sh` now detects this and says so.
+`scripts/deploy.sh` handles this: it tries each candidate and calls the API,
+accepting a token only if it authenticates right now. If you ever see the auth
+step fail, run **`wrangler login` from `apps/worker`** so the login lands where
+the pinned binary reads it.
 
 ### 🟡 A real provider key is still needed
 
@@ -179,7 +179,7 @@ Two steps fail in ways that are easy to miss, and the script now handles both:
   `9109`.
 
 Use the wrangler pinned in `apps/worker/node_modules/.bin`, not a global or
-root `npx wrangler`.
+root `npx wrangler`. If auth fails, `wrangler login` from `apps/worker`.
 
 ### Database migrations
 
