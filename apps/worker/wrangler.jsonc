@@ -68,9 +68,15 @@
     ]
   },
 
+  // These are the DEPLOYED values. `wrangler dev` overrides them from
+  // .dev.vars, which is where the localhost equivalents live — so a dev server
+  // still reports "development" and still uses a loopback OAuth callback
+  // without this file claiming to be the production host.
   "vars": {
-    "ENVIRONMENT": "development",
-    "GOOGLE_REDIRECT_URI": "http://localhost:8787/auth/google/callback"
+    "ENVIRONMENT": "production",
+    // Unused until Google OAuth is built (agent.md §9 defers it to last). Set
+    // here so the day it is switched on it is not still pointing at localhost.
+    "GOOGLE_REDIRECT_URI": "https://threadmymail-worker.twistedoliver211fs.workers.dev/auth/google/callback"
   }
 
   // NOTE: there is deliberately NO "ai" binding. Model access is BYOK through
