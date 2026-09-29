@@ -62,17 +62,23 @@ if [ -n "$(git -C "$ROOT" status --porcelain)" ]; then
 fi
 echo "  HEAD $(git -C "$ROOT" rev-parse --short HEAD)"
 
-# ── 2. Reuse wrangler's OAuth token ────────────────────────────────────────
+# ── 2. Read wrangler's OAuth token for the Pages deploy ─────────────────────
 # Read straight from wrangler's own config. Never echoed.
+#
+# IMPORTANT: this is deliberately NOT exported. `wrangler pages deploy` will not
+# use its own OAuth token non-interactively and demands CLOUDFLARE_API_TOKEN,
+# so it is passed inline to that one command below. Exporting it globally breaks
+# the Worker deploy, which takes a different path and rejects the OAuth token
+# with "Invalid access token [9109]". Same bytes, two different presentations.
 step "Authenticating"
 WRANGLER_CONFIG="${WRANGLER_CONFIG:-$HOME/.config/.wrangler/config/default.toml}"
 if [ ! -f "$WRANGLER_CONFIG" ]; then
   fail "no wrangler credentials at $WRANGLER_CONFIG — run 'wrangler login' in an interactive terminal"
 fi
-CLOUDFLARE_API_TOKEN="$(tr ',' '\n' < "$WRANGLER_CONFIG" | grep oauth_token | cut -d'"' -f2)"
-[ -n "$CLOUDFLARE_API_TOKEN" ] || fail "could not read oauth_token from $WRANGLER_CONFIG"
-export CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
-echo "  using wrangler OAuth token (not printed)"
+OAUTH_TOKEN="$(tr ',' '\n' < "$WRANGLER_CONFIG" | grep oauth_token | cut -d'"' -f2)"
+[ -n "$OAUTH_TOKEN" ] || fail "could not read oauth_token from $WRANGLER_CONFIG"
+export CLOUDFLARE_ACCOUNT_ID
+  echo "  using wrangler OAuth token (not printed)"
 
 # Always the copy pinned in apps/worker. A global/root `npx wrangler` is a
 # different version with different auth behaviour.
@@ -115,7 +121,12 @@ for attempt in 1 2 3 4 5; do
     deployed=1
     break
   fi
-  echo "  attempt $attempt failed (usually a transient 'fetch failed'), retrying…"
+  if ! grep -qiE 'fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up' /tmp/tmm-deploy.log; then
+    echo "  not a transient network error — failing immediately"
+    tail -20 /tmp/tmm-deploy.log
+    fail "Worker deploy failed"
+  fi
+  echo "  attempt $attempt hit a transient network error, retrying…"
   sleep 12
 done
 [ "$deployed" = 1 ] || { tail -20 /tmp/tmm-deploy.log; fail "Worker deploy failed after 5 attempts"; }
@@ -123,7 +134,7 @@ done
 # ── 6. Deploy the frontend ─────────────────────────────────────────────────
 if [ "$SKIP_FRONTEND" = 0 ]; then
   step "Deploying the frontend"
-  (cd "$ROOT" && "$WRANGLER" pages deploy "$FRONTEND/dist" \
+  (cd "$ROOT" && CLOUDFLARE_API_TOKEN="$OAUTH_TOKEN" "$WRANGLER" pages deploy "$FRONTEND/dist" \
     --project-name "$PAGES_PROJECT" --branch main) > /tmp/tmm-pages.log 2>&1 \
     || { tail -20 /tmp/tmm-pages.log; fail "frontend deploy failed"; }
   grep -oE 'https://[a-z0-9]+\.threadmymail\.pages\.dev' /tmp/tmm-pages.log | tail -1 || true
