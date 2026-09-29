@@ -114,8 +114,10 @@ a turn until a key is saved in-app.
 
 **Phases 1–3 are done.** Phase 1 (the agent exists), Phase 2 (it reads real
 mail) and Phase 3 (it acts unattended) are built, verified end to end, and
-committed. 1.9 — pasting a real provider key — is the one item that still
-blocks a live model turn, and it is a user action, not engineering.
+committed. The app is **published and running end to end** at
+`https://threadmymail.pages.dev`. 1.9 — pasting a real provider key — is the
+one item that still blocks a live model turn, and it is a user action, not
+engineering.
 
 ### Phase 2 remainder (current)
 
@@ -235,6 +237,61 @@ when convenient — they are not referenced by anything.
 Append here after any session that changes code or docs. Keep it short: what
 changed, how it was verified, what is left. This is how the next agent picks up
 without re-deriving anything.
+
+### 2026-09-29 — the app is published
+
+**Started from:** `3ef4b35`. `ENCRYPTION_KEY` was provisioned in production
+(user-approved), and the frontend was published to Cloudflare Pages. Two bugs
+fell out of the first, and the CORS work needed a deliberate security decision.
+
+**`ENCRYPTION_KEY` set.** Generated with `openssl rand -hex 32`, applied with
+`wrangler secret bulk` from a `umask 077` temp file that was shredded after.
+The file form rather than `secret put` specifically so the value never enters a
+terminal transcript. `/health` → `credentials_encrypted: true`.
+
+**Bug: one unreadable credential blanked the whole list.** The first GET after
+setting the key reported no keys at all despite a successful write. Cause: a
+dev-only row in `model:` namespace, sealed with the local dev key, had reached
+the shared database. `CredentialStore.status()` decrypted every row in one
+loop, so that single value threw, and the catch built to survive a wrong-key
+decrypt answered by reporting *every* provider as unconfigured. A user with
+three good keys and one stale row would have been told they had set up nothing,
+with no way to tell "wrong key" from "never set one". Decryption is now
+per-row; failures are counted and surfaced as the endpoint's `reason` so the UI
+can name the one that needs re-entering. Covered by
+`test/cred_partial_test.mjs` (9 tests: mixed, all-good, fully-rotated).
+
+**CORS, with a hard constraint.** The frontend is a separate origin from the
+API, so the Worker needed CORS to be usable at all. It must **never** be `*`:
+every request is still `DEV_USER_ID` with no login, so a wildcard would let any
+page in any browser the user visits read and write that account. `CORS_ORIGINS`
+enumerates exactly one production origin and **fails closed** — unset means no
+headers, which is the behaviour that existed before. A disallowed origin gets a
+403 on preflight but is still *executed* for real requests, because the browser
+is what enforces the policy and rejecting outright would break curl, workers
+and native clients for no security gain. Verified in production: the Pages
+origin is echoed with `Vary: Origin`, `https://evil.example` is refused 403,
+and a headerless curl request is unaffected.
+
+**`wrangler pages deploy` cannot authenticate non-interactively** — it refuses
+to use its own OAuth token and demands `CLOUDFLARE_API_TOKEN`. The token
+carries `pages:write` and works against the API, so passing it through that
+variable deploys fine. Worth remembering; the Direct Upload API
+(`/pages/assets/check-missing`) returns 404 on this account.
+
+**⚠️ Published with no auth.** `threadmymail.pages.dev` is live and every
+request is attributed to a single hardcoded user. Treat the URL as a shared
+password until Google OAuth lands. CORS limits which *browser* can reach it;
+it does nothing about the URL being guessable.
+
+**Verified:** frontend 200, bundle points at the deployed worker (not
+localhost), cross-origin `/settings/providers` returns 14 providers and
+`writable: true`.
+
+**Commits:** `878dce5` partial decrypt · this one, CORS + publication.
+
+**Next:** Phase 4 (workflows, undo, activity feed), then Google OAuth — which
+is now the thing standing between this app and being safe to share.
 
 ### 2026-09-29 — Phase 3: the heartbeat fires (skills act unattended)
 

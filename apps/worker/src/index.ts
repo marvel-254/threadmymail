@@ -20,6 +20,7 @@ import { Db } from './db/client.js';
 import { BodyStore, bodyKey } from './storage/bodystore.js';
 import { ModelClient } from './agent/model.js';
 import { routes } from './http/routes.js';
+import { withCors } from './http/cors.js';
 
 export { AgentObject };
 
@@ -39,6 +40,13 @@ export interface Env {
   GOOGLE_REDIRECT_URI?: string;
   SESSION_SECRET?: string;
   ENCRYPTION_KEY?: string;
+  /**
+   * Comma-separated list of browser origins allowed to call this API.
+   * Unset or empty means NO origin is allowed — the API sends no CORS headers
+   * at all, which is the same thing it did before CORS existed. See
+   * http/cors.ts for why a wildcard is never acceptable here.
+   */
+  CORS_ORIGINS?: string;
 }
 
 /** Tools available outside a run. Meta tools are added per-run. */
@@ -54,7 +62,16 @@ function baseRegistry(): ToolRegistry {
 }
 
 export default {
+  /**
+   * Cross-origin wrapper. Kept separate from `dispatch` so every path is
+   * covered, including `/health` and the WebSocket upgrade, which the Hono
+   * sub-app never sees.
+   */
   async fetch(request: Request, env: Env): Promise<Response> {
+    return withCors(request, env, (req) => this.dispatch(req, env));
+  },
+
+  async dispatch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname.replace(/^\/v1/, '') || '/';
 

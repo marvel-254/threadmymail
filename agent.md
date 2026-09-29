@@ -297,16 +297,23 @@ Add long timeouts to any `wrangler` invocation. If a command returns nothing,
    There is deliberately **no** `OPENROUTER_API_KEY` binding left in `Env`.
    Until a user saves a key, a run fails with `NO_API_KEY` / `NO_MODEL` naming
    Settings — **that is expected, not a bug.**
-3. 🔑 **`ENCRYPTION_KEY` is the one thing that must be provisioned in prod.**
-   It is infrastructure (like `SESSION_SECRET`), *not* a model key:
-   `npx wrangler secret put ENCRYPTION_KEY`. Without it `/settings/providers`
-   reports `writable: false` and every credential write returns 503
-   `ENCRYPTION_UNAVAILABLE`. Verified 2026-09-29: **not yet set in production.**
-   Not set unilaterally — it mutates production state, so it waits for the user.
+3. ✅ **`ENCRYPTION_KEY` is provisioned in production** (2026-09-29). It is
+   infrastructure (like `SESSION_SECRET`), *not* a model key, so `wrangler
+   secret put` is the right tool. `/health` now reports
+   `credentials_encrypted: true` and `/settings/providers` reports
+   `writable: true`. Never rotate it once a credential exists: rotation makes
+   every stored key undecryptable while Settings still lists them.
+   Setting it surfaced a second bug, now fixed in `878dce5` — a single
+   undecryptable row used to blank the entire key list.
 4. ⏸️ **Google OAuth is the LAST item of the FINAL phase** (user decision,
    2026-09-28). Do not build `/auth/google` or sessions before then.
    `DEV_USER_ID` in `routes.ts` is the deliberate stand-in. Until it lands,
    "new mail" is the event trigger firing off the sync cursor, not real Gmail.
+   **This is now the one thing standing between the published app and being
+   public:** the frontend is live at `threadmymail.pages.dev` while every
+   request is still attributed to `DEV_USER_ID` with no login, so anyone with
+   the URL has that account. Treat the URL as a shared password. CORS is
+   configured to allow exactly that one origin (`CORS_ORIGINS`) — never `*`.
 5. ⚠️ **Hyperdrive** configs (`DB`, `DB_FRESH`) — bound in `wrangler.jsonc`,
    connection resolution unverified (audit item).
 6. ⚠️ **CI is a Python pipeline** — will need replacing with TypeScript.
