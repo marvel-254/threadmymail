@@ -22,9 +22,11 @@ import { Db } from '../db/client.js';
 import { BodyStore } from '../storage/bodystore.js';
 import { ToolRegistry, ToolContext, AnyTool, ToolError } from '../tools/registry.js';
 import { createMetaTools, MetaContext } from '../tools/meta.js';
-import { ModelClient, ChatMessage, ToolCall, CompletionUsage } from './model.js';
+import { ModelClient, ChatMessage, ToolCall, CompletionUsage, type ModelTarget } from './model.js';
 import { assembleSystemPrompt } from './persona.js';
-import { loadAgentConfig, NormalizedSettings } from './config.js';
+import { loadAgentConfig, NormalizedSettings, type ModelConfig } from './config.js';
+import { providerSpec } from './providers.js';
+import { CredentialStore, resolveBaseUrl } from '../db/credentials.js';
 
 export interface RunInput {
   userId: string;
@@ -59,6 +61,8 @@ export interface AgentDeps {
   bodies: BodyStore;
   registry: ToolRegistry;
   model: ModelClient;
+  /** Reads per-user BYOK credentials. Absent means "no key available". */
+  credentials?: CredentialStore;
 }
 
 export class Agent {
@@ -69,7 +73,10 @@ export class Agent {
     const depth = input.depth ?? 0;
 
     const settings = await loadAgentConfig(db, input.userId);
-    const modelName = pickModel(settings, input.modelSlot);
+    const slotConfig = pickSlotConfig(settings, input.modelSlot);
+    // The credential is read once per run, not per step, and is not logged.
+    const target = await this.resolveTarget(input.userId, slotConfig);
+    const modelName = target === null ? slotConfig.model : `${target.provider}:${target.model}`;
     const runId = await this.startRun(input, settings, modelName);
 
     // Meta tools are per-run (they capture this run's delegate + depth), so the
@@ -111,7 +118,7 @@ export class Agent {
 
         const { message, usage } = await model.streamCompletion(
           {
-            model: modelName,
+            target: target ?? fallbackTarget(slotConfig),
             messages,
             tools: runRegistry.toFunctions(toolScope),
             temperature: settings[input.modelSlot].temperature,
@@ -197,6 +204,41 @@ export class Agent {
   }
 
   // ── Tool execution ────────────────────────────────────────────────────────
+
+  /**
+   * Build the request target for one slot from the user's saved credential.
+   *
+   * Returns null when the slot has no usable credential. That is NOT an error
+   * here — the loop still runs, and ModelClient raises the specific
+   * NO_API_KEY/NO_MODEL failure against the user's own settings, which is a far
+   * better message than anything this layer could invent.
+   */
+  private async resolveTarget(
+    userId: string,
+    slot: ModelConfig,
+  ): Promise<ModelTarget | null> {
+    const spec = providerSpec(slot.provider);
+    if (!spec || this.deps.credentials === undefined) return null;
+
+    let credential: { apiKey: string | null; baseUrl: string | null };
+    try {
+      credential = await this.deps.credentials.load(userId, slot.provider);
+    } catch (error) {
+      // A wrong ENCRYPTION_KEY must be loud in the log but must not abort the
+      // run before the model client can report a useful, user-facing error.
+      console.error('[agent] credential read failed', error);
+      return null;
+    }
+
+    const baseUrl = resolveBaseUrl(spec, credential, slot.baseUrl === '' ? null : slot.baseUrl);
+    if (baseUrl === null) return null;
+    return {
+      provider: spec.id,
+      model: slot.model,
+      baseUrl,
+      apiKey: credential.apiKey,
+    };
+  }
 
   private async executeTool(
     call: ToolCall,
@@ -443,8 +485,23 @@ export class Agent {
   }
 }
 
-function pickModel(settings: NormalizedSettings, slot: 'primary' | 'background'): string {
-  return slot === 'background' ? settings.background.model : settings.primary.model;
+function pickSlotConfig(settings: NormalizedSettings, slot: 'primary' | 'background'): ModelConfig {
+  return slot === 'background' ? settings.background : settings.primary;
+}
+
+/**
+ * Used only when no credential row exists, so ModelClient produces the precise
+ * NO_API_KEY / NO_MODEL error. A request is never attempted against a base URL
+ * we could not validate.
+ */
+function fallbackTarget(slot: ModelConfig): ModelTarget {
+  const spec = providerSpec(slot.provider);
+  return {
+    provider: slot.provider,
+    model: slot.model,
+    baseUrl: slot.baseUrl !== '' ? slot.baseUrl : (spec?.baseUrl ?? ''),
+    apiKey: null,
+  };
 }
 
 function accumulate(total: CompletionUsage, add: CompletionUsage): void {

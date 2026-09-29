@@ -29,7 +29,11 @@ export interface Env {
   DB_FRESH: { connectionString: string };
   BODIES: D1Database;
   AGENT: DurableObjectNamespace<AgentObject>;
-  OPENROUTER_API_KEY?: string;
+  /**
+   * Encrypts per-user BYOK model credentials. Required for credential writes.
+   * There is intentionally no worker-level model key: one shared key would
+   * make every user share it and hide their spend. See agent.md §9.
+   */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GOOGLE_REDIRECT_URI?: string;
@@ -60,7 +64,10 @@ export default {
         status: 'ok',
         environment: env.ENVIRONMENT,
         version: '0.2.0',
-        has_model_key: Boolean(env.OPENROUTER_API_KEY),
+        // Operator-level readiness only. Per-user BYOK keys are never reported
+        // here and are never readable from this endpoint — see
+        // GET /settings/providers, which returns booleans and fingerprints.
+        credentials_encrypted: Boolean(env.ENCRYPTION_KEY),
       });
     }
 

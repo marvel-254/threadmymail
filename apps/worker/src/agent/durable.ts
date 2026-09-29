@@ -33,13 +33,19 @@ import { emailTools } from '../tools/email.js';
 import { calendarTools } from '../tools/calendar.js';
 import { Agent, type RunInput, type RunOutcome } from './loop.js';
 import { MAX_SUBAGENT_DEPTH } from './config.js';
+import { CredentialStore } from '../db/credentials.js';
 import type { MetaContext } from '../tools/meta.js';
 
 export interface AgentEnv {
   DB: { connectionString: string };
   DB_FRESH: { connectionString: string };
   BODIES: D1Database;
-  OPENROUTER_API_KEY?: string;
+  /**
+   * Encrypts per-user BYOK credentials. There is deliberately no
+   * OPENROUTER_API_KEY here: one Worker-level key would make every user share a
+   * key and hide their spend. See agent/providers.ts and agent.md §9.
+   */
+  ENCRYPTION_KEY?: string;
   ENVIRONMENT: string;
 }
 
@@ -276,7 +282,8 @@ export class AgentObject extends DurableObject<AgentEnv> {
     // Worker's isolate, so anything shared must be constructed per side.
     const db = new Db({ DB: this.env.DB, DB_FRESH: this.env.DB_FRESH });
     const bodies = new BodyStore(this.env.BODIES);
-    const model = new ModelClient({ OPENROUTER_API_KEY: this.env.OPENROUTER_API_KEY });
+    const model = new ModelClient();
+    const credentials = new CredentialStore(db, this.env.ENCRYPTION_KEY);
     const baseRegistry = new ToolRegistry()
       .registerAll(todoTools as never)
       .registerAll(memoryTools as never)
@@ -317,7 +324,7 @@ export class AgentObject extends DurableObject<AgentEnv> {
       depth,
       maxDepth: MAX_SUBAGENT_DEPTH,
       delegate: async (args) => {
-        const sub = new Agent({ db, bodies, registry: baseRegistry, model });
+        const sub = new Agent({ db, bodies, registry: baseRegistry, model, credentials });
         const subInput: RunInput = {
           userId: session.userId,
           messages: args.messages,
@@ -334,7 +341,7 @@ export class AgentObject extends DurableObject<AgentEnv> {
       },
     };
 
-    const agent = new Agent({ db, bodies, registry: baseRegistry, model });
+    const agent = new Agent({ db, bodies, registry: baseRegistry, model, credentials });
 
     const input: RunInput = {
       userId: session.userId,

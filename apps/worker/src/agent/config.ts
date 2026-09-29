@@ -15,11 +15,17 @@ export type ModelSlot = 'primary' | 'background' | 'inherit';
 export type NewContactPolicy = 'ask' | 'allow' | 'block';
 
 export interface ModelConfig {
+  /** Provider id from agent/providers.ts. Unknown ids fall back to openrouter. */
   provider: string;
   /** Empty when unset; the model router resolves the real id from env. */
   model: string;
   temperature: number;
   max_tokens: number;
+  /**
+   * Override for the provider's base URL. Only meaningful for `custom` and
+   * local providers; validated by `validateBaseUrl` on the way in.
+   */
+  baseUrl: string;
 }
 
 export interface QuietHours {

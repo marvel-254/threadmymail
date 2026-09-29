@@ -24,6 +24,21 @@ import {
   type Row,
 } from '../db/client.js';
 import { BodyStore } from '../storage/bodystore.js';
+import {
+  CredentialStore,
+  resolveBaseUrl,
+  type StoredCredential,
+} from '../db/credentials.js';
+import { CredentialCryptoError, assertConfigured } from '../agent/crypto.js';
+import { ModelClient, ModelError } from '../agent/model.js';
+import {
+  catalogue,
+  providerIds,
+  providerSpec,
+  validateApiKey,
+  validateBaseUrl,
+  type ProviderSpec,
+} from '../agent/providers.js';
 import { ERROR } from '../tools/registry.js';
 
 type Bindings = DbEnv & {
@@ -31,6 +46,8 @@ type Bindings = DbEnv & {
   BODIES: D1Database;
   /** The agent DO. POST /agent/runs and abort delegate execution here. */
   AGENT: DurableObjectNamespace;
+  /** Encrypts per-user BYOK credentials. Absent ⇒ credential writes fail loudly. */
+  ENCRYPTION_KEY?: string;
 };
 
 type Vars = { Bindings: Bindings };
@@ -63,6 +80,10 @@ function db(c: Context<Vars>): Db {
 
 function bodies(c: Context<Vars>): BodyStore {
   return new BodyStore(c.env.BODIES);
+}
+
+function credentials(c: Context<Vars>): CredentialStore {
+  return new CredentialStore(db(c), c.env.ENCRYPTION_KEY);
 }
 
 // ── Envelope ───────────────────────────────────────────────────────────────
@@ -108,6 +129,22 @@ function fail(error: unknown): Response {
 function notFound(what: string): HttpError {
   return new HttpError(ERROR.NOT_FOUND, `${what} not found.`, 404);
 }
+
+/** Resolve a provider id from the path, rejecting unknown ids with the list. */
+function requireProvider(id: string | undefined): ProviderSpec {
+  const spec = id === undefined ? null : providerSpec(id);
+  if (!spec) {
+    throw new HttpError(
+      ERROR.NOT_FOUND,
+      `Unknown provider "${id ?? ''}". Known: ${providerIds().join(', ')}.`,
+      404,
+    );
+  }
+  return spec;
+}
+
+/** Hardcoded on purpose: see the test route for why no prompt is accepted. */
+const SMOKE_TEST_PROMPT = 'Reply with the single word: ok';
 
 /** Wraps a handler so every thrown error becomes the standard error envelope. */
 function handler(fn: (c: Context<Vars>) => Promise<Response>) {
@@ -525,6 +562,189 @@ function settingsPayload(row: UserRow): Json {
   };
 }
 
+// ── Model providers (BYOK) ─────────────────────────────────────────────────
+//
+// API keys live encrypted in `plugin_credentials` under the `model:` namespace.
+// They are NEVER echoed back: GET returns booleans and a salted fingerprint, so
+// the UI can say "key saved" without ever holding the secret again.
+
+/**
+ * The catalogue the Settings picker renders from. Static, so it needs no user,
+ * but it travels with the status list so the client makes one call.
+ */
+routes.get('/settings/providers', handler(async (c) => {
+  const userId = getUserId(c);
+  const ids = providerIds();
+  const store = credentials(c);
+
+  // Checked up front: with no stored rows the decrypt path is never entered, so
+  // a missing ENCRYPTION_KEY would otherwise be reported as writable. When it
+  // is missing we still return the catalogue — the user needs to see their
+  // options and the reason they cannot use them — just flagged unwritable.
+  try {
+    assertConfigured(c.env.ENCRYPTION_KEY);
+  } catch (error) {
+    if (!(error instanceof CredentialCryptoError)) throw error;
+    return ok({
+      providers: catalogue(),
+      credentials: ids.map((id) => ({
+        provider: id,
+        has_key: false,
+        base_url: null,
+        fingerprint: null,
+      })),
+      writable: false,
+      reason: error.message,
+    });
+  }
+
+  try {
+    return ok({
+      providers: catalogue(),
+      credentials: await store.status(userId, ids),
+      writable: true,
+      reason: null,
+    });
+  } catch (error) {
+    // Only a wrong-key decrypt should be survivable here, and only by hiding
+    // the affected rows: the user must re-enter them, but the list still works.
+    if (!(error instanceof CredentialCryptoError)) throw error;
+    return ok({
+      providers: catalogue(),
+      credentials: ids.map((id) => ({
+        provider: id,
+        has_key: false,
+        base_url: null,
+        fingerprint: null,
+      })),
+      writable: true,
+      reason: error.message,
+    });
+  }
+}));
+
+/** Save or rotate one provider's key, and optionally its base URL. */
+routes.put('/settings/providers/:provider', handler(async (c) => {
+  const userId = getUserId(c);
+  const provider = requireProvider(c.req.param('provider'));
+  const body = await readJson(c);
+
+  const apiKeyRaw = optString(body, 'api_key', 400);
+  const baseUrlRaw = nullableString(body, 'base_url', 300);
+
+  if (apiKeyRaw === undefined && baseUrlRaw === undefined) {
+    throw new HttpError(ERROR.INVALID_ARGS, 'api_key or base_url is required.', 400);
+  }
+
+  // Only a supplied key is validated. A base-URL-only update is legitimate
+  // (rotating an endpoint, or clearing one), and whether a turn can actually run
+  // is decided at request time by NO_API_KEY — not here.
+  let apiKey: string | undefined;
+  if (apiKeyRaw !== undefined) {
+    const checked = validateApiKey(apiKeyRaw);
+    if (!checked.ok) throw new HttpError(ERROR.INVALID_ARGS, checked.message, 400);
+    apiKey = checked.value;
+  }
+
+  let baseUrl: string | null | undefined;
+  if (baseUrlRaw !== undefined) {
+    if (baseUrlRaw === null) {
+      baseUrl = null;
+    } else {
+      const checked = validateBaseUrl(baseUrlRaw, provider.id);
+      if (!checked.ok) throw new HttpError(ERROR.INVALID_ARGS, checked.message, 400);
+      baseUrl = checked.value;
+    }
+  }
+
+  try {
+    await credentials(c).save(userId, provider.id, { ...(apiKey !== undefined ? { apiKey } : {}), ...(baseUrl !== undefined ? { baseUrl } : {}) });
+  } catch (error) {
+    if (error instanceof CredentialCryptoError) {
+      throw new HttpError('ENCRYPTION_UNAVAILABLE', error.message, 503);
+    }
+    throw error;
+  }
+
+  const status = await credentials(c).status(userId, [provider.id]);
+  return ok(status[0] ?? { provider: provider.id, has_key: false, base_url: null, fingerprint: null });
+}));
+
+routes.delete('/settings/providers/:provider', handler(async (c) => {
+  const userId = getUserId(c);
+  const provider = requireProvider(c.req.param('provider'));
+  const removed = await credentials(c).remove(userId, provider.id);
+  return ok({ provider: provider.id, removed });
+}));
+
+/**
+ * Credential smoke test: one real, tiny completion against the saved
+ * credential.
+ *
+ * This deliberately accepts NO prompt. A caller-supplied prompt would turn this
+ * into an unauthenticated LLM proxy — free compute on someone else's key, and an
+ * open-ended billing hole. The prompt is a constant, no tools are sent, and
+ * maxTokens is hard-capped, so the worst case is a few hundred tokens against
+ * the caller's own key.
+ *
+ * `model` IS accepted, so a user can verify a key plus a model id before
+ * committing either to ai_config.
+ */
+routes.post('/settings/providers/:provider/test', handler(async (c) => {
+  const userId = getUserId(c);
+  const provider = requireProvider(c.req.param('provider'));
+  const body = await readJson(c);
+  const model = optString(body, 'model', 200)?.trim() ?? provider.suggestPrimary;
+
+  const store = credentials(c);
+  let credential: StoredCredential;
+  try {
+    assertConfigured(c.env.ENCRYPTION_KEY);
+    credential = await store.load(userId, provider.id);
+  } catch (error) {
+    if (!(error instanceof CredentialCryptoError)) throw error;
+    throw new HttpError('ENCRYPTION_UNAVAILABLE', error.message, 503);
+  }
+
+  const baseUrl = resolveBaseUrl(provider, credential, null);
+  if (baseUrl === null) {
+    throw new HttpError(
+      ERROR.INVALID_ARGS,
+      provider.custom
+        ? 'Set a base URL for this provider before testing it.'
+        : `No ${provider.label} API key saved yet.`,
+      400,
+    );
+  }
+
+  const started = Date.now();
+  try {
+    const result = await new ModelClient({ maxOutputTokens: 32 }).complete({
+      target: { provider: provider.id, model, baseUrl, apiKey: credential.apiKey },
+      messages: [{ role: 'user', content: SMOKE_TEST_PROMPT }],
+      temperature: 0,
+      maxTokens: 16,
+    });
+    return ok({
+      provider: provider.id,
+      model,
+      ok: true,
+      // Truncated hard: this is a liveness check, not a way to read a model.
+      text: result.message.content.slice(0, 200),
+      latency_ms: Date.now() - started,
+    });
+  } catch (error) {
+    // A failed test is a normal outcome the UI must explain, not a server fault.
+    // The provider's own message is included because "invalid key" vs "model not
+    // found" vs "no access" need completely different user actions.
+    const message = error instanceof ModelError ? error.message : String(error);
+    return ok(
+      { provider: provider.id, model, ok: false, error: { code: error instanceof ModelError ? error.code : 'INTERNAL', message }, latency_ms: Date.now() - started },
+      200,
+    );
+  }
+}));
+
 async function readSettings(c: Context<Vars>, userId: string): Promise<Json> {
   const row = await db(c).oneFresh<UserRow & Row>(
     `SELECT ${USER_SETTINGS_COLUMNS} FROM users WHERE id = $1`,
@@ -539,6 +759,55 @@ routes.get('/settings', handler(async (c) => {
 }));
 
 const CONTACT_POLICIES = ['ask', 'allow', 'block'] as const;
+
+/**
+ * Validate the model slots in an `ai_config` patch.
+ *
+ * `ai_config` is a jsonb merge-patch, so without this a typo in `provider` or a
+ * hostile `baseUrl` would be persisted and only discovered at run time — as an
+ * unroutable request, or worse, as a request aimed somewhere it should not be.
+ * Rejecting here means the user sees the problem while they are still in
+ * Settings, where they can fix it.
+ */
+function validateAiConfigPatch(patch: Json): void {
+  for (const slot of ['primary', 'background'] as const) {
+    const raw = patch[slot];
+    if (raw === undefined) continue;
+    const model = asRecordOrNull(raw);
+    if (model === null) {
+      throw new HttpError(ERROR.INVALID_ARGS, `ai_config.${slot} must be an object.`, 400);
+    }
+
+    if (model['provider'] !== undefined) {
+      const id = model['provider'];
+      if (typeof id !== 'string' || providerSpec(id) === null) {
+        throw new HttpError(
+          ERROR.INVALID_ARGS,
+          `ai_config.${slot}.provider must be one of: ${providerIds().join(', ')}.`,
+          400,
+        );
+      }
+      // The same https/loopback rule as the credential path, so a base URL can
+      // never be persisted in a form the credential endpoint would refuse.
+      const baseUrl = model['baseUrl'] ?? model['base_url'];
+      if (typeof baseUrl === 'string' && baseUrl.trim() !== '') {
+        const checked = validateBaseUrl(baseUrl, id);
+        if (!checked.ok) {
+          throw new HttpError(
+            ERROR.INVALID_ARGS,
+            `ai_config.${slot}.baseUrl: ${checked.message}`,
+            400,
+          );
+        }
+      }
+    }
+  }
+}
+
+function asRecordOrNull(value: unknown): Json | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Json;
+}
 
 routes.put('/settings', handler(async (c) => {
   const userId = getUserId(c);
@@ -571,6 +840,7 @@ routes.put('/settings', handler(async (c) => {
   for (const column of ['profile', 'ai_config'] as const) {
     const patch = optJson(body, column);
     if (patch) {
+      if (column === 'ai_config') validateAiConfigPatch(patch);
       params.push(JSON.stringify(patch));
       sets.push(`${column} = COALESCE(${column}, '{}'::jsonb) || $${params.length}::jsonb`);
     }

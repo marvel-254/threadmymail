@@ -9,6 +9,7 @@
  */
 
 import type { NormalizedSettings } from './config';
+import { providerIds } from './providers';
 
 /**
  * Shipped system prompt. Reproduced from docs/AI-SKILLS.md §3; the docs are
@@ -107,8 +108,8 @@ function truncate(value: string, max: number): string {
 
 // ── Normalization ────────────────────────────────────────────────────────────
 
-export const DEFAULT_PRIMARY = { provider: 'openrouter', model: '', temperature: 0.4, max_tokens: 8000 };
-export const DEFAULT_BACKGROUND = { provider: 'openrouter', model: '', temperature: 0.1, max_tokens: 2000 };
+export const DEFAULT_PRIMARY = { provider: 'openrouter', model: '', temperature: 0.4, max_tokens: 8000, baseUrl: '' };
+export const DEFAULT_BACKGROUND = { provider: 'openrouter', model: '', temperature: 0.1, max_tokens: 2000, baseUrl: '' };
 
 const TEMPERATURE_RANGE = { min: 0, max: 2 } as const;
 const MAX_TOKENS_RANGE = { min: 256, max: 64_000 } as const;
@@ -121,6 +122,8 @@ const THRESHOLD_RANGE = { min: 0, max: 10 } as const;
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
 const NEW_CONTACT_POLICIES = new Set(['ask', 'allow', 'block']);
+const PROVIDER_IDS = new Set(providerIds());
+const MAX_BASE_URL_LEN = 300;
 
 /**
  * Defensive parse of the `ai_config` / `prefs` JSONB columns. Accepts either
@@ -145,13 +148,31 @@ export function normalizeSettings(raw: unknown): NormalizedSettings {
 export function normalizeModel(raw: unknown, fallback: typeof DEFAULT_PRIMARY) {
   const model = asRecord(raw) ?? {};
   return {
-    provider: str(model.provider, fallback.provider),
+    // An unknown provider id is dropped to the default rather than passed
+    // through: a typo must not become an unroutable request at run time.
+    provider: normalizeProvider(model.provider, fallback.provider),
     // Empty by default: concrete model ids are env/route config, not user
     // preference, and inventing one here would pin a possibly-retired model.
     model: str(model.model, fallback.model),
     temperature: clampNumber(model.temperature, TEMPERATURE_RANGE.min, TEMPERATURE_RANGE.max, fallback.temperature),
     max_tokens: Math.round(clampNumber(model.max_tokens, MAX_TOKENS_RANGE.min, MAX_TOKENS_RANGE.max, fallback.max_tokens)),
+    baseUrl: normalizeBaseUrl(model.baseUrl ?? model.base_url, fallback.baseUrl),
   };
+}
+
+function normalizeProvider(value: unknown, fallback: string): string {
+  const raw = str(value, fallback);
+  return PROVIDER_IDS.has(raw) ? raw : fallback;
+}
+
+/**
+ * Persisted as-is; full validation (https-only, loopback rules) happens on the
+ * write path in `POST /settings/providers/:id`, where a rejection can be shown to
+ * the user. This only bounds the length so a hostile value cannot bloat the row.
+ */
+function normalizeBaseUrl(value: unknown, fallback: string): string {
+  const raw = str(value, fallback);
+  return raw.length > MAX_BASE_URL_LEN ? '' : raw;
 }
 
 function normalizePrefs(raw: Record<string, unknown>) {

@@ -105,6 +105,9 @@ export const api = {
   logout: () => post('/auth/logout'),
 
   // ── Agent ────────────────────────────────────────────────────────────
+  // `run` targets the Worker-side /v1/agent/runs, which executes inside the
+  // Durable Object and shares the kill switch, history and audit trail with
+  // the WebSocket. Never call a tool directly — that path is agent-only.
   run: (content, extra) => post('/agent/runs', { content, ...extra }),
   runs: (query) => get('/agent/runs', { query }),
   run_: (id) => get(`/agent/runs/${id}`),
@@ -179,6 +182,16 @@ export const api = {
   settings: () => get('/settings'),
   saveSettings: (body) => put('/settings', body),
   usage: () => get('/settings/usage'),
+
+  // ── Model providers (BYOK) ───────────────────────────────────────────
+  // The catalogue plus a per-provider `{ has_key, fingerprint }` status. The
+  // key itself never comes back from the server.
+  providers: () => get('/settings/providers'),
+  saveProvider: (id, body) => put(`/settings/providers/${encodeURIComponent(id)}`, body),
+  removeProvider: (id) => del(`/settings/providers/${encodeURIComponent(id)}`),
+  /** Credential smoke test: a real one-word completion against the saved key. */
+  testProvider: (id, model) => post(`/settings/providers/${encodeURIComponent(id)}/test`, { model }),
+
   killSwitch: () => get('/kill-switch'),
   setKillSwitch: (body) => put('/kill-switch', body),
 

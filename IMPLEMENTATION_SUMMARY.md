@@ -140,29 +140,42 @@ completions.
 | ~~1.7~~ | ~~WebSocket `/v1/agent/stream`~~ | ✅ In `index.ts`; consumed by `lib/ws.js` |
 | ~~1.8~~ | ~~Secrets: OpenRouter~~ | ❌ **Superseded — key is in-app per-user BYOK, see decisions below** |
 | 1.8 | Secrets: `ENCRYPTION_KEY`, `SESSION_SECRET` | Set (needed to encrypt the in-app key) |
-| 1.9 | **Settings-panel OpenRouter key entry** (per-user, encrypted) | A saved key makes the agent complete a turn |
+| 1.9 | **Settings-panel model key entry** (per-user, encrypted, all providers) | ✅ **Built 2026-09-29** — 14 providers + `custom`; keys never returned by the API |
+| 1.9a | **`ENCRYPTION_KEY` provisioned in production** | 🔴 **Outstanding.** `npx wrangler secret put ENCRYPTION_KEY`. Infra, not a model key. Without it the panel is read-only. |
 | ~~1.10~~ | ~~Google OAuth client + secret~~ | ❌ **Deferred to the last item of the final phase** |
 
 ### Decisions locked (2026-09-28, by user)
 
-1. **The OpenRouter key is entered by the user in the app's own Settings
-   panel — NOT `wrangler secret put`.** It is a per-user BYOK key stored
-   encrypted in `plugin_credentials` (see `agent/config.ts` header and
-   [ARCHITECTURE.md §12](docs/ARCHITECTURE.md)). The Worker env var
-   `OPENROUTER_API_KEY` is therefore **not** a blocker and should not be set;
-   `has_model_key: false` on `/health` is expected until the in-app key is
-   saved.
+1. **Model keys are entered by the user in the app's own Settings panel — NOT
+   `wrangler secret put`.** They are per-user BYOK keys stored encrypted in
+   `plugin_credentials` under the `model:` namespace (see
+   `agent/config.ts` header and [ARCHITECTURE.md §12](docs/ARCHITECTURE.md)).
+   There is **no** `OPENROUTER_API_KEY` binding in `Env` at all — one shared
+   key would mean shared billing and a hidden cost. `/health` now reports
+   `credentials_encrypted` (whether the Worker *can* store keys), never
+   anything about a user's keys. **Generalised 2026-09-29 from OpenRouter-only
+   to all providers** — see "Multi-provider model routing" below.
 2. **Google OAuth is the LAST item of the FINAL phase.** Auth endpoints
    (`/auth/google`, callback, session) are deferred to the end of the
    roadmap — until then `DEV_USER_ID` in `routes.ts` is the deliberate
    stand-in. Do not build auth early.
+3. **`ENCRYPTION_KEY` is infrastructure and must be set with
+   `wrangler secret put`.** It is not a model key; there is no in-app way to
+   provision it and it cannot be derived from user data. This is the *only*
+   secret in the model path.
 
 ### Still needed from the user
 
 - ✅ **No card needed.** R2 was replaced with D1, which has no payment-method
   requirement.
-- 🔴 **In-app Settings panel key entry** — the UI path for pasting the
-  OpenRouter key (until it exists, the agent cannot generate completions).
+- 🔴 **`ENCRYPTION_KEY` in production** — one command, infrastructure only:
+  `npx wrangler secret put ENCRYPTION_KEY`. Until it is set the Settings
+  provider list is visible but read-only, and a run fails with `NO_API_KEY`.
+  (Verified 2026-09-29 against the live Worker: `/settings/providers` →
+  `writable: false`.)
+- 🔑 **A real provider key**, pasted into the app's Settings panel. The UI and
+  the whole encrypt→store→decrypt→dispatch path are done and verified; a live
+  model turn is blocked only on this.
 - 🟡 **Google OAuth** client ID + secret — final phase only, not now.
 
 ---
@@ -221,6 +234,93 @@ when convenient — they are not referenced by anything.
 Append here after any session that changes code or docs. Keep it short: what
 changed, how it was verified, what is left. This is how the next agent picks up
 without re-deriving anything.
+
+### 2026-09-29 — multi-provider model routing (BYOK for all providers)
+
+**Started from:** `aa4319e` (REST runs + unified pipeline). The OpenRouter-only
+Settings UI existed but had no backend behind it — `SettingsPanel.jsx` was
+writing five hard-coded `pluginCredentials(...)` calls that no route served.
+
+**New files**
+- `apps/worker/src/agent/providers.ts` — the catalogue: 14 providers + `custom`
+  + `ollama`, each with `{dialect, baseUrl, keyHint, suggestPrimary,
+  suggestBackground, keyUrl, local?, custom?}`. Only **two** wire dialects
+  (`openai`, `anthropic`) — nearly every provider speaks OpenAI Chat
+  Completions, and Google uses its `v1beta/openai` compatibility endpoint, so a
+  third dialect would have bought nothing. Holds `validateBaseUrl` (the SSRF
+  rules) and `validateApiKey`.
+- `apps/worker/src/agent/crypto.ts` — AES-GCM via WebCrypto, key = SHA-256 of
+  `ENCRYPTION_KEY`, stored `v1.<iv>.<ct>`. **Fails closed**: a missing or
+  <16-char key throws rather than storing plaintext. A foreign version degrades
+  to "no key"; a *wrong* key throws, because that is operator error and must be
+  loud. Plus `fingerprint()` (8 hex of a salted hash) for the UI.
+- `apps/worker/src/db/credentials.ts` — per-user store in the **existing**
+  `plugin_credentials` table under a reserved `model:<provider>` namespace, keys
+  `api_key` / `base_url`. **No migration**: that table already has exactly the
+  right shape and ARCHITECTURE §12 already calls the model key a plugin
+  credential. `resolveBaseUrl()` centralises the precedence rules.
+
+**Changed**
+- `agent/model.ts` — rewritten as a stateless transport taking a `ModelTarget`
+  instead of a model name, with both dialects streaming. Tool calling is a hard
+  requirement (no buffered fallback without re-measuring CPU), so tool schemas
+  are translated per dialect — Anthropic's `input_schema`, its out-of-band
+  `system` field, and its `partial_json` tool stream are all handled.
+- `agent/loop.ts` — `pickModel` became `pickSlotConfig` + `resolveTarget`; the
+  credential is read once per run, not per step, and never logged.
+- `agent/{config,persona}.ts` — `ModelConfig` gains `provider` and `baseUrl`;
+  `normalizeModel` drops an unknown provider id to the default rather than
+  letting a typo become an unroutable request.
+- `http/routes.ts` — `GET /settings/providers`, `PUT`/`DELETE
+  /settings/providers/:provider`, `POST /settings/providers/:provider/test`, and
+  `validateAiConfigPatch` on `PUT /settings`.
+- `index.ts` — **removed the `OPENROUTER_API_KEY` binding.** It was never
+  read, and keeping it implied a supported config path the docs forbid.
+  `/health` now reports `credentials_encrypted` instead of `has_model_key`.
+- `frontend/` — provider picker per slot, per-provider key management with
+  `key saved (fingerprint)` indicators, custom base URL, and a Test button.
+
+**Two bugs found and fixed during verification** (both were mine):
+1. `GET /settings/providers` reported `writable: true` on a Worker with **no**
+   `ENCRYPTION_KEY`. `status()` only entered the decrypt path when rows existed,
+   so an empty table never detected the missing key. Added an eager
+   `assertConfigured()`.
+2. **SSRF hole.** `PUT /settings` merge-patches `ai_config` as raw jsonb with no
+   validation, and the new `baseUrl` took precedence over the provider's
+   registered URL — so `ai_config.primary.baseUrl = "http://169.254.169.254/…"`
+   would have been persisted and *fetched with the user's key in the header*.
+   Fixed twice over: `validateAiConfigPatch` rejects it at write time with the
+   same https/loopback rule, and `resolveBaseUrl` now honours a slot-level
+   override **only** for `custom`/`local` providers.
+
+**Verified**
+- `tsc --noEmit` clean; `vite build` clean; deployed `b3eadc2f` (430 KiB).
+- Live: 14 providers listed, `writable: false` with a real reason, SSRF
+  rejection, unknown-provider 404, short-key 400, credential write → 503
+  `ENCRYPTION_UNAVAILABLE` (not a silent no-op), 36 tools unchanged.
+- Local (`wrangler dev` + real Neon): full round trip — save → status shows
+  `has_key` + fingerprint → rotate changes fingerprint → clear base URL →
+  delete. No response ever contained the key.
+- Crypto: round trip, unique ciphertext per write, wrong key throws, foreign
+  version → null, fingerprint stable/differing.
+- **Both dialects, 24 assertions** against a stubbed `fetch` — request shape,
+  `x-api-key`, `anthropic-version`, system split, `input_schema` renaming,
+  fragmented tool-argument reassembly, usage mapping, and the `NO_API_KEY` /
+  `NO_MODEL` / `UNKNOWN_PROVIDER` / `BAD_TOOL_ARGS` guards.
+- **End to end through a mock provider**: an agent run streamed a fragmented
+  tool call, reassembled `{"title":"buy milk"}`, dispatched `todo.create`, and
+  wrote 3 real rows to Postgres. All test data then deleted and `ai_config`
+  restored.
+
+**Left**
+- 🔴 `ENCRYPTION_KEY` is **not** set in production. One command, infrastructure
+  only: `npx wrangler secret put ENCRYPTION_KEY`. Until then the panel is
+  read-only.
+- 🔑 A real provider key pasted into the panel — the only thing blocking a live
+  model turn.
+- Next: **Phase 3** (heartbeat + skills engine). The heartbeat must stay
+  DO-local — read `sync_state.history_id` and the kill switch, zero Postgres —
+  to preserve invariant 1.
 
 ### 2026-09-28 — commit the tree, fix PWA icons, Phase 2 groundwork
 

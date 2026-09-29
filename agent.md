@@ -258,18 +258,33 @@ Add long timeouts to any `wrangler` invocation. If a command returns nothing,
 ## 8. Known Blockers & Decisions
 
 1. ✅ **Not blocked on a card** — body storage is D1, which needs no payment method.
-2. 🔑 **OpenRouter key = in-app Settings panel, by user decision (2026-09-28).**
-   Never `wrangler secret put OPENROUTER_API_KEY`. The key is per-user BYOK,
-   stored encrypted in `plugin_credentials`. Until the user saves a key via
-   the Settings panel, `/health` reports `has_model_key: false` and the agent
-   cannot complete — **that is expected, not a bug.** The missing piece is the
-   Settings-panel key-entry UI, not a secret.
+2. ✅ **Model keys = in-app Settings panel, per-user BYOK, all providers**
+   (2026-09-28 decision; generalised 2026-09-29). Never
+   `wrangler secret put <PROVIDER>_API_KEY`. Keys are entered in the Settings
+   panel, encrypted with `ENCRYPTION_KEY`, and stored per user in
+   `plugin_credentials` under the reserved `model:` namespace. The catalogue
+   (`apps/worker/src/agent/providers.ts`) covers 14 providers plus `custom` and
+   `ollama`; the client speaks two wire dialects (`openai`, `anthropic`).
+   There is deliberately **no** `OPENROUTER_API_KEY` binding left in `Env`.
+   Until a user saves a key, a run fails with `NO_API_KEY` / `NO_MODEL` naming
+   Settings — **that is expected, not a bug.**
+3. 🔑 **`ENCRYPTION_KEY` is the one thing that must be provisioned in prod.**
+   It is infrastructure (like `SESSION_SECRET`), *not* a model key:
+   `npx wrangler secret put ENCRYPTION_KEY`. Without it `/settings/providers`
+   reports `writable: false` and every credential write returns 503
+   `ENCRYPTION_UNAVAILABLE`. Verified 2026-09-29: **not yet set in production.**
 3. ⏸️ **Google OAuth is the LAST item of the FINAL phase** (user decision,
    2026-09-28). Do not build `/auth/google` or sessions before then.
    `DEV_USER_ID` in `routes.ts` is the deliberate stand-in.
 4. ⚠️ **Hyperdrive** configs (`DB`, `DB_FRESH`) — bound in `wrangler.jsonc`,
    connection resolution unverified (audit item).
 5. ⚠️ **CI is a Python pipeline** — will need replacing with TypeScript.
+6. 🛡️ **A user-supplied base URL is a fetch target, not a string.** It is
+   validated as https-only, with plain `http` allowed *only* on loopback and
+   *only* for a provider flagged `local`. Additionally, a base URL from
+   `ai_config` is honoured **only** for `custom`/`local` providers — otherwise
+   the registered provider URL wins, so no stored value can repoint a
+   key-bearing request at an internal address. Verified with unit tests.
 
 Note: `CLOUDFLARE_API_TOKEN` is not needed — the wrangler OAuth token is valid
 and deploys succeed (verified 2026-09-28: deployed v0.2.0, `/health` → `ok`).
