@@ -31,14 +31,43 @@ Cloudflare Free. Proceed with Phase 1. See
 | Frontend agent shell | ✅ Built at `/app`; PWA icons generated (install clean) |
 | Tool registry | ✅ 36 tools — 22 executable, 14 gated on the Google connection |
 | Email / calendar tools + routes | ✅ Phase 2 — reads real, Google calls gated and honest |
-| Skills engine / heartbeat code | ❌ Not started (Phase 3+) |
+| Multi-provider BYOK | ✅ 14 providers + `custom`; keys encrypted at rest, never returned by any GET |
+| **Skills engine / heartbeat** | ✅ **Phase 3 — live and firing.** Cron, event and digest triggers all verified end to end |
 | Plugin code | ❌ Not started (Phase 7) |
 | `backend/` (Python) | ❌ **Superseded.** Not part of the build. |
 | CI | ⚠️ Runs a Python pipeline; needs replacing with TypeScript |
 
-**The working tree is clean** (committed 2026-09-28). The superseded `backend/`
+**The working tree is clean** (committed 2026-09-29). The superseded `backend/`
 Python scaffolding was committed as-is rather than deleted, pending an explicit
 decision. Do not delete or revert it without checking with the user first.
+
+### The heartbeat — how a skill becomes an action nobody asked for
+
+A parked `schedule` table inside the Durable Object is a projection of `skills`.
+The API recomputes it wholesale on every mutation that can change what is due;
+the `*/5` cron POSTs to the object, which reads that table, the kill switch and
+the mail cursor, and touches Postgres **only** when a row is genuinely due.
+That is invariant 1, and it is now proven by a poison test rather than by
+assertion: an idle tick issues literally zero database calls.
+
+Three things about it are easy to get wrong and are therefore written into the
+code rather than left to judgement:
+
+- **Event skills are armed, not timed.** A negative due time never matches the
+  due query. The entry goes live only when the mail cursor advances, and it
+  re-arms afterwards instead of picking up a schedule it never asked for.
+- **Quiet hours return a real instant, for every trigger kind.** A null there
+  reads downstream as "remove this skill", which silently disables a recurring
+  skill the first time its slot lands at 3am.
+- **The shadow window blocks only what cannot be taken back.** Outward and
+  irreversible actions are recorded as `dry_run` activity rows; a private,
+  reversible write still executes, because shadowing those would make the first
+  week of every skill useless.
+
+A trigger is validated on write, so a typo is a 400 at creation rather than a
+skill that is silently never scheduled. `GET /skills/schedule` returns the
+object's real rows — the time the Settings panel shows is the time the agent
+will act.
 
 ### Gated tools — the pattern for anything needing Google
 
@@ -67,7 +96,7 @@ schema and description must not change.
 | Blobs | **D1** (`BODIES`) |
 | Frontend | React + Vite + Tailwind → **Cloudflare Pages** |
 | Mobile | Expo → EAS APK |
-| Model | OpenRouter (BYOK), LiteLLM-compatible |
+| Model | Multi-provider BYOK (OpenAI + Anthropic dialects), keys encrypted at rest |
 | Language | **TypeScript** (the earlier Python/FastAPI plan is retired) |
 
 Authoritative details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
@@ -273,18 +302,26 @@ Add long timeouts to any `wrangler` invocation. If a command returns nothing,
    `npx wrangler secret put ENCRYPTION_KEY`. Without it `/settings/providers`
    reports `writable: false` and every credential write returns 503
    `ENCRYPTION_UNAVAILABLE`. Verified 2026-09-29: **not yet set in production.**
-3. ⏸️ **Google OAuth is the LAST item of the FINAL phase** (user decision,
+   Not set unilaterally — it mutates production state, so it waits for the user.
+4. ⏸️ **Google OAuth is the LAST item of the FINAL phase** (user decision,
    2026-09-28). Do not build `/auth/google` or sessions before then.
-   `DEV_USER_ID` in `routes.ts` is the deliberate stand-in.
-4. ⚠️ **Hyperdrive** configs (`DB`, `DB_FRESH`) — bound in `wrangler.jsonc`,
+   `DEV_USER_ID` in `routes.ts` is the deliberate stand-in. Until it lands,
+   "new mail" is the event trigger firing off the sync cursor, not real Gmail.
+5. ⚠️ **Hyperdrive** configs (`DB`, `DB_FRESH`) — bound in `wrangler.jsonc`,
    connection resolution unverified (audit item).
-5. ⚠️ **CI is a Python pipeline** — will need replacing with TypeScript.
-6. 🛡️ **A user-supplied base URL is a fetch target, not a string.** It is
+6. ⚠️ **CI is a Python pipeline** — will need replacing with TypeScript.
+7. 🛡️ **A user-supplied base URL is a fetch target, not a string.** It is
    validated as https-only, with plain `http` allowed *only* on loopback and
    *only* for a provider flagged `local`. Additionally, a base URL from
    `ai_config` is honoured **only** for `custom`/`local` providers — otherwise
    the registered provider URL wins, so no stored value can repoint a
    key-bearing request at an internal address. Verified with unit tests.
+8. 🗑️ **A schedule entry only self-heals if it is ever claimed.** The tick drops
+   an entry whose skill has been deleted, and `POST /skills/sync` rebuilds
+   wholesale — but an *armed* (event) entry is never due, so if a skill is
+   deleted by anything other than this API, its armed row lingers until the next
+   cursor advance or a sync. Bounded to one row per removed event skill, and
+   the repair path exists; not worth a watcher yet.
 
 Note: `CLOUDFLARE_API_TOKEN` is not needed — the wrangler OAuth token is valid
 and deploys succeed (verified 2026-09-28: deployed v0.2.0, `/health` → `ok`).

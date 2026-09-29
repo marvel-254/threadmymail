@@ -110,11 +110,12 @@ a turn until a key is saved in-app.
 
 ---
 
-## ⏳ Next: Phase 2 remainder → Phase 3
+## ⏳ Next: Phase 4 (workflows, undo, activity feed)
 
-**Phase 1 (the agent exists) is done** — the table below is kept for the record;
-1.4–1.7 are complete, 1.8 is split, 1.9 is the open item that unblocks real
-completions.
+**Phases 1–3 are done.** Phase 1 (the agent exists), Phase 2 (it reads real
+mail) and Phase 3 (it acts unattended) are built, verified end to end, and
+committed. 1.9 — pasting a real provider key — is the one item that still
+blocks a live model turn, and it is a user action, not engineering.
 
 ### Phase 2 remainder (current)
 
@@ -187,7 +188,7 @@ completions.
 | **0** | Foundation + CPU spike | ✅ **PASSED** |
 | 1 | Agent runtime, tool registry, streaming chat | You can talk to it and watch tool calls |
 | 2 | Gmail tools, todo tools, artifact bindings | It reads mail; a checkbox is a real write it knows about |
-| 3 | Heartbeat, skill engine, morning briefing | It acts before you open the app |
+| 3 | Heartbeat, skill engine, morning briefing | ✅ **It acts before you open the app** |
 | 4 | Workflows, budgets, kill switch, undo, activity feed | Kill switch stops a run; undo reverses a send |
 | 5 | Calendar: freebusy, booking, watch, prep | "Find 30min with Dana and Alex" → real slots → booked |
 | 6 | Subagents + memory + pgvector RAG | It recalls an old commitment unprompted |
@@ -234,6 +235,80 @@ when convenient — they are not referenced by anything.
 Append here after any session that changes code or docs. Keep it short: what
 changed, how it was verified, what is left. This is how the next agent picks up
 without re-deriving anything.
+
+### 2026-09-29 — Phase 3: the heartbeat fires (skills act unattended)
+
+**Started from:** `8e470fb` (multi-provider BYOK). Schedule math, the DO engine,
+the API wiring and the Settings UI were all built and typecheck-clean; the open
+bug was that a `cron` skill never entered the schedule.
+
+**The bug was mine, not the scheduler's.** `resolveNextDue` reads
+`trigger.config.expr`; the E2E script had been writing `config.cron`. The
+engine was correct. But a silent `null` return is the worst possible failure
+mode for this feature — a skill that quietly never runs is indistinguishable
+from an agent that decided not to help. Triggers are now validated on write, so
+a malformed one is a 400 naming the exact shape. The engine still drops an
+unknown kind at its own trust boundary, because the API being trusted to be
+correct is not the same as it being well-formed.
+
+**Two more bugs found by actually running it.**
+
+*A recurring skill could be silently unscheduled.* `applyQuietHours` returned
+`atMs: null` for cron, meaning "skip this cycle"; the DO read that null as
+"remove this entry". A cron skill whose slot landed inside quiet hours would
+have been dropped from the schedule on the first night and never run again,
+while the Settings panel showed nothing wrong. Every kind now returns a real
+instant and the DO recomputes the cron slot from it. Regression-tested
+(`test/quiet_test.mjs`).
+
+*Quiet hours churned the database all night.* Re-queuing at the skill's own
+next slot is correct but re-claims and re-defers every five minutes for the
+whole quiet period, buying a Postgres round trip to relearn something already
+known. One defer per quiet period instead.
+
+Also fixed while here: the tick reported `ran: <entries touched>`, so a tick
+that skipped everything on budget read as a busy one. It now separates
+`processed` (what it took responsibility for) from `ran` (what reached the
+model).
+
+**Verified end to end against a mock provider**, not just in unit tests:
+
+- cron `* * * * *` → parked, claimed, ran, 12 tool calls, rescheduled to the
+  next minute; `agent_runs` row with `trigger: 'cron'`
+- event skill → armed and *not* fired; advancing the mail cursor armed it,
+  the next tick ran it, and it re-armed
+- budget `max_runs_per_day: 1` → second tick `skipped`, with the count in the
+  reason. `checkSkillBudget` had been dead code until now
+- quiet hours → `deferred`, re-queued past the window
+- kill switch → `aborted: 'kill_switch'`
+- **shadow window, both ways**: `email.send` was intercepted and recorded as
+  `dry_run` activity rows with nothing sent; a skill holding only
+  `todo.create` created 12 real todos and wrote **zero** dry-run rows. The
+  window blocks only what cannot be taken back
+- stale entries for deleted skills dropped themselves on the next tick
+
+**Invariant 1 is now proven, not asserted.** A poison-database test replaces
+`pg` with a stub that records every call: an idle tick and a kill-switch
+short-circuit both issue literally zero. Committed alongside 98 schedule cases
+covering both DST transitions across ten zones, and 12 lease cases over a
+hand-written SQL engine.
+
+**Not committed to prod:** `ENCRYPTION_KEY` remains unset, so
+`/settings/providers` still reports `writable: false` and a live model turn
+remains blocked on the user pasting a key. Left alone deliberately — it mutates
+production state.
+
+**Deployed** (`d3b45d1e`), which surfaced a pre-existing defect: production
+answered `/health` with `environment: "development"` and carried a `localhost`
+Google OAuth callback. Neither is read by any code path yet, but the deployable
+config was lying about the host. Deployed values now live in `wrangler.jsonc`
+and `wrangler dev` overrides them from `.dev.vars`.
+
+**Commits:** `121b8f3` schedule math · `dc2157f` DO engine · `21f8049` API ·
+`837d7e7` frontend · `a13e4b3` environment fix.
+
+**Next:** Phase 4 (workflows, undo, activity feed). `ENCRYPTION_KEY` and a real
+provider key are both user actions.
 
 ### 2026-09-29 — multi-provider model routing (BYOK for all providers)
 
@@ -500,6 +575,8 @@ which is exactly why they are written down:
 
 1. **An idle tick performs zero Postgres queries.** Otherwise Neon never
    suspends, burns its 100 CU-hour allowance mid-month, and the agent goes dark.
+   *Proven, not asserted: a poison-database test replaces `pg` with a stub that
+   records every call, and an idle tick issues literally zero.*
 2. **All heavy work runs inside a Durable Object.** Now empirically confirmed
    viable on Free.
 3. **Read-after-write goes through `DB_FRESH`.** Hyperdrive caches reads for 60 s
