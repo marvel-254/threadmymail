@@ -62,43 +62,48 @@ if [ -n "$(git -C "$ROOT" status --porcelain)" ]; then
 fi
 echo "  HEAD $(git -C "$ROOT" rev-parse --short HEAD)"
 
-# ── 2. Read wrangler's OAuth token for the Pages deploy ─────────────────────
-# Read straight from wrangler's own config. Never echoed.
+# ── 2. Find a working Cloudflare credential ─────────────────────────────────
+# The token is never printed.
 #
-# IMPORTANT: this is deliberately NOT exported. `wrangler pages deploy` will not
-# use its own OAuth token non-interactively and demands CLOUDFLARE_API_TOKEN,
-# so it is passed inline to that one command below. Exporting it globally breaks
-# the Worker deploy, which takes a different path and rejects the OAuth token
-# with "Invalid access token [9109]". Same bytes, two different presentations.
+# Two traps here, both hit for real on 2026-09-29:
+#
+#   a) There are two wrangler config locations. `~/.wrangler/config/` and
+#      `~/.config/.wrangler/config/` belong to different wrangler versions, and
+#      `wrangler login` writes to whichever one the binary you typed uses. A
+#      fresh login can therefore leave a stale, 403-ing token sitting in the
+#      other, so hardcoding either path is a coin flip.
+#   b) `expiration_time` inside those files is not trustworthy. It still read a
+#      value from over an hour earlier while the token in the same file worked
+#      perfectly, so trusting it would block a perfectly good session.
+#
+# Therefore: try each candidate and actually call the API. A token is accepted
+# only if it authenticates right now, not because some file claims it should.
 step "Authenticating"
-WRANGLER_CONFIG="${WRANGLER_CONFIG:-$HOME/.config/.wrangler/config/default.toml}"
-if [ ! -f "$WRANGLER_CONFIG" ]; then
-  fail "no wrangler credentials at $WRANGLER_CONFIG — run 'wrangler login' in an interactive terminal"
-fi
-OAUTH_TOKEN="$(tr ',' '\n' < "$WRANGLER_CONFIG" | grep oauth_token | cut -d'"' -f2)"
-[ -n "$OAUTH_TOKEN" ] || fail "could not read oauth_token from $WRANGLER_CONFIG"
-
-# Wrangler refreshes its OAuth token transparently in an interactive shell but
-# cannot here, and when it is stale it fails with two unrelated-looking errors:
-# "Invalid access token [9109]" on one path, and "it's necessary to set a
-# CLOUDFLARE_API_TOKEN environment variable" on the other. Neither mentions
-# expiry and retrying does not help, so check the clock up front and name the
-# actual problem.
-EXPIRY="$(tr ',' '\n' < "$WRANGLER_CONFIG" | grep expiration_time | cut -d'"' -f2 || true)"
-if [ -n "$EXPIRY" ] && date -d "$EXPIRY" +%s >/dev/null 2>&1; then
-  EXPIRY_EPOCH="$(date -d "$EXPIRY" +%s)"
-  NOW_EPOCH="$(date +%s)"
-  if [ "$NOW_EPOCH" -ge "$EXPIRY_EPOCH" ]; then
-    fail "the wrangler login expired at $EXPIRY (now $(date -u +%Y-%m-%dT%H:%M:%SZ)).
-     This is a session expiry, not a code problem. Re-authenticate with:
-         wrangler login
-     That needs a browser, so it cannot be done from a script."
+CANDIDATES=(
+  "${WRANGLER_CONFIG:-}"
+  "$HOME/.wrangler/config/default.toml"
+  "$HOME/.config/.wrangler/config/default.toml"
+)
+OAUTH_TOKEN=""
+for cfg in "${CANDIDATES[@]}"; do
+  [ -n "$cfg" ] && [ -f "$cfg" ] || continue
+  candidate="$(tr ',' '\n' < "$cfg" | grep oauth_token | cut -d'"' -f2 || true)"
+  [ -n "$candidate" ] || continue
+  if [ "$(curl -sS -m 20 -o /dev/null -w '%{http_code}' \
+        -H "Authorization: Bearer $candidate" \
+        "https://api.cloudflare.com/client/v4/accounts" 2>/dev/null)" = "200" ]; then
+    OAUTH_TOKEN="$candidate"
+    echo "  authenticated via $cfg"
+    break
   fi
-  echo "  session valid for $(( (EXPIRY_EPOCH - NOW_EPOCH) / 60 )) more minutes"
-elif [ -n "$EXPIRY" ]; then
-  echo "  ! could not parse expiration_time '$EXPIRY' — continuing"
-fi
-
+  echo "  stale credentials in $cfg — skipping"
+done
+[ -n "$OAUTH_TOKEN" ] || fail "no working Cloudflare credential in any of:
+     ${CANDIDATES[*]}
+     Re-authenticate with:  wrangler login
+     If you have just logged in and still see this, the login was written to a
+     different wrangler config than the one being read. Run wrangler login from
+     apps/worker so it matches the pinned binary."
 export CLOUDFLARE_ACCOUNT_ID
   echo "  using wrangler OAuth token (not printed)"
 
