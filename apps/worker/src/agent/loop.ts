@@ -166,7 +166,15 @@ export class Agent {
           .reverse()
           .find((m) => m.role === 'assistant' && m.content)?.content ?? '';
 
-      await this.finishRun(runId, 'completed', totals, null, finalText);
+      // An aborted run is a state of record, not a success: run history and
+      // POST /agent/runs must be able to tell the two apart.
+      await this.finishRun(
+        runId,
+        stopReason === 'aborted' ? 'aborted' : 'completed',
+        totals,
+        null,
+        finalText,
+      );
 
       return { runId, text: finalText, toolCallCount, usage: totals, stopReason, escalated };
     } catch (error) {

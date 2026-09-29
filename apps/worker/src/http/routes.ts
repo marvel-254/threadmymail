@@ -18,6 +18,7 @@ import {
   Db,
   EMAIL_METADATA_COLUMNS,
   MEMORY_COLUMNS,
+  RUN_COLUMNS,
   TODO_COLUMNS,
   type DbEnv,
   type Row,
@@ -28,6 +29,8 @@ import { ERROR } from '../tools/registry.js';
 type Bindings = DbEnv & {
   /** D1 blob store. Email bodies only — Postgres holds the key (invariant 4). */
   BODIES: D1Database;
+  /** The agent DO. POST /agent/runs and abort delegate execution here. */
+  AGENT: DurableObjectNamespace;
 };
 
 type Vars = { Bindings: Bindings };
@@ -857,6 +860,121 @@ routes.post('/skills/:id/run', handler(async (c) => {
     'The agent runtime is not available in this build.',
     503,
   );
+}));
+
+// ── Agent runs ─────────────────────────────────────────────────────────────
+//
+// The WebSocket (/agent/stream) is the primary interface (API.md §3); these
+// endpoints exist for scripting and tests. Execution lives in the Durable
+// Object — the same pipeline, kill switch and abort path as chat — so POST
+// forwards and the DO answers. List/detail read Postgres directly: run
+// history is the audit trail and must not require the DO to be awake.
+
+routes.post('/agent/runs', handler(async (c) => {
+  const userId = getUserId(c);
+  const body = await readJson(c);
+  const content = requireString(body, 'content', 20_000);
+  const skillId = nullableString(body, 'skill_id', 64);
+
+  const doRes = await c.env.AGENT
+    .get(c.env.AGENT.idFromName('main'))
+    .fetch('https://do/runs', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, content, skill_id: skillId ?? null }),
+    });
+  // The DO already answers in the standard envelope — forward as-is.
+  return doRes;
+}));
+
+routes.get('/agent/runs', handler(async (c) => {
+  const userId = getUserId(c);
+  const params: unknown[] = [userId];
+  const where: string[] = ['r.user_id = $1'];
+
+  const status = c.req.query('status');
+  if (status) {
+    params.push(status);
+    where.push(`r.status = $${params.length}`);
+  }
+  const trigger = c.req.query('trigger');
+  if (trigger) {
+    params.push(trigger);
+    where.push(`r.trigger = $${params.length}`);
+  }
+
+  params.push(limitParam(c, 50, 200));
+  const rows = await db(c).queryFresh<Row>(
+    `SELECT r.id, r.trigger, r.status, r.model, r.tokens_in, r.tokens_out,
+            r.cost_usd, r.error, r.started_at, r.completed_at,
+            COALESCE(t.tool_calls, 0) AS tool_calls
+       FROM agent_runs r
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) AS tool_calls FROM tool_calls tc WHERE tc.run_id = r.id
+       ) AS t ON TRUE
+      WHERE ${where.join(' AND ')}
+      ORDER BY r.started_at DESC
+      LIMIT $${params.length}`,
+    params,
+  );
+  return ok(rows);
+}));
+
+/** Full run detail including every tool_calls row — the audit view. */
+routes.get('/agent/runs/:id', handler(async (c) => {
+  const userId = getUserId(c);
+  const id = uuidParam(c, 'id');
+  const run = await db(c).oneFresh<Row>(
+    `SELECT ${RUN_COLUMNS} FROM agent_runs WHERE id = $1 AND user_id = $2`,
+    [id, userId],
+  );
+  if (!run) throw notFound('Run');
+  const calls = await db(c).queryFresh<Row>(
+    `SELECT id, tool, args, result, ok, latency_ms, reversible, undo_ref, created_at
+       FROM tool_calls WHERE run_id = $1 ORDER BY created_at ASC`,
+    [id],
+  );
+  return ok({ ...run, tool_calls: calls });
+}));
+
+routes.post('/agent/runs/:id/abort', handler(async (c) => {
+  const userId = getUserId(c);
+  const id = uuidParam(c, 'id');
+  const run = await db(c).oneFresh<Row>(
+    `SELECT ${RUN_COLUMNS} FROM agent_runs WHERE id = $1 AND user_id = $2`,
+    [id, userId],
+  );
+  if (!run) throw notFound('Run');
+
+  const markAborted = () =>
+    db(c).oneFresh<Row>(
+      `UPDATE agent_runs SET status = 'aborted', completed_at = NOW()
+        WHERE id = $1 AND user_id = $2 AND completed_at IS NULL
+        RETURNING ${RUN_COLUMNS}`,
+      [id, userId],
+    );
+
+  // Only a still-open run can be aborted; for those, tell the DO to interrupt
+  // the in-flight execution. A finished run is returned untouched.
+  let signalSent = false;
+  if (run['completed_at'] === null) {
+    const doRes = await c.env.AGENT
+      .get(c.env.AGENT.idFromName('main'))
+      .fetch('https://do/runs/abort', {
+        method: 'POST',
+        body: JSON.stringify({ run_id: id }),
+      });
+    signalSent = ((await doRes.json()) as { live: boolean }).live;
+  }
+
+  const updated = await markAborted();
+  if (updated) return ok({ ...updated, abort_signal_sent: signalSent });
+
+  // Lost the race — the run finished between the SELECT and the UPDATE.
+  const current = await db(c).oneFresh<Row>(
+    `SELECT ${RUN_COLUMNS} FROM agent_runs WHERE id = $1 AND user_id = $2`,
+    [id, userId],
+  );
+  return ok({ ...(current ?? run), abort_signal_sent: false });
 }));
 
 // ── Memories ───────────────────────────────────────────────────────────────
