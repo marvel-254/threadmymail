@@ -39,6 +39,9 @@ import {
   validateBaseUrl,
   type ProviderSpec,
 } from '../agent/providers.js';
+import { buildSchedule } from '../agent/heartbeat.js';
+import { isValidCron } from '../agent/schedule.js';
+import { loadAgentConfigFresh } from '../agent/config.js';
 import { ERROR } from '../tools/registry.js';
 
 type Bindings = DbEnv & {
@@ -84,6 +87,36 @@ function bodies(c: Context<Vars>): BodyStore {
 
 function credentials(c: Context<Vars>): CredentialStore {
   return new CredentialStore(db(c), c.env.ENCRYPTION_KEY);
+}
+
+/**
+ * Recompute the user's schedule from the skills table and park it in the
+ * Durable Object.
+ *
+ * Called after anything that can change what runs when: a skill created,
+ * edited, enabled, disabled or deleted, or a change to timezone, digest time or
+ * quiet hours. This is the ONLY writer of the schedule, and the reason an idle
+ * 5-minute tick needs no database (see agent/heartbeat.ts).
+ *
+ * Failures are logged, never thrown. A user who just saved a skill must not be
+ * told it failed because the DO was briefly unreachable — the schedule catches
+ * up on the next mutation, and POST /skills/sync repairs it on demand.
+ */
+async function refreshSchedule(c: Context<Vars>, userId: string): Promise<number> {
+  try {
+    const entries = await buildSchedule(db(c), userId, Date.now());
+    const res = await c.env.AGENT.get(c.env.AGENT.idFromName('main')).fetch(
+      new Request('https://do/schedule', {
+        method: 'POST',
+        body: JSON.stringify({ entries }),
+      }),
+    );
+    const body = (await res.json().catch(() => ({}))) as { stored?: number };
+    return body.stored ?? 0;
+  } catch (error) {
+    console.error('[heartbeat] schedule refresh failed', error);
+    return 0;
+  }
 }
 
 // ── Envelope ───────────────────────────────────────────────────────────────
@@ -640,10 +673,17 @@ routes.put('/settings/providers/:provider', handler(async (c) => {
   // (rotating an endpoint, or clearing one), and whether a turn can actually run
   // is decided at request time by NO_API_KEY — not here.
   let apiKey: string | undefined;
-  if (apiKeyRaw !== undefined) {
-    const checked = validateApiKey(apiKeyRaw);
-    if (!checked.ok) throw new HttpError(ERROR.INVALID_ARGS, checked.message, 400);
-    apiKey = checked.value;
+  if (apiKeyRaw !== undefined && apiKeyRaw !== null) {
+    // A local provider (ollama) needs no key, so an empty string is a legitimate
+    // value meaning "none" rather than a malformed one. Every other provider
+    // must get a real key, and an empty field is a mistake worth reporting.
+    if (apiKeyRaw === '' && provider.local) {
+      apiKey = undefined;
+    } else {
+      const checked = validateApiKey(apiKeyRaw);
+      if (!checked.ok) throw new HttpError(ERROR.INVALID_ARGS, checked.message, 400);
+      apiKey = checked.value;
+    }
   }
 
   let baseUrl: string | null | undefined;
@@ -760,6 +800,9 @@ routes.get('/settings', handler(async (c) => {
 
 const CONTACT_POLICIES = ['ask', 'allow', 'block'] as const;
 
+/** 24-hour local wall-clock time. Shared by digest_time and quiet_hours. */
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 /**
  * Validate the model slots in an `ai_config` patch.
  *
@@ -827,6 +870,39 @@ routes.put('/settings', handler(async (c) => {
     }
   }
 
+  // The digest time decides when the agent acts without being asked, so a typo
+  // here is worth a 400 rather than a silent fall back to 07:00 the user never
+  // agreed to. normalizePrefs would accept it, but only the write path can
+  // explain the rejection.
+  if (prefs && 'digest_time' in prefs) {
+    const digestTime = prefs['digest_time'];
+    if (typeof digestTime !== 'string' || !HHMM_RE.test(digestTime)) {
+      throw new HttpError(
+        ERROR.INVALID_ARGS,
+        "prefs.digest_time must be a 24-hour local time, 'HH:MM' (e.g. '07:30').",
+        400,
+      );
+    }
+  }
+
+  // Same reasoning for the quiet-hours window, which defers scheduled work.
+  if (prefs && 'quiet_hours' in prefs && prefs['quiet_hours'] !== null) {
+    const window = asRecordOrNull(prefs['quiet_hours']);
+    const valid =
+      window !== null &&
+      typeof window['start'] === 'string' &&
+      typeof window['end'] === 'string' &&
+      HHMM_RE.test(window['start']) &&
+      HHMM_RE.test(window['end']);
+    if (!valid) {
+      throw new HttpError(
+        ERROR.INVALID_ARGS,
+        "prefs.quiet_hours must be { start: 'HH:MM', end: 'HH:MM' } or null.",
+        400,
+      );
+    }
+  }
+
   const params: unknown[] = [userId];
   const sets: string[] = [];
 
@@ -868,6 +944,9 @@ routes.put('/settings', handler(async (c) => {
     params,
   );
   if (!row) throw notFound('User');
+  // Timezone, digest time and quiet hours all decide what the heartbeat does,
+  // so a change to any of them invalidates the parked schedule.
+  await refreshSchedule(c, userId);
   return ok(settingsPayload(row));
 }));
 
@@ -977,6 +1056,71 @@ routes.get('/skills', handler(async (c) => {
   return ok(rows);
 }));
 
+// Registered before /skills/:id — a literal segment must win the match, or
+// GET /skills/schedule resolves to the :id handler and 400s on "schedule"
+// as if it were a UUID.
+
+routes.get('/skills/schedule', handler(async (c) => {
+  const userId = getUserId(c);
+  const res = await c.env.AGENT.get(c.env.AGENT.idFromName('main')).fetch(
+    new Request('https://do/schedule'),
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    entries?: Array<{ skill_id: string; user_id: string; kind: string; next_due_ms: number }>;
+  };
+
+  const { prefs } = await loadAgentConfigFresh(db(c), userId);
+  const mine = (body.entries ?? []).filter((entry) => entry.user_id === userId);
+  const rows = await db(c).queryFresh<{ id: string; name: string }>(
+    `SELECT id, name FROM skills WHERE user_id = $1`,
+    [userId],
+  );
+  const nameById = new Map(rows.map((row) => [row.id, row.name]));
+
+  return ok({
+    timezone: prefs.timezone,
+    digest_time: prefs.digest_time,
+    quiet_hours: prefs.quiet_hours,
+    entries: mine.map((entry) => ({
+      skill_id: entry.skill_id,
+      name: nameById.get(entry.skill_id) ?? '(deleted)',
+      kind: entry.kind,
+      next_due_ms: entry.next_due_ms,
+      // Negative means armed for an event and not on a timer.
+      next_due: entry.next_due_ms >= 0 ? new Date(entry.next_due_ms).toISOString() : null,
+    })),
+  });
+}));
+
+/** Repair the parked schedule on demand, e.g. after adding a schedule column. */
+routes.post('/skills/sync', handler(async (c) => {
+  const stored = await refreshSchedule(c, getUserId(c));
+  return ok({ stored });
+}));
+
+/**
+ * Run everything that is due for THIS user, right now.
+ *
+ * The same code path the five-minute cron takes — same kill switch, quiet
+ * hours, budget, shadow window and run loop — just without the wait. It exists
+ * so a newly created skill can be checked before its first real slot arrives,
+ * and it is scoped to the caller: the DO's claim carries a user filter, so this
+ * can never fire someone else's work.
+ */
+routes.post('/skills/tick', handler(async (c) => {
+  const userId = getUserId(c);
+  const res = await c.env.AGENT.get(c.env.AGENT.idFromName('main')).fetch(
+    new Request('https://do/heartbeat', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId }),
+    }),
+  );
+  const payload = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!res.ok || payload === null) {
+    throw new HttpError(ERROR.INTERNAL, 'The heartbeat could not be reached.', 502);
+  }
+  return ok(payload);
+}));
 routes.get('/skills/:id', handler(async (c) => {
   const userId = getUserId(c);
   const id = uuidParam(c, 'id');
@@ -988,6 +1132,52 @@ routes.get('/skills/:id', handler(async (c) => {
   return ok(row);
 }));
 
+/**
+ * Validate a skill trigger on the way in.
+ *
+ * Without this a typo produces a skill that is silently never scheduled — the
+ * one failure mode this phase exists to eliminate. The user is told the exact
+ * shape at write time instead of discovering their 9am digest never arrived.
+ */
+function validateTriggerPatch(patch: Record<string, unknown>): void {
+  const type = patch['type'];
+  if (type !== undefined) {
+    const valid = TRIGGER_TYPES.includes(type as (typeof TRIGGER_TYPES)[number]);
+    if (!valid) {
+      throw new HttpError(
+        ERROR.INVALID_ARGS,
+        `trigger.type must be one of: ${TRIGGER_TYPES.join('|')}.`,
+        400,
+      );
+    }
+  }
+  const config = asRecordOrNull(patch['config']);
+  if (type === 'cron' || patch['config'] !== undefined) {
+    if (type === 'cron') {
+      if (!config) {
+        throw new HttpError(ERROR.INVALID_ARGS, "trigger.config for a cron skill must be { expr: '...' }.", 400);
+      }
+      const expr = config['expr'];
+      if (typeof expr !== 'string' || !isValidCron(expr)) {
+        throw new HttpError(
+          ERROR.INVALID_ARGS,
+          "trigger.config.expr must be a valid 5-field cron expression (minute hour day-of-month month day-of-week), e.g. '30 7 * * 1-5'.",
+          400,
+        );
+      }
+    }
+  }
+  if (type === 'digest' && patch['config'] !== undefined && !config) {
+    throw new HttpError(
+      ERROR.INVALID_ARGS,
+      "trigger.config for a digest skill must be an object (e.g. {}). The time comes from prefs.digest_time.",
+      400,
+    );
+  }
+}
+
+const TRIGGER_TYPES = ['on_demand', 'cron', 'event', 'digest'] as const;
+
 routes.post('/skills', handler(async (c) => {
   const userId = getUserId(c);
   const body = await readJson(c);
@@ -996,6 +1186,7 @@ routes.post('/skills', handler(async (c) => {
   const description = optString(body, 'description', 2_000);
   const allowedTools = optStringArray(body, 'allowed_tools') ?? [];
   const trigger = optJson(body, 'trigger') ?? { type: 'on_demand', config: {} };
+  validateTriggerPatch(asRecordOrNull(trigger) ?? {});
   const budget = optJson(body, 'budget') ?? {};
   const modelSlot = optString(body, 'model_slot', 32) ?? 'inherit';
   const skipDryRun = optBool(body, 'skip_dry_run') ?? false;
@@ -1020,6 +1211,8 @@ routes.post('/skills', handler(async (c) => {
       skipDryRun ? null : new Date(Date.now() + 7 * 86_400_000).toISOString(),
     ],
   );
+  // A cron or digest skill is inert until its next slot is parked in the DO.
+  await refreshSchedule(c, userId);
   return ok(asRecord(row), 201);
 }));
 
@@ -1054,6 +1247,10 @@ routes.put('/skills/:id', handler(async (c) => {
   for (const column of ['trigger', 'budget'] as const) {
     const patch = optJson(body, column);
     if (patch) {
+      // The trigger is merged key-by-key, so the patched fragment is checked on
+      // its own terms. Anything the merge would leave unusable is rejected here
+      // rather than silently never scheduling.
+      if (column === 'trigger') validateTriggerPatch(patch);
       params.push(JSON.stringify(patch));
       sets.push(`${column} = COALESCE(${column}, '{}'::jsonb) || $${params.length}::jsonb`);
     }
@@ -1080,6 +1277,8 @@ routes.put('/skills/:id', handler(async (c) => {
     params,
   );
   if (!row) throw notFound('Skill');
+  // The trigger may have just changed, so the parked schedule is stale.
+  await refreshSchedule(c, userId);
   return ok(row);
 }));
 
@@ -1091,6 +1290,7 @@ routes.delete('/skills/:id', handler(async (c) => {
     [id, userId],
   );
   if (!row) throw notFound('Skill');
+  await refreshSchedule(c, userId);
   return ok({ id, deleted: true });
 }));
 
@@ -1112,6 +1312,9 @@ async function setSkillEnabled(c: Context<Vars>, enabled: boolean): Promise<Resp
     [id, userId, enabled],
   );
   if (!row) throw notFound('Skill');
+  // Disabling must remove it from the schedule immediately, not at its next
+  // slot: "off" has to mean off.
+  await refreshSchedule(c, userId);
   return ok(row);
 }
 
@@ -1124,13 +1327,41 @@ routes.post('/skills/:id/run', handler(async (c) => {
   );
   if (!skill) throw notFound('Skill');
 
-  // The agent loop is Phase 3; there is no executor to hand the skill to yet.
+  // Forwarded to the DO, which owns the kill switch, the abort path and the
+  // agent loop — the same pipeline a heartbeat run and a chat turn use.
+  //
+  // dryRun is false here even inside a skill's shadow window: the user pressed
+  // the button, having just read the instructions in front of them. The shadow
+  // window exists to catch what an UNATTENDED run would do.
+  const res = await c.env.AGENT.get(c.env.AGENT.idFromName('main')).fetch(
+    new Request('https://do/runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: userId,
+        content: 'Run this skill now and report what it did.',
+        skill_id: id,
+      }),
+    }),
+  );
+  const payload = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  if (res.ok && payload) return ok({ ...asRecord(payload), skill_id: id, name: skill.name });
+
+  const detail = payload === null ? null : (payload as Record<string, unknown>)['error'];
+  const wrapped = typeof detail === 'object' && detail !== null ? (detail as Record<string, unknown>) : null;
   throw new HttpError(
-    ERROR.NEEDS_CONNECTION,
-    'The agent runtime is not available in this build.',
-    503,
+    String(wrapped?.['code'] ?? ERROR.INTERNAL),
+    String(wrapped?.['message'] ?? 'The run failed.'),
+    res.status >= 400 ? res.status : 500,
   );
 }));
+
+/**
+ * What the heartbeat currently believes, and when each thing next runs.
+ *
+ * Read straight from the DO's own storage — the same rows the 5-minute tick
+ * reads. Surfacing them is the difference between "the agent will do something
+ * at 07:00" and a settings screen the user has to take on faith.
+ */
 
 // ── Agent runs ─────────────────────────────────────────────────────────────
 //
