@@ -16,15 +16,11 @@ invariants) and `IMPLEMENTATION_SUMMARY.md` (chronological session log).
 | Provider keys stored | **0** — clean slot, nothing to rotate or re-entered |
 | HEAD | see `git log --oneline -1` |
 
-> **The redesign below is committed but NOT yet deployed.** Cloudflare OAuth
-> expired mid-session and `wrangler login` needs a browser. Until someone runs
-> `wrangler login` from `apps/worker`, production is still serving the pre-
-> redesign UI. The Worker is untouched by the redesign — only the frontend
-> changed — so nothing in production is broken or inconsistent.
+**The redesign is deployed and verified.** `scripts/deploy.sh` ran end to end
+from a clean tree: Worker deployed, frontend deployed, then checked against
+production. Bundle `index-BXfoqg0f.js` / `index-jSzBMj_O.css` confirmed live.
 
-**Nothing is broken.** Everything deployed before the redesign is live and
-verified, and `scripts/deploy.sh` has been run end to end from a clean tree:
-Worker deployed, frontend deployed, then verified against production.
+**Nothing is broken.**
 
 ---
 
@@ -185,15 +181,17 @@ The redesign removed the button rather than shipping it. `/signin` now says
 that accounts do not exist yet and links to `/app` directly. When OAuth is
 built it becomes one button, and this risk disappears.
 
-### 🔴 Cloudflare auth is expired right now
+### 🟡 Cloudflare OAuth expires roughly daily
 
 Both `~/.wrangler/config/default.toml` and `~/.config/.wrangler/config/default.toml`
-return **HTTP 403 "Invalid access token"** when probed against
-`api.cloudflare.com/client/v4/accounts`. This blocks every deploy, including
-the redesign.
+returned **HTTP 403 "Invalid access token"** mid-session and blocked the
+redesign deploy until `wrangler login` was re-run. Production was never
+affected — it kept serving the last good build the whole time.
 
-**Fix:** run `wrangler login` **from `apps/worker`**. Production is unaffected —
-it is still serving the last successful build.
+Expect this before the next deploy. If the auth step fails, run
+**`wrangler login` from `apps/worker`**. Note that a global `wrangler` may be a
+different version from the pinned binary in `apps/worker/node_modules`, and it
+writes its token to whichever config *it* uses — so run it from that directory.
 
 ### 🟡 Two wrangler credential locations, and only one works
 
