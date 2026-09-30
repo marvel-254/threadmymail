@@ -1,0 +1,574 @@
+/*
+ * Silk — the ThreadMyMail design system.
+ *
+ * Implemented as a token layer rather than a utility framework. Neomorphism is
+ * carried entirely by shadow pairs and a single consistent surface colour per
+ * tier; a utility framework would scatter those values across class strings and
+ * make the light source impossible to keep coherent. Tokens make it one edit.
+ *
+ * Source of truth: docs/design/silk_neomorphic_dark/DESIGN.md
+ *
+ * ── On the two colour systems in the spec ──────────────────────────────────
+ * DESIGN.md describes both a Material-3 ramp (#0b1326 …) and a prose "palette
+ * architecture" (#0f172a base, #6366f1 indigo). They disagree. Resolution, from
+ * counting actual usage across all 20 screens:
+ *
+ *   surfaces  → M3 ramp.  #0b1326 appears 103×, #172033 19×, #0b1120 8×.
+ *               The prose base #0f172a appears 0× and is not a real colour
+ *               here.
+ *   accents   → both, in different roles. Lavender (#c0c1ff 59×, #8083ff 28×)
+ *               carries solid fills and text. Indigo #6366f1 appears only 13×
+ *               and almost always as a glow — rgba(99,102,241,…) — which is
+ *               what the prose means by "violet-indigo luminescence... like
+ *               darkroom instrument lights". So: lavender is the pigment,
+ *               indigo is the light.
+ *   tertiary  → M3 #7bd0ff (56×) over the prose's #38bdf8 (9×).
+ *
+ * The virtual light source is top-left (-135°) on every tier. That is not
+ * decorative: it is the only reason the depth reads as physical. Changing it on
+ * one component breaks the illusion for the whole screen.
+ */
+
+/* ── Typography ─────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
+
+:root {
+  /* ── Surface continuum ─────────────────────────────────────────────────
+     One family, five depths. A neomorphic element MUST sit on the same colour
+     as its parent or the extrusion stops reading as carved from anything. */
+  --surface-lowest: #060e20;
+  --surface-low: #0b1326;
+  --surface: #131b2e;
+  --surface-container: #171f33;
+  --surface-high: #222a3d;
+  --surface-highest: #2d3449;
+
+  /* Recessed wells carve from this, not from --surface. */
+  --surface-inset: #0e1626;
+
+  /* ── Ink ──────────────────────────────────────────────────────────────── */
+  --on-surface: #dae2fd;
+  --on-surface-variant: #c7c4d7;
+  --ink: #f1f5f9;
+  --ink-body: #cbd5e1;
+  --ink-muted: #94a3b8;
+  --ink-faint: #475569;
+
+  --outline: #908fa0;
+  --outline-variant: #464554;
+
+  /* ── Accents ─────────────────────────────────────────────────────────── */
+  --primary: #c0c1ff;
+  --on-primary: #1000a9;
+  --primary-container: #8083ff;
+  --on-primary-container: #0d0096;
+
+  --secondary: #bdc2ff;
+  --secondary-container: #2f3aa3;
+  --on-secondary-container: #a8afff;
+
+  --tertiary: #7bd0ff;
+  --on-tertiary: #00354a;
+
+  /* Pigment vs light. See the header note. */
+  --accent: #6366f1;
+  --accent-deep: #4f46e5;
+  --accent-soft: #818cf8;
+
+  --success: #6ee7b7;
+  --warning: #fcd34d;
+  --danger: #ffb4ab;
+  --danger-deep: #93000a;
+
+  /* ── Elevation: the 4 tactile tiers ────────────────────────────────────
+     Every shadow pairs a dark umbra (bottom-right) with a light specular
+     glint (top-left). Dropping the glint is the single most common way to
+     make this style look like flat dark mode. */
+  --depth-minus-1: inset 3px 3px 6px rgba(0, 0, 0, 0.65),
+    inset -2px -2px 5px rgba(255, 255, 255, 0.035);
+
+  --depth-0: none;
+
+  --depth-1: 4px 4px 10px rgba(0, 0, 0, 0.5), -3px -3px 8px rgba(255, 255, 255, 0.04);
+
+  --depth-2: 8px 12px 24px rgba(0, 0, 0, 0.65), -4px -4px 12px rgba(255, 255, 255, 0.05);
+
+  --depth-hover: 5px 6px 14px rgba(0, 0, 0, 0.55), -3px -3px 9px rgba(255, 255, 255, 0.05);
+
+  /* Active elements emit rather than merely reflect. */
+  --aura: 0 0 20px rgba(99, 102, 241, 0.22);
+  --aura-wide: 0 0 24px rgba(129, 140, 248, 0.5);
+
+  --focus-ring: 0 0 0 2px rgba(99, 102, 241, 0.45);
+
+  /* Hairlines are specular, not borders. A visible border flattens the effect. */
+  --glint: rgba(255, 255, 255, 0.06);
+  --glint-strong: rgba(255, 255, 255, 0.09);
+
+  /* ── Shape ─────────────────────────────────────────────────────────────
+     Token level 2. Severe corners destroy the sculpted read. */
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+  --r-full: 9999px;
+
+  /* ── Space ─────────────────────────────────────────────────────────── */
+  --gutter: 1.5rem;
+  --gutter-mobile: 0.75rem;
+  --margin: 2rem;
+  --margin-mobile: 1rem;
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+
+  /* ── Type ──────────────────────────────────────────────────────────── */
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ── Layout ────────────────────────────────────────────────────────── */
+  --rail: 240px;
+  --rail-collapsed: 64px;
+  --feed: 380px;
+  --work-min: 560px;
+  --topbar: 56px;
+
+  /* ── Motion ──────────────────────────────────────────────────────────
+     Short and unfussy. This interface is meant to be lived in for hours;
+     anything slower becomes fatigue. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --t-fast: 120ms;
+  --t-base: 200ms;
+  --t-slow: 320ms;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-low);
+  color: var(--ink-body);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 22px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  color: var(--ink);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+h1 { font-size: 28px; line-height: 36px; font-weight: 600; }
+h2 { font-size: 24px; line-height: 32px; font-weight: 600; }
+h3 { font-size: 20px; line-height: 28px; font-weight: 500; }
+h4 { font-size: 16px; line-height: 24px; font-weight: 600; }
+
+p { margin: 0 0 var(--space-md); }
+p:last-child { margin-bottom: 0; }
+
+a {
+  color: var(--accent-soft);
+  text-decoration: none;
+  transition: color var(--t-fast) var(--ease-out);
+}
+a:hover { color: var(--primary); }
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* One focus treatment everywhere. Never remove it without replacing it —
+   the recessed wells make the default ring almost invisible. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--r-sm);
+}
+
+::selection {
+  background: rgba(99, 102, 241, 0.35);
+  color: var(--ink);
+}
+
+/* ── Scrollbars ───────────────────────────────────────────────────────────
+   Recessed, like everything else. A default light scrollbar is a bright bar
+   across a dark screen. */
+.scroll-silk {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-highest) transparent;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.scroll-silk::-webkit-scrollbar { width: 10px; height: 10px; }
+.scroll-silk::-webkit-scrollbar-track { background: transparent; }
+.scroll-silk::-webkit-scrollbar-thumb {
+  background: var(--surface-highest);
+  border-radius: var(--r-full);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.scroll-silk::-webkit-scrollbar-thumb:hover { background-clip: content-box; background-color: var(--outline-variant); }
+
+/* ── Iconography ────────────────────────────────────────────────────────── */
+
+.ms {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  vertical-align: middle;
+}
+
+/* ── Elevation primitives ───────────────────────────────────────────────── */
+
+.t-well      { background: var(--surface-inset); box-shadow: var(--depth-minus-1); }
+.t-plane     { background: var(--surface-low); box-shadow: var(--depth-0); }
+.t-raised    { background: var(--surface-container); box-shadow: var(--depth-1); }
+.t-floating  { background: var(--surface-high); box-shadow: var(--depth-2); }
+
+/* Any raised element gets its top specular edge. */
+.t-raised,
+.t-floating {
+  position: relative;
+}
+.t-raised::before,
+.t-floating::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: var(--glint);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* Interactive lift. 1px only — the shadow does the work, not the travel. */
+.t-lift {
+  transition: box-shadow var(--t-base) var(--ease-out),
+    transform var(--t-base) var(--ease-out),
+    background-color var(--t-base) var(--ease-out);
+}
+.t-lift:hover {
+  box-shadow: var(--depth-hover);
+  transform: translateY(-1px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-lift { transition: none; }
+  .t-lift:hover { transform: none; }
+}
+
+.t-active {
+  background: var(--surface-highest);
+  box-shadow: var(--depth-minus-1);
+  transform: none;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: 9px 16px;
+  border: 0;
+  border-radius: var(--r-lg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+  transition: box-shadow var(--t-base) var(--ease-out),
+    transform var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out),
+    background-color var(--t-base) var(--ease-out);
+}
+
+/* Primary: the only element that both extrudes and emits. */
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%);
+  color: #fff;
+  box-shadow: inset 1px 1px 1px rgba(255, 255, 255, 0.25),
+    4px 4px 12px rgba(0, 0, 0, 0.4), 0 0 16px rgba(99, 102, 241, 0.3);
+}
+.btn-primary:hover {
+  box-shadow: inset 1px 1px 1px rgba(255, 255, 255, 0.25),
+    5px 5px 14px rgba(0, 0, 0, 0.45), var(--aura-wide);
+}
+.btn-primary:active {
+  box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.4),
+    inset -1px -1px 3px rgba(255, 255, 255, 0.1);
+  transform: translateY(1px);
+}
+
+.btn-secondary {
+  background: var(--surface-container);
+  color: var(--ink-body);
+  box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.5), -2px -2px 6px rgba(255, 255, 255, 0.04);
+}
+.btn-secondary:hover { color: var(--ink); }
+.btn-secondary:hover { box-shadow: var(--depth-hover); }
+.btn-secondary:active { box-shadow: var(--depth-minus-1); transform: translateY(1px); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink-muted);
+  padding: 8px;
+  border-radius: var(--r-md);
+}
+.btn-ghost:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
+
+.btn-danger { background: var(--danger-container, #93000a); color: #fff; box-shadow: var(--depth-1); }
+.btn-danger:hover { background: var(--danger); color: #2b0a08; }
+
+.btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+.btn-icon { padding: 9px; border-radius: var(--r-md); }
+
+/* ── Inputs ─────────────────────────────────────────────────────────────── */
+
+.input {
+  width: 100%;
+  padding: 11px 14px;
+  background: var(--surface-inset);
+  border: 0;
+  border-radius: var(--r-lg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 22px;
+  box-shadow: var(--depth-minus-1);
+  transition: box-shadow var(--t-base) var(--ease-out);
+}
+.input::placeholder { color: var(--ink-faint); }
+.input:focus { outline: none; box-shadow: var(--depth-minus-1), var(--focus-ring); }
+
+textarea.input { resize: vertical; min-height: 96px; line-height: 22px; }
+
+.label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+  margin-bottom: var(--space-sm);
+}
+
+.field { margin-bottom: var(--space-lg); }
+.hint { font-size: 12px; line-height: 16px; color: var(--ink-faint); margin-top: var(--space-sm); }
+
+/* ── Checkbox / switch ──────────────────────────────────────────────────── */
+
+.check {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--surface-inset);
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.7);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  transition: box-shadow var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+}
+.check[data-on='true'] {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.4), -1px -1px 3px rgba(255, 255, 255, 0.1);
+}
+.check .ms { font-size: 14px; }
+
+.switch {
+  width: 42px;
+  height: 24px;
+  flex: 0 0 42px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--surface-inset);
+  box-shadow: var(--depth-minus-1);
+  position: relative;
+  padding: 0;
+  transition: background-color var(--t-base) var(--ease-out);
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-full);
+  background: var(--surface-highest);
+  box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+  transition: transform var(--t-base) var(--ease-out), background-color var(--t-base) var(--ease-out);
+}
+.switch[data-on='true'] { background: rgba(99, 102, 241, 0.35); }
+.switch[data-on='true']::after {
+  transform: translateX(18px);
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.6);
+}
+
+/* ── Chips & pills ──────────────────────────────────────────────────────── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--surface-container);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.4), -1px -1px 3px rgba(255, 255, 255, 0.03);
+  transition: all var(--t-base) var(--ease-out);
+}
+.chip:hover { color: var(--ink-body); }
+.chip[data-active='true'] {
+  background: var(--surface-inset);
+  color: var(--accent-soft);
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.6), 0 0 10px rgba(99, 102, 241, 0.15);
+}
+.chip .ms { font-size: 15px; }
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--surface-container);
+  border-radius: var(--r-lg);
+  box-shadow: var(--depth-1);
+  padding: 20px;
+}
+.card-float {
+  background: var(--surface-high);
+  border-radius: var(--r-xl);
+  box-shadow: var(--depth-2);
+  padding: 24px;
+}
+
+/* AI summary carries a gradient wash across its top edge. */
+.card-ai {
+  position: relative;
+  background: var(--surface-container);
+  border-radius: var(--r-lg);
+  box-shadow: var(--depth-1);
+  padding: 20px;
+  overflow: hidden;
+}
+.card-ai::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: var(--glint);
+}
+.card-ai::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 84px;
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.2) 0%, transparent 100%);
+  pointer-events: none;
+}
+.card-ai > * { position: relative; z-index: 1; }
+
+/* ── Badges ─────────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.badge-accent { background: rgba(99, 102, 241, 0.18); color: var(--accent-soft); }
+.badge-success { background: rgba(110, 231, 183, 0.14); color: var(--success); }
+.badge-warn { background: rgba(252, 211, 77, 0.14); color: var(--warning); }
+.badge-danger { background: rgba(255, 180, 171, 0.14); color: var(--danger); }
+.badge-mute { background: var(--surface-highest); color: var(--ink-muted); }
+
+/* ── Utility ────────────────────────────────────────────────────────────── */
+
+.row { display: flex; align-items: center; gap: var(--space-sm); }
+.col { display: flex; flex-direction: column; }
+.spacer { flex: 1 1 auto; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.divider { height: 1px; background: var(--glint); border: 0; margin: var(--space-md) 0; }
+
+/* Live data should announce itself to a screen reader, quietly. */
+.pulse-dot {
+  width: 6px; height: 6px; border-radius: var(--r-full);
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot { animation: none !important; }
+}
+@keyframes silk-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.pulse-dot { animation: silk-pulse 2.4s var(--ease-in-out) infinite; }

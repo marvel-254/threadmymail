@@ -1,17 +1,17 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Landing from './pages/Landing.jsx';
 import SignIn from './pages/SignIn.jsx';
-import AppShell from './app/AppShell.jsx';
+import MailShell from './mail/MailShell.jsx';
 
 /**
  * Routes:
- *   /        marketing landing page (preserved)
- *   /signin  Google consent
- *   /app     the agent shell
+ *   /        marketing landing page
+ *   /signin  account access
+ *   /app     the three-pane workspace
  *
- * Phase 1+ should gate /app behind api.me(). That is deliberately not done here:
- * the Worker does not exist yet, so a hard gate would make the shell unreachable
- * and impossible to review. See docs/PLAN.md Phase 1.
+ * /app is still ungated. `api.me()` 404s until Google OAuth is built, so a hard
+ * gate would make the app permanently unreachable rather than private. This is
+ * the single largest open risk on a publicly deployed build — see HANDOFF.md.
  */
 export default function App() {
   const location = useLocation();
@@ -20,7 +20,7 @@ export default function App() {
     <Routes location={location}>
       <Route path="/" element={<Landing />} />
       <Route path="/signin" element={<SignIn />} />
-      <Route path="/app" element={<AppShell />} />
+      <Route path="/app" element={<MailShell />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

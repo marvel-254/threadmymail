@@ -7,13 +7,26 @@
   <link rel="icon" href="/favicon.ico" sizes="48x48" />
   <link rel="icon" type="image/png" href="/pwa-192x192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-  <meta name="theme-color" content="#2563EB" />
+  <meta name="theme-color" content="#0b1326" />
   <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="description" content="ThreadMyMail — an autonomous assistant that works your inbox. Millo triages, drafts and acts while you don't." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Silk design system: Space Grotesk for display, Plus Jakarta Sans for body. -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <!--
+    Material Symbols is not optional decoration here: .ms renders icon NAMES as
+    ligature glyphs, so without this font every icon in the app displays as the
+    literal word "auto_awesome" and so on.
+
+    display=block is deliberate. With the default swap, the browser paints those
+    ligature words during the font round-trip and then reflows the whole UI when
+    the font lands. Blocking is a few hundred ms of invisible icon versus a
+    visible flash of gibberish.
+  -->
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" rel="stylesheet" />
 </head>
-<body>
+<body class="silk">
   <div id="root"></div>
   <script type="module" src="/src/main.jsx"></script>
 </body>

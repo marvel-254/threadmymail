@@ -1,184 +1,306 @@
-import { useState, useEffect } from 'react';
+/**
+ * Landing — the public face.
+ *
+ * Built from the Stitch design's structure and voice: nav, hero with a live
+ * product surface, capability breakdown, a before/after, the autonomy
+ * controls, and a closing CTA.
+ *
+ * ── On the copy ──────────────────────────────────────────────────────────
+ * The original mockup copy made specific, checkable claims that this build
+ * cannot support, and marketing pages that promise things the product does not
+ * do are worse than pages that promise less:
+ *
+ *   "SOC2 Type II Certified"          no audit has ever been done
+ *   "Silk Vault Private Enclave"      no enclave; Cloudflare Workers + Neon
+ *   "AWS Nitro Enclave" (preloader)   not deployed on AWS at all
+ *   "Traverses 100,000+ past emails"  no vector index, no corpus
+ *   "within 12 milliseconds"          fabricated precision
+ *   "3.8 hours" / "14 minutes"        invented statistics
+ *   "Gmail and Outlook"               Gmail only; the rest is unbuilt
+ *   "quarantine filter", "SSN masking" neither exists
+ *
+ * Everything below is a capability that is actually present in the codebase.
+ * Where a number is used it is a real one — 36 tools is the real tool count,
+ * and it is a better line than a fabricated time saving.
+ */
+import { Link } from 'react-router-dom';
+import MilloMark from '../components/MilloMark.jsx';
 
-/* Inline SVG icons — consistent 24x24 viewBox, no emojis */
-const SparkleIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-.91L12 2z" /></svg>
-);
+const NAV = [
+  { href: '#capabilities', label: 'Capabilities' },
+  { href: '#autonomy', label: 'Millo' },
+  { href: '#shift', label: 'The shift' },
+  { href: '#security', label: 'Security' },
+];
 
-const MailIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2" ry="2" /><polyline points="2 7 12 13 22 7" /></svg>
-);
+const CAPABILITIES = [
+  {
+    icon: 'manage_search',
+    title: 'Triage that runs itself',
+    body: 'Give Millo a standing instruction — “clear the unread backlog each morning” — and it runs on a schedule, inside the same budget and the same audit trail as anything you ask for directly.',
+  },
+  {
+    icon: 'account_tree',
+    title: 'Thirty-six tools, one agent',
+    body: 'Mail, calendar, tasks, memory. Millo chooses what to call and shows you the call before it counts. There is no public endpoint that invokes a tool directly.',
+  },
+  {
+    icon: 'history',
+    title: 'Every action, written down',
+    body: 'Each thing Millo does lands in an activity log with the run that caused it. Reversible actions stay reversible; the rest are marked as such up front.',
+  },
+  {
+    icon: 'tune',
+    title: 'Your model, your key',
+    body: 'Bring a key from any of fourteen providers, or point it at your own endpoint. Keys are encrypted with AES-GCM at rest and never leave the server in readable form.',
+  },
+];
 
-const ShieldCheckIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" /></svg>
-);
+const BEFORE = [
+  'Unread threads stacked until the pile stopped meaning anything.',
+  'Half an hour hunting for the contract that mentioned the same clause.',
+  'The same three status emails rewritten, by hand, every single morning.',
+  'No record of what any assistant did on your behalf.',
+];
 
-const PhoneIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2" ry="2" /><line x1="12" y1="18" x2="12.01" y2="18" /></svg>
-);
+const AFTER = [
+  'Millo drafts, files and follows up on a schedule you set.',
+  'It searches what it has already seen and answers from the thread.',
+  'Replies arrive in your voice, queued for one click.',
+  'Every action is attributable to a run you can open and read.',
+];
 
-const MoonIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 1 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
-);
+const GUARDRAILS = [
+  {
+    icon: 'power_settings_new',
+    title: 'A kill switch that is always one click away',
+    body: 'It sits in the top bar, not in a settings submenu. One press and the agent stops acting on its own. Manual runs stay available.',
+  },
+  {
+    icon: 'visibility_off',
+    title: 'Dry-run shadowing',
+    body: 'Outbound actions can be held in shadow. Millo takes every step and writes it to the activity log, but sends nothing, until you lift the shadow.',
+  },
+  {
+    icon: 'speed',
+    title: 'Budgets and quiet hours',
+    body: 'Skills carry a daily run cap, and a quiet window defers work to the morning rather than firing it at three in the night.',
+  },
+  {
+    icon: 'lock',
+    title: 'Encrypted at rest, never logged',
+    body: 'Credentials are sealed with a key that never reaches the browser. Settings shows a fingerprint, never the key — not to you, and not to anyone debugging it.',
+  },
+];
 
-const SunIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>
-);
-
-export default function App() {
-  const [dark, setDark] = useState(() => {
-    try { return window.matchMedia('(prefers-color-scheme: dark)').matches; } catch { return false; }
-  });
-  const [installPrompt, setInstallPrompt] = useState(null);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark);
-  }, [dark]);
-
-  useEffect(() => {
-    const onPrompt = (e) => { e.preventDefault(); setInstallPrompt(e); };
-    window.addEventListener('beforeinstallprompt', onPrompt);
-    return () => window.removeEventListener('beforeinstallprompt', onPrompt);
-  }, []);
-
-  const handleInstall = () => {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    installPrompt.userChoice.then((choice) => {
-      if (choice.outcome === 'accepted') console.log('PWA installed');
-      setInstallPrompt(null);
-    });
-  };
-
+export default function Landing() {
   return (
-    <>
-      {/* Background ambient orbs */}
-      <div className="orb" style={{ width: 420, height: 420, background: '#60A5FA', top: '-120px', left: '-80px', opacity: 0.35 }} />
-      <div className="orb" style={{ width: 360, height: 360, background: '#A78BFA', bottom: '-100px', right: '-60px', opacity: 0.35 }} />
-
-      <nav className="navbar glass" aria-label="Primary">
-        <div className="nav-inner container">
-          <a href="#" className="logo" aria-label="ThreadMyMail home" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.55rem', fontSize: '1.15rem' }}><img src="/logo.svg" alt="" style={{ width: '32px', height: '32px', flexShrink: 0 }} /><span><span style={{ color: 'var(--primary)' }}>Thread</span>MyMail</span></a>
-          <div className="nav-links">
-            <a href="#features">Features</a>
-            {/* Install is secondary now. The app is published, so the page's
-                job is to get people INTO it, not to make them install it. */}
-            <a href="#install" aria-label="Install app">Install</a>
-            <a href="/app" className="btn btn-primary" style={{ padding: '0.45rem 1rem' }} aria-label="Open the app">
-              Open app
-            </a>
-            <button
-              onClick={() => setDark(!dark)}
-              className="btn btn-ghost"
-              style={{ padding: '0.45rem 0.75rem', gap: '0.35rem' }}
-              aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-              title={dark ? 'Light mode' : 'Dark mode'}
-            >
-              {dark ? <SunIcon /> : <MoonIcon />}
-            </button>
-          </div>
-        </div>
-      </nav>
+    <div className="lp">
+      <header className="lp-nav">
+        <Link to="/" className="lp-brand">
+          <MilloMark size={26} />
+          <span>ThreadMyMail</span>
+        </Link>
+        <nav className="lp-links" aria-label="Sections">
+          {NAV.map((n) => (
+            <a key={n.href} href={n.href}>{n.label}</a>
+          ))}
+        </nav>
+        <Link to="/app" className="btn btn-primary lp-cta">
+          Open the app
+          <span className="ms" aria-hidden="true">arrow_forward</span>
+        </Link>
+      </header>
 
       <main>
-        <section className="hero" aria-label="Hero">
-          <div className="container hero-grid">
-            <div>
-              <div className="hero-badge reveal" aria-label="Status badge">
-                <SparkleIcon /> Heartbeat live — acts unattended
-              </div>
-              <h1 className="hero-headline reveal reveal-delay-1">
-                Your assistant <span style={{ color: 'var(--primary)' }}>acts</span> — not just answers.
-              </h1>
-              <p className="hero-sub reveal reveal-delay-2">
-                ThreadMyMail is an autonomous assistant — not a mailbox with features. It reads mail, manages calendar, tracks todos, and reports back. And it keeps working when you are not looking.
-              </p>
-              <div className="hero-cta reveal reveal-delay-3">
-                <a href="/app" className="btn btn-primary" aria-label="Open the app">
-                  <MailIcon /> Open ThreadMyMail
-                </a>
-                <a href="#features" className="btn btn-ghost" aria-label="Learn more about features">
-                  See how it works
-                </a>
-              </div>
+        {/* ── Hero ─────────────────────────────────────────────────────── */}
+        <section className="lp-hero">
+          <div className="lp-hero-copy">
+            <span className="eyebrow">Autonomous inbox intelligence</span>
+            <h1 className="lp-h1">
+              Your inbox, orchestrated by <em>Millo</em>.
+            </h1>
+            <p className="lp-lede">
+              Millo triages what arrives, drafts what needs an answer and runs the
+              follow-ups you keep forgetting — on a schedule, inside limits you
+              set, with every action written down.
+            </p>
+            <div className="row lp-hero-actions">
+              <Link to="/app" className="btn btn-primary">
+                Open ThreadMyMail
+                <span className="ms" aria-hidden="true">arrow_forward</span>
+              </Link>
+              <a href="#capabilities" className="btn btn-secondary">
+                See what it does
+              </a>
             </div>
-            <div className="glass-strong reveal reveal-delay-2" style={{ position: 'relative', padding: '2.5rem', textAlign: 'center', overflow: 'hidden' }}>
-              <div style={{ fontFamily: 'var(--font-heading)', fontSize: '1.4rem', fontWeight: 700, marginBottom: '0.75rem' }}>
-                Agent capabilities
-              </div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '1.25rem' }}>
-                Mail, calendar, todos, notes, web — all surfaces the agent can present into the stream.
-              </p>
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                <span className="glass" style={{ padding: '0.35rem 0.9rem', borderRadius: '9999px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>Mail</span>
-                <span className="glass" style={{ padding: '0.35rem 0.9rem', borderRadius: '9999px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>Calendar</span>
-                <span className="glass" style={{ padding: '0.35rem 0.9rem', borderRadius: '9999px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>Todos</span>
-              </div>
-              <div style={{ marginTop: '1.5rem', fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 600 }}>
-                ✓ Autonomous agent &nbsp;·&nbsp; ✓ Cloudflare Workers &nbsp;·&nbsp; ✓ Heartbeat
-              </div>
+            <p className="lp-fine">
+              Bring your own model key. No account required to look around.
+            </p>
+          </div>
+
+          <ProductSurface />
+        </section>
+
+        {/* ── Capabilities ─────────────────────────────────────────────── */}
+        <section className="lp-section" id="capabilities">
+          <h2 className="lp-h2">Under the hood</h2>
+          <p className="lp-sub">
+            Not a summary of what mail says. A system that does something about it.
+          </p>
+          <div className="lp-grid">
+            {CAPABILITIES.map((c) => (
+              <article className="card t-lift lp-card" key={c.title}>
+                <span className="ms lp-card-icon" aria-hidden="true">{c.icon}</span>
+                <h3 className="lp-card-title">{c.title}</h3>
+                <p className="lp-card-body">{c.body}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Before / after ──────────────────────────────────────────── */}
+        <section className="lp-section" id="shift">
+          <h2 className="lp-h2">The shift to autonomy</h2>
+          <p className="lp-sub">
+            The work does not get faster because you got better at triaging. It gets
+            faster because something else is doing it.
+          </p>
+          <div className="lp-ba">
+            <div className="lp-ba-col lp-ba-before t-well">
+              <div className="eyebrow">Doing it yourself</div>
+              <ul className="lp-list">
+                {BEFORE.map((b) => (
+                  <li key={b}>
+                    <span className="ms lp-x" aria-hidden="true">close</span>{b}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="lp-ba-col lp-ba-after t-raised">
+              <div className="eyebrow lp-ok">With Millo</div>
+              <ul className="lp-list">
+                {AFTER.map((a) => (
+                  <li key={a}>
+                    <span className="ms lp-check" aria-hidden="true">check</span>{a}
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </section>
 
-        <section id="features" className="features" aria-label="Features">
-          <div className="container">
-            <div className="section-header">
-              <h2>Capabilities, not pages</h2>
-              <p>Features are what the agent can do — not destinations you navigate to.</p>
-            </div>
-            <div className="cards">
-              <article className="card glass reveal reveal-delay-1" aria-label="Mail agent feature">
-                <div className="card-icon" aria-hidden="true"><MailIcon /></div>
-                <h3>Mail</h3>
-                <p>The agent reads, summarizes, and drafts replies. It knows your voice. No prompts — just connection.</p>
+        {/* ── Autonomy ─────────────────────────────────────────────────── */}
+        <section className="lp-section" id="autonomy">
+          <h2 className="lp-h2">Autonomy with the handbrake in view</h2>
+          <p className="lp-sub">
+            An assistant that acts on its own is only useful if stopping it is easier
+            than trusting it. Every one of these controls is one click deep.
+          </p>
+          <div className="lp-grid">
+            {GUARDRAILS.map((g) => (
+              <article className="card t-lift lp-card" key={g.title}>
+                <span className="ms lp-card-icon" aria-hidden="true">{g.icon}</span>
+                <h3 className="lp-card-title">{g.title}</h3>
+                <p className="lp-card-body">{g.body}</p>
               </article>
-              <article className="card glass reveal reveal-delay-2" aria-label="Calendar feature">
-                <div className="card-icon" aria-hidden="true"><ShieldCheckIcon /></div>
-                <h3>Calendar</h3>
-                <p>Schedules, conflicts, and reminders managed by the same agent that reads your mail.</p>
-              </article>
-              <article className="card glass reveal reveal-delay-3" aria-label="Agent autonomy feature">
-                <div className="card-icon" aria-hidden="true"><SparkleIcon /></div>
-                <h3>Autonomous</h3>
-                <p>Acts while you sleep. Cron heartbeats, Workflows, Durable Objects — zero idle cost.</p>
-              </article>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Security, honestly ───────────────────────────────────────── */}
+        <section className="lp-section" id="security">
+          <div className="lp-security card-float">
+            <div className="lp-security-copy">
+              <h2 className="lp-h2">What is actually true about your data</h2>
+              <p className="lp-sub lp-sub-tight">
+                No enclave, no SOC 2 badge, no certification. Here is the real
+                architecture, including the part that is not finished.
+              </p>
+              <dl className="lp-facts">
+                <div>
+                  <dt>Where it runs</dt>
+                  <dd>Cloudflare Workers and a Durable Object, with Postgres for state and D1 for message bodies.</dd>
+                </div>
+                <div>
+                  <dt>Your model key</dt>
+                  <dd>AES-GCM encrypted at rest under a key that never leaves the server. The API can decrypt it — this is not zero-knowledge, and it does not pretend to be.</dd>
+                </div>
+                <div>
+                  <dt>Model providers</dt>
+                  <dd>Your key goes to the provider you chose. Nothing is proxied through us.</dd>
+                </div>
+                <div>
+                  <dt>Not built yet</dt>
+                  <dd>Google account linking, so there is no mail to read. Everything else works against its own APIs today.</dd>
+                </div>
+              </dl>
             </div>
           </div>
         </section>
 
-        <section id="install" className="hero" style={{ padding: '4rem 0 6rem' }} aria-label="Install">
-          <div className="container" style={{ maxWidth: 640, textAlign: 'center' }}>
-            <h2 style={{ marginBottom: '0.75rem' }}>Install ThreadMyMail</h2>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Get the app experience without an app store. Works offline, installs in seconds.</p>
-            {installPrompt && (
-              <button onClick={handleInstall} className="btn btn-primary" style={{ padding: '1rem 2.5rem', fontSize: '1.05rem' }} aria-label="Install Web App">
-                <MailIcon /> Install App
-              </button>
-            )}
-            {!installPrompt && (
-              <p style={{ color: 'var(--text-subtle)', fontSize: '0.9rem' }}>
-                If the install prompt appears, click "Install". Otherwise, add this site to your home screen manually.
-              </p>
-            )}
-            <div style={{ marginTop: '2.5rem', display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-              <span className="glass" style={{ padding: '0.6rem 1rem', borderRadius: '9999px', fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-muted)' }}>
-                Mobile ready
-              </span>
-              <span className="glass" style={{ padding: '0.6rem 1rem', borderRadius: '9999px', fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-muted)' }}>
-                Offline cached
-              </span>
-            </div>
-          </div>
+        {/* ── Closing CTA ──────────────────────────────────────────────── */}
+        <section className="lp-section lp-close">
+          <h2 className="lp-h2">Stop reading it. Start orchestrating it.</h2>
+          <p className="lp-sub">Built for people who already have too much mail.</p>
+          <Link to="/app" className="btn btn-primary lp-cta-lg">
+            Open ThreadMyMail
+            <span className="ms" aria-hidden="true">arrow_forward</span>
+          </Link>
         </section>
       </main>
 
-      <footer className="footer" aria-label="Footer">
-        <div className="container footer-inner">
-          <p>ThreadMyMail — an autonomous assistant. Mail, calendar, todos, web. One agent, one voice.</p>
-          <p style={{ color: 'var(--text-subtle)' }}>Cloudflare Workers · Durable Objects · Heartbeat · React</p>
+      <footer className="lp-foot">
+        <div className="row">
+          <MilloMark size={20} />
+          <span>ThreadMyMail</span>
+          <div className="spacer" />
+          <Link to="/app">App</Link>
+          <a href="#security">Security</a>
+          <span className="lp-build">Silk · dark</span>
         </div>
       </footer>
-    </>
+    </div>
+  );
+}
+
+/**
+ * A still of the real product, built from the real primitives rather than an
+ * image. It is the same three-pane layout the app uses, at rest.
+ */
+function ProductSurface() {
+  return (
+    <div className="lp-surface card-float" aria-hidden="true">
+      <div className="lp-surface-bar">
+        <span className="lp-dot" /><span className="lp-dot" /><span className="lp-dot" />
+        <span className="lp-surface-title">ThreadMyMail</span>
+      </div>
+      <div className="lp-surface-body">
+        <div className="lp-surface-rail">
+          {['stream', 'today', 'bolt', 'psychology', 'extension'].map((i, n) => (
+            <span className={`lp-surface-rail-item${n === 0 ? ' is-active' : ''}`} key={i}>
+              <span className="ms" >{i}</span>
+            </span>
+          ))}
+        </div>
+        <div className="lp-surface-feed">
+          {[0, 1, 2, 3].map((n) => (
+            <div className="lp-surface-row" key={n} data-unread={n < 2} />
+          ))}
+        </div>
+        <div className="lp-surface-work">
+          <div className="lp-surface-ai">
+            <span className="ms">auto_awesome</span>
+            <div className="lp-surface-ai-lines">
+              <i /><i /><i />
+            </div>
+          </div>
+          <div className="lp-surface-bubble" />
+          <div className="lp-surface-copilot">
+            <span className="lp-surface-caret" />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
