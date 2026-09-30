@@ -89,11 +89,33 @@ The icon check needs Google's `codepoints` file:
 - **Preloader / enclave-init / decryption loader screens** are still not built.
   They were dropped rather than shipped, because they claimed an AWS Nitro
   Enclave handshake that does not exist. A plain loading state ships instead.
-- **No logo or Millo raster asset.** `MilloMark` is inline SVG.
 
 Everything else is native Silk. `styles/legacy-panes.css` is deleted; the four
 stylesheets are `silk.css` (tokens + primitives), `mail.css` (the three-pane
 grid), `landing.css`, `auth.css`.
+
+### Installable: done, but not yet deployed (commit `e28c4ef`)
+
+A manifest already existed via `vite-plugin-pwa`; what shipped in that commit
+was a correction of it plus the install banner.
+
+- `theme_color` was `#2563EB` and `background_color` `#F8FAFC` — both from
+  before the Silk redesign, so an installed app got a blue title bar and a
+  white splash over a dark UI. Now `#0b1326` / `#060e20`.
+- `start_url` was `/`, which opens the marketing page. Now `/app`.
+- All five PNGs and the ICO were the old Tailwind blue. Regenerated from the
+  Millo mark by `frontend/scripts/make-icons.py` — a pure-stdlib SDF
+  rasteriser, so no new dependency and no headless browser. Re-run it after
+  changing the mark: `python3 frontend/scripts/make-icons.py`.
+- `beforeinstallprompt` is captured at module scope in `main.jsx`, not in an
+  effect. The event fires once per engagement and is only cancelable while
+  something is listening, so a lazy listener loses it permanently.
+- iOS gets the Share → Add to Home Screen instruction, because Safari has no
+  install API at all.
+
+**Not deployed** — the Cloudflare OAuth had expired again (see below), so
+`scripts/deploy.sh` refused to run. Everything is committed and verified
+locally; it needs one `wrangler login` and a re-run.
 
 ---
 
@@ -227,6 +249,12 @@ Expect this before the next deploy. If the auth step fails, run
 **`wrangler login` from `apps/worker`**. Note that a global `wrangler` may be a
 different version from the pinned binary in `apps/worker/node_modules`, and it
 writes its token to whichever config *it* uses — so run it from that directory.
+
+This bit again on 2026-09-30 and left commit `e28c4ef` (the PWA work) sitting
+on `main` undeployed. Both config files were stale and no `CLOUDFLARE_API_TOKEN`
+was in the environment, so there was no way around it but the browser. When
+this happens the tree is still clean and the build still passes — re-running
+`scripts/deploy.sh` after the login is the whole recovery.
 
 ### 🟡 Two wrangler credential locations, and only one works
 
