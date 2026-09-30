@@ -2,14 +2,33 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>ThreadMyMail — AI-Powered Email Harness</title>
   <link rel="icon" href="/favicon.ico" sizes="48x48" />
+  <link rel="icon" type="image/svg+xml" href="/logo.svg" />
   <link rel="icon" type="image/png" href="/pwa-192x192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <meta name="theme-color" content="#0b1326" />
-  <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="description" content="ThreadMyMail — an autonomous assistant that works your inbox. Millo triages, drafts and acts while you don't." />
+
+  <!--
+    Install metadata.
+
+    The theme-color above, the manifest's theme_color, and --surface-low in
+    styles/silk.css must agree; when they drift the installed app gets a title
+    bar in a different colour from the app, which is the single most visible
+    way to look unfinished on a home screen.
+
+    apple-mobile-web-app-* are still what iOS reads. black-translucent is only
+    safe alongside viewport-fit=cover and the env(safe-area-inset-*) padding in
+    silk.css — without those it would lay the UI out underneath the status bar.
+
+    No manifest link here: vite-plugin-pwa injects one at build time.
+  -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ThreadMyMail" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <!-- Silk design system: Space Grotesk for display, Plus Jakarta Sans for body. -->

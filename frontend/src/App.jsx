@@ -6,6 +6,7 @@ import Docs from './pages/Docs.jsx';
 import Legal from './pages/Legal.jsx';
 import MailShell from './mail/MailShell.jsx';
 import RequireSession from './mail/RequireSession.jsx';
+import InstallBanner from './pwa/InstallBanner.jsx';
 
 /**
  * Routes:
@@ -27,22 +28,25 @@ import RequireSession from './mail/RequireSession.jsx';
  */
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/signin" element={<SignIn />} />
-      <Route
-        path="/app"
-        element={
-          <RequireSession>
-            <MailShell />
-          </RequireSession>
-        }
-      />
-      <Route path="/system" element={<System />} />
-      <Route path="/docs" element={<Docs />} />
-      <Route path="/terms" element={<Legal kind="terms" />} />
-      <Route path="/privacy" element={<Legal kind="privacy" />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <InstallBanner />
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/signin" element={<SignIn />} />
+        <Route
+          path="/app"
+          element={
+            <RequireSession>
+              <MailShell />
+            </RequireSession>
+          }
+        />
+        <Route path="/system" element={<System />} />
+        <Route path="/docs" element={<Docs />} />
+        <Route path="/terms" element={<Legal kind="terms" />} />
+        <Route path="/privacy" element={<Legal kind="privacy" />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }

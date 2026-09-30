@@ -34,8 +34,11 @@
   display: flex;
   align-items: center;
   gap: var(--space-md);
-  height: var(--topbar);
-  padding: 0 var(--margin);
+  /* The inset is added to the height as well as the padding, otherwise the bar
+     grows but its contents stay vertically centred in the old box and the title
+     ends up half-hidden under the notch. */
+  height: calc(var(--topbar) + var(--safe-top));
+  padding: var(--safe-top) max(var(--margin), var(--safe-right)) 0 max(var(--margin), var(--safe-left));
   border-bottom: 1px solid var(--glint);
   flex: 0 0 auto;
 }
@@ -533,6 +536,7 @@
   flex: 0 0 auto;
   background: var(--surface-low);
   border-top: 1px solid var(--glint);
+  min-height: var(--tabs-h);
   padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
 }
 .mobile-tab {
@@ -557,7 +561,14 @@
 @media (max-width: 767px) {
   .mail-body { padding: var(--gutter-mobile); gap: 0; }
   .mobile-tabs { display: flex; }
-  .topbar { padding: 0 var(--gutter-mobile); gap: var(--space-sm); }
+  /* Only the horizontal gutter changes here. The vertical inset from the
+     desktop rule must survive, or mobile loses the notch clearance the
+     black-translucent status bar needs. */
+  .topbar {
+    padding-left: max(var(--gutter-mobile), var(--safe-left));
+    padding-right: max(var(--gutter-mobile), var(--safe-right));
+    gap: var(--space-sm);
+  }
   .brand { display: none; }
   .topbar-view, .kill-label { display: none; }
   .topbar-search { margin-left: 0; }

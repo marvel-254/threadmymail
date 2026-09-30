@@ -980,3 +980,114 @@ textarea.input { resize: vertical; min-height: 96px; line-height: 22px; }
   color: var(--danger);
   border-top: 1px solid var(--glint);
 }
+
+/* ── Safe areas ─────────────────────────────────────────────────────────── */
+
+/*
+ * `viewport-fit=cover` plus `black-translucent` in index.html means the status
+ * bar and the home indicator draw over the app. The fallbacks are not optional:
+ * without them the topbar sits under the notch on a notched iPhone and the tab
+ * bar sits under the home indicator, with no scroll to recover it.
+ */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  /* Height of the mobile tab bar. Declared at :root rather than on
+     .mobile-tabs so the install banner can read it too: a custom property
+     inherits down the tree, never sideways, so a value scoped to the tab bar
+     would be invisible to the banner sitting beside it. */
+  --tabs-h: 58px;
+}
+
+/* ── Install banner ─────────────────────────────────────────────────────── */
+
+/*
+ * Pinned bottom-left rather than centred: it has to clear the mobile tab bar,
+ * and on desktop it should sit near the thumb without covering the composer.
+ *
+ * The whole bar is one landmark with a label, and the actions are real buttons,
+ * because a dismissible prompt with no keyboard-reachable way out is a trap.
+ */
+.install {
+  position: fixed;
+  z-index: 60;
+  left: max(var(--gutter), var(--safe-left));
+  bottom: calc(var(--space-md) + var(--safe-bottom));
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: min(30rem, calc(100vw - 2 * var(--space-md)));
+  padding: var(--space-md);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--surface-high) 92%, transparent);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--glint-strong);
+  box-shadow: var(--depth-2);
+  animation: install-rise var(--t-slow) var(--ease-out);
+}
+@keyframes install-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.install__body { display: flex; align-items: center; gap: var(--space-sm); min-width: 0; }
+.install__mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--r-md);
+  background: linear-gradient(135deg, var(--accent-soft), var(--tertiary));
+  color: var(--on-primary);
+  box-shadow: var(--depth-1);
+}
+.install__mark .ms { font-size: 19px; }
+.install__text { min-width: 0; }
+.install__title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 17px;
+}
+.install__sub {
+  margin: 1px 0 0;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--ink-faint);
+}
+.install__actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.install__x {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: color var(--t-fast), background var(--t-fast);
+}
+.install__x:hover { color: var(--ink); background: rgba(255, 255, 255, 0.06); }
+.install__x:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 1px; }
+.install__x .ms { font-size: 17px; }
+
+@media (max-width: 767px) {
+  /* Stacks, and clears the tab bar rather than sitting on top of it.
+     The breakpoint matches the one that reveals .mobile-tabs — any narrower and
+     the banner would cover the tabs across the 620–767px range. */
+  .install {
+    left: var(--space-sm);
+    right: var(--space-sm);
+    width: auto;
+    flex-direction: column;
+    align-items: stretch;
+    bottom: calc(var(--tabs-h) + var(--space-sm) + var(--safe-bottom));
+  }
+  .install__actions { margin-left: 0; justify-content: flex-end; }
+}

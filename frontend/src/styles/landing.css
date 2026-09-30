@@ -16,7 +16,10 @@
   display: flex;
   align-items: center;
   gap: var(--space-lg);
-  padding: var(--space-md) var(--margin);
+  padding: calc(var(--space-md) + var(--safe-top))
+           max(var(--margin), var(--safe-right))
+           var(--space-md)
+           max(var(--margin), var(--safe-left));
   position: sticky;
   top: 0;
   z-index: 10;

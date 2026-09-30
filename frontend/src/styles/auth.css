@@ -20,7 +20,11 @@
   align-items: center;
   justify-content: center;
   gap: 1.25rem;
-  padding: 1.5rem 1rem 2rem;
+  /* Safe-area aware: the card is vertically centred, so without the insets it
+     lands under the notch on a landscape phone and under the home indicator in
+     portrait. */
+  padding: calc(1.5rem + var(--safe-top)) max(1rem, var(--safe-right))
+           calc(2rem + var(--safe-bottom)) max(1rem, var(--safe-left));
   overflow-x: hidden;
 }
 
@@ -317,7 +321,8 @@
   align-items: center;
   justify-content: center;
   gap: 0.9rem;
-  padding: 2rem;
+  padding: calc(2rem + var(--safe-top)) max(2rem, var(--safe-right))
+           calc(2rem + var(--safe-bottom)) max(2rem, var(--safe-left));
   text-align: center;
 }
 .shell-boot__mark {
