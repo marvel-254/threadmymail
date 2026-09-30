@@ -155,7 +155,7 @@ function ThreadRow({ mail, active, onOpen }) {
       className="thread-row t-lift"
       data-unread={unread}
       data-active={active}
-      onClick={() => onOpen(mail.id)}
+      onClick={() => onOpen(mail.id, mail)}
       aria-current={active ? 'true' : undefined}
     >
       <div className="thread-top">

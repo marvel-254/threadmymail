@@ -46,7 +46,7 @@ export default function StreamList({ selectedId, onOpen }) {
             key={r.id}
             className="stream-row t-lift"
             data-active={r.id === selectedId}
-            onClick={() => onOpen(r.id)}
+            onClick={() => onOpen(r.id, r)}
           >
             <div className="thread-top">
               <span className={`badge ${statusTone(r.status)}`}>{r.status || 'done'}</span>

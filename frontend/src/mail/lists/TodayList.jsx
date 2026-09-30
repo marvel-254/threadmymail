@@ -44,7 +44,7 @@ export default function TodayList({ selectedId, onOpen }) {
           <section className="feed-section">
             <div className="eyebrow">Schedule</div>
             {events.map((e) => (
-              <button key={e.id} className="stream-row t-lift" onClick={() => onOpen(e.id)}>
+              <button key={e.id} className="stream-row t-lift" onClick={() => onOpen(e.id, e)}>
                 <div className="thread-top">
                   <span className="thread-from truncate">{e.summary || e.title || 'Event'}</span>
                   <span className="thread-when">{shortWhen(e.start)}</span>
@@ -62,7 +62,7 @@ export default function TodayList({ selectedId, onOpen }) {
                 key={t.id}
                 className="stream-row t-lift"
                 data-active={t.id === selectedId}
-                onClick={() => onOpen(t.id)}
+                onClick={() => onOpen(t.id, t)}
               >
                 <div className="thread-top">
                   <span className="thread-from truncate">{t.title}</span>

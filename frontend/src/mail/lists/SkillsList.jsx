@@ -46,7 +46,7 @@ export default function SkillsList({ selectedId, onOpen }) {
               key={s.id}
               className="stream-row t-lift"
               data-active={s.id === selectedId}
-              onClick={() => onOpen(s.id)}
+              onClick={() => onOpen(s.id, s)}
             >
               <div className="thread-top">
                 <span className="ms skill-trigger" aria-hidden="true">

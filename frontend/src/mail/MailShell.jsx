@@ -57,6 +57,11 @@ export default function MailShell() {
   // On mobile the feed and the workstation are the same pane in two states.
   const [mobileDetail, setMobileDetail] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
+  // The feed already holds the whole row, so selection carries it along rather
+  // than just the id. The detail pane then renders immediately instead of
+  // refetching — which matters most for the list endpoints, where
+  // /activity and /todos return arrays that have no per-item GET to drill into.
+  const [selected, setSelected] = useState(null);
 
   // The rail is a luxury. On a laptop it costs 176px that the reading pane
   // can use far better, so it starts collapsed between 768 and 1280.
@@ -79,8 +84,9 @@ export default function MailShell() {
   );
 
   const openThread = useCallback(
-    (id) => {
+    (id, row) => {
       setSelectedId(id);
+      setSelected(row || null);
       if (bp === 'mobile') setMobileDetail(true);
     },
     [bp],
@@ -98,9 +104,10 @@ export default function MailShell() {
       setView: selectView,
       openThread,
       selectedId,
+      selected,
       closeThread,
     }),
-    [view, selectView, openThread, selectedId, closeThread],
+    [view, selectView, openThread, selectedId, selected, closeThread],
   );
 
   const showFeed = bp !== 'mobile' || !mobileDetail;

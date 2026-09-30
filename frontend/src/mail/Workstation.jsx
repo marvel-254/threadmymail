@@ -16,15 +16,23 @@ import Reader from './Reader.jsx';
 import AgentStage from './AgentStage.jsx';
 import DetailStage from './DetailStage.jsx';
 
-export default function Workstation({ view, selectedId, openThread, onBack, showBack }) {
+export default function Workstation({ view, selectedId, selected, openThread, onBack, showBack }) {
   const stage = useMemo(() => {
     // The stream and the inbox both carry the agent; the rest are plain detail.
     if (view === 'stream') return <AgentStage selectedId={selectedId} onBack={onBack} showBack={showBack} />;
     if (view === 'inbox') {
       return <Reader id={selectedId} onOpenThread={openThread} onBack={onBack} showBack={showBack} />;
     }
-    return <DetailStage view={view} id={selectedId} onBack={onBack} showBack={showBack} />;
-  }, [view, selectedId, openThread, onBack, showBack]);
+    return (
+      <DetailStage
+        view={view}
+        id={selectedId}
+        row={selected}
+        onBack={onBack}
+        showBack={showBack}
+      />
+    );
+  }, [view, selectedId, selected, openThread, onBack, showBack]);
 
   return <section className="work t-plane">{stage}</section>;
 }

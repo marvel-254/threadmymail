@@ -49,7 +49,7 @@ export default function ActivityList({ selectedId, onOpen }) {
             key={a.id}
             className="stream-row t-lift"
             data-active={a.id === selectedId}
-            onClick={() => onOpen(a.id)}
+            onClick={() => onOpen(a.id, a)}
           >
             <div className="thread-top">
               <span className="badge badge-mute">{a.kind}</span>

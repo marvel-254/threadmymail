@@ -42,7 +42,7 @@ export default function PluginsList({ selectedId, onOpen }) {
             key={p.id}
             className="stream-row t-lift"
             data-active={p.id === selectedId}
-            onClick={() => onOpen(p.id)}
+            onClick={() => onOpen(p.id, p)}
           >
             <div className="thread-top">
               <span className="ms skill-trigger" aria-hidden="true">extension</span>
