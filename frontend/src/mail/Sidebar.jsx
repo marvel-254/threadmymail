@@ -8,9 +8,11 @@
 import { useEffect, useState } from 'react';
 import { VIEWS } from './MailShell.jsx';
 import { useCounts } from './useCounts.js';
+import { useSession } from '../lib/useSession.js';
 
 export default function Sidebar({ view, onSelectView, collapsed, onOpenSettings }) {
   const counts = useCounts(view);
+  const { session, signOut } = useSession();
 
   return (
     <nav className="rail t-plane" aria-label="Workspace">
@@ -29,6 +31,12 @@ export default function Sidebar({ view, onSelectView, collapsed, onOpenSettings 
       </ul>
 
       <div className="rail-footer">
+        <AccountBadge
+          collapsed={collapsed}
+          name={session?.user?.name || session?.user?.email || null}
+          onSignOut={signOut}
+          devMode={session?.dev_mode === true}
+        />
         <RailFooterButton
           icon="settings"
           label="Settings"
@@ -38,6 +46,46 @@ export default function Sidebar({ view, onSelectView, collapsed, onOpenSettings 
         <AutonomyBadge collapsed={collapsed} />
       </div>
     </nav>
+  );
+}
+
+/**
+ * Who is signed in, and the way out.
+ *
+ * The account is at the foot of the rail rather than in a settings page because
+ * signing out is something a shared or borrowed machine needs to be obvious
+ * about. The email is truncated rather than wrapped: a long address in a 240px
+ * rail would push the nav around, and the full value stays in the title.
+ */
+function AccountBadge({ collapsed, name, onSignOut, devMode }) {
+  const initial = (name ?? '?').trim().charAt(0).toUpperCase() || '?';
+  const label = devMode ? 'No sign-in (dev)' : name ?? 'Signed in';
+
+  return (
+    <div className="rail-account" data-collapsed={collapsed}>
+      <span className="rail-account__avatar" aria-hidden="true">
+        {devMode ? <span className="ms">science</span> : initial}
+      </span>
+      {!collapsed && (
+        <span className="rail-account__text">
+          <span className="rail-account__name" title={name ?? undefined}>
+            {label}
+          </span>
+          <span className="rail-account__sub">
+            {devMode ? 'authentication off' : 'signed in'}
+          </span>
+        </span>
+      )}
+      <button
+        type="button"
+        className="rail-account__out"
+        onClick={onSignOut}
+        title="Sign out"
+        aria-label="Sign out"
+      >
+        <span className="ms" aria-hidden="true">logout</span>
+      </button>
+    </div>
   );
 }
 

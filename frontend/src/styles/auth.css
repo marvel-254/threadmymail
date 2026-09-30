@@ -1,0 +1,419 @@
+/*
+ * Sign-in.
+ *
+ * The structure is the design's: a centred card floating over two blurred
+ * colour orbs, Millo at the top with a pulsing ring, a status chip, one Google
+ * button, a divider, then three trust points. The copy is not the design's —
+ * see pages/SignIn.jsx for why each claim was replaced.
+ *
+ * The orbs are the only place a blur is used, and they are the reason the page
+ * reads as "designed" rather than "a card on a background": they give the flat
+ * card something to sit in front of, which is the whole trick neomorphic
+ * surfaces depend on.
+ */
+
+.si {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 1.5rem 1rem 2rem;
+  overflow-x: hidden;
+}
+
+/* ── Ambient colour ────────────────────────────────────────────────────────── */
+
+.si-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(72px);
+  pointer-events: none;
+  z-index: 0;
+}
+.si-orb--a {
+  width: 15rem;
+  height: 15rem;
+  top: -6rem;
+  right: -6rem;
+  background: color-mix(in srgb, var(--accent-soft) 30%, transparent);
+}
+.si-orb--b {
+  width: 15rem;
+  height: 15rem;
+  bottom: -6rem;
+  left: -6rem;
+  background: color-mix(in srgb, var(--tertiary) 24%, transparent);
+}
+
+/* ── Top navigation ───────────────────────────────────────────────────────── */
+
+.si-topnav {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.si-navlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+  text-decoration: none;
+  transition: color var(--t-fast);
+}
+.si-navlink:hover { color: var(--ink); }
+.si-navlink .ms { font-size: 18px; }
+
+/* ── Card ─────────────────────────────────────────────────────────────────── */
+
+.si-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 34rem;
+  padding: 2.5rem 2rem 2rem;
+  border-radius: var(--r-xl);
+  background: color-mix(in srgb, var(--surface-low) 88%, transparent);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glint);
+  box-shadow: var(--depth-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* ── Millo ────────────────────────────────────────────────────────────────── */
+
+.si-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin-bottom: 1rem;
+}
+.si-avatar__ring {
+  position: absolute;
+  inset: -0.5rem;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent-soft) 40%, transparent);
+  animation: si-pulse 2.8s ease-in-out infinite;
+}
+.si-avatar__dot {
+  position: absolute;
+  right: -0.1rem;
+  bottom: 0.1rem;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 50%;
+  background: var(--tertiary);
+  border: 2px solid var(--surface-low);
+}
+
+@keyframes si-pulse {
+  0%, 100% { transform: scale(1);    opacity: 0.55; }
+  50%      { transform: scale(1.14); opacity: 0.15; }
+}
+
+/* ── Copy ─────────────────────────────────────────────────────────────────── */
+
+.si-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: var(--r-full);
+  background: var(--surface-high);
+  border: 1px solid var(--glint);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ink-body);
+  margin-bottom: 1.25rem;
+}
+.si-chip .ms { font-size: 15px; color: var(--tertiary); }
+
+.si-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 5vw, 1.9rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin-bottom: 0.5rem;
+}
+.si-body {
+  max-width: 26rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--ink-muted);
+  margin-bottom: 1.75rem;
+}
+
+.si-scope {
+  margin-top: 0.9rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+.si-scope strong { color: var(--ink-muted); font-weight: 600; }
+
+.si-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--r-sm);
+  background: var(--danger-container);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  color: var(--danger);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  text-align: left;
+}
+.si-error .ms { font-size: 18px; flex-shrink: 0; }
+
+/* ── The button ───────────────────────────────────────────────────────────── */
+
+.btn-google {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.85rem 1.25rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--glint);
+  background: linear-gradient(
+    100deg,
+    var(--surface-highest),
+    color-mix(in srgb, var(--accent-soft) 16%, var(--surface-high))
+  );
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--depth-2);
+  transition: transform var(--t-fast), box-shadow var(--t-fast), filter var(--t-fast);
+}
+.btn-google:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--depth-2);
+  filter: brightness(1.06);
+}
+.btn-google:active:not(:disabled) { transform: translateY(0); }
+.btn-google:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-google:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+.si-google-glyph { width: 1.15rem; height: 1.15rem; flex-shrink: 0; }
+
+/* ── Divider ──────────────────────────────────────────────────────────────── */
+
+.si-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  width: 100%;
+  margin: 1.75rem 0 1.25rem;
+  color: var(--ink-faint);
+  font-size: 0.6875rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.si-divider::before,
+.si-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--glint);
+}
+
+/* ── Trust points ─────────────────────────────────────────────────────────── */
+
+.si-trust {
+  list-style: none;
+  display: grid;
+  gap: 0.9rem;
+  width: 100%;
+  text-align: left;
+}
+.si-trust li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'icon title' '. body';
+  gap: 0.15rem 0.7rem;
+  align-items: start;
+}
+.si-trust__icon {
+  grid-area: icon;
+  font-size: 18px;
+  color: var(--tertiary);
+  margin-top: 0.15rem;
+}
+.si-trust strong {
+  grid-area: title;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.si-trust p {
+  grid-area: body;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.si-note {
+  margin-top: 1.5rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+.si-note a { color: var(--accent-soft); }
+
+/* ── Footer ───────────────────────────────────────────────────────────────── */
+
+.si-foot {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 0.6875rem;
+  color: var(--ink-faint);
+}
+.si-foot a { color: var(--ink-muted); text-decoration: none; }
+.si-foot a:hover { color: var(--ink); }
+.si-foot__sep { color: var(--tertiary); }
+.si-foot__sep .ms { font-size: 14px; vertical-align: -2px; }
+
+@media (max-width: 480px) {
+  .si-card { padding: 2rem 1.25rem 1.5rem; }
+  .si-topnav { gap: 1rem; font-size: 0.75rem; }
+}
+
+/*
+ * Full-shell states.
+ *
+ * Replaces the entire three-pane shell, so the background is the plane rather
+ * than the shell background — a skeleton that inherits the shell's own padding
+ * would look like a loading app rather than a booting one.
+ */
+
+.shell-boot {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  padding: 2rem;
+  text-align: center;
+}
+.shell-boot__mark {
+  display: grid;
+  place-items: center;
+  animation: si-pulse 2.4s ease-in-out infinite;
+}
+.shell-boot__icon {
+  font-size: 40px;
+  color: var(--danger);
+  animation: none;
+}
+.shell-boot__label {
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+.shell-boot__detail {
+  max-width: 26rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+/*
+ * Account badge, at the foot of the rail.
+ *
+ * Sits above Settings rather than inside a settings page so signing out is one
+ * click from anywhere, which is the point on a borrowed machine.
+ */
+
+.rail-account {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  border-radius: var(--r-md);
+  background: var(--surface-low);
+  border: 1px solid var(--glint);
+  box-shadow: var(--depth-1);
+  min-width: 0;
+}
+.rail-account[data-collapsed='true'] {
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.45rem 0.3rem;
+}
+
+.rail-account__avatar {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-soft), var(--tertiary));
+  color: var(--on-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.rail-account__avatar .ms { font-size: 16px; }
+
+.rail-account__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.rail-account__name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail-account__sub {
+  font-size: 0.625rem;
+  color: var(--ink-faint);
+}
+
+.rail-account__out {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: color var(--t-fast), background var(--t-fast);
+}
+.rail-account__out:hover { color: var(--danger); background: var(--danger-container); }
+.rail-account__out:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 1px; }
+.rail-account__out .ms { font-size: 17px; }

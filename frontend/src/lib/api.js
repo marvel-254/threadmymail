@@ -99,9 +99,21 @@ export const api = {
   health: () => get('/health'),
 
   // ── Auth ─────────────────────────────────────────────────────────────
+  /**
+   * Where to send the browser to sign in. A full navigation, not fetch: the
+   * OAuth dance needs a top-level redirect, and the callback sets a cookie that
+   * only a real navigation will carry back.
+   */
   authUrl: () => `${apiBase}/auth/google`,
-  me: () => get('/auth/me'),
-  authStatus: () => get('/auth/status'),
+  /**
+   * The session cookie is HttpOnly, so this is the only way the frontend can
+   * learn who it is talking to. Replaces the old `/auth/me`, which 404'd.
+   *
+   * Resolves to `{ authenticated: false }` rather than throwing when signed out —
+   * the question "am I signed in?" is not an error condition.
+   */
+  me: () => get('/auth/session'),
+  authStatus: () => get('/auth/session'),
   logout: () => post('/auth/logout'),
 
   // ── Agent ────────────────────────────────────────────────────────────

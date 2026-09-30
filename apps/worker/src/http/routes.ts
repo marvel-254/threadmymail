@@ -20,7 +20,6 @@ import {
   MEMORY_COLUMNS,
   RUN_COLUMNS,
   TODO_COLUMNS,
-  type DbEnv,
   type Row,
 } from '../db/client.js';
 import { BodyStore } from '../storage/bodystore.js';
@@ -44,37 +43,89 @@ import { isValidCron } from '../agent/schedule.js';
 import { loadAgentConfigFresh } from '../agent/config.js';
 import { ERROR } from '../tools/registry.js';
 
-type Bindings = DbEnv & {
-  /** D1 blob store. Email bodies only — Postgres holds the key (invariant 4). */
-  BODIES: D1Database;
-  /** The agent DO. POST /agent/runs and abort delegate execution here. */
-  AGENT: DurableObjectNamespace;
-  /** Encrypts per-user BYOK credentials. Absent ⇒ credential writes fail loudly. */
-  ENCRYPTION_KEY?: string;
-};
-
-type Vars = { Bindings: Bindings };
+export type { Bindings, Vars } from './types.js';
 
 const routes = new Hono<Vars>();
+
+/**
+ * Resolve identity once, before any route runs.
+ *
+ * Every route that reads user data calls getUserId(c), which reads this. Doing
+ * it here rather than inside getUserId is what lets that function stay
+ * synchronous: session verification is async, and doing it per call site would
+ * mean awaiting it in ~60 handlers.
+ *
+ * This middleware never throws for an anonymous request — the sign-in and
+ * callback routes have to work precisely when there is no session. The 401 comes
+ * from getUserId, and only for routes that actually need a user.
+ */
+routes.use('*', async (c, next) => {
+  try {
+    c.set('uid', await resolveUserId(c));
+  } catch (error) {
+    // A malformed X-User-Id is a client error worth reporting, but only in
+    // development where that header means anything.
+    if (c.env.ENVIRONMENT === 'production') c.set('uid', null);
+    else throw error;
+  }
+  await next();
+});
+
+const auth = authRoutes();
+
+/** Sign in. Anonymous by definition. */
+routes.get('/auth/google', handler(async (c) => auth.start(c)));
+routes.get('/auth/google/callback', handler(async (c) => auth.callback(c)));
+routes.get('/auth/session', handler(async (c) => auth.session(c)));
+routes.post('/auth/logout', handler(async (c) => auth.logout(c)));
 
 // ── Identity ───────────────────────────────────────────────────────────────
 
 /**
- * TODO(phase-2): replace with the authenticated principal from the Google
- * OAuth session (docs/GOOGLE_OAUTH.md). Until then every request is attributed
- * to one fixed development user so the UI is usable without a login flow.
+ * The 401 every authenticated route throws for an anonymous caller.
+ *
+ * A distinct code rather than a bare status so the frontend can tell "you are
+ * signed out" apart from "that failed" and send the user to sign in instead of
+ * showing an error toast.
  */
-const DEV_USER_ID = '00000000-0000-4000-8000-000000000001';
+const UNAUTHENTICATED = new HttpError('UNAUTHENTICATED', 'Sign in to use ThreadMyMail.', 401);
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function getUserId(c: Context<Vars>): string {
-  const header = c.req.header('X-User-Id');
-  if (!header) return DEV_USER_ID;
-  if (!UUID_RE.test(header)) {
-    throw new HttpError(ERROR.FORBIDDEN, 'X-User-Id must be a UUID.', 400);
+/**
+ * Resolve the caller to a user id, or null when there is no session.
+ *
+ * The policy lives in http/identity.ts as a pure function; this is only the part
+ * that knows about Hono. See that file for why production ignores X-User-Id.
+ */
+async function resolveUserId(c: Context<Vars>): Promise<string | null> {
+  const env = c.env;
+  try {
+    return await resolveIdentity({
+      cookie: c.req.header('Cookie'),
+      cookies: parseCookies(c.req.header('Cookie')),
+      sessionSecret: env.SESSION_SECRET,
+      environment: env.ENVIRONMENT,
+      userHeader: c.req.header('X-User-Id'),
+    });
+  } catch (error) {
+    // A malformed X-User-Id is a client error worth reporting — but only where
+    // that header means anything. In production it is ignored entirely, so a
+    // malformed one is not an error, it is just ignored.
+    if (env.ENVIRONMENT === 'production') return null;
+    throw error;
   }
-  return header;
+}
+
+/**
+ * The user id for this request, or 401.
+ *
+ * Synchronous by design. Resolving the session is async and this is called from
+ * ~60 handlers; doing it once in middleware above and reading the result here
+ * keeps every call site unchanged instead of turning all of them into awaits.
+ */
+function getUserId(c: Context<Vars>): string {
+  const uid = c.get('uid');
+  if (!uid) throw UNAUTHENTICATED;
+  return uid;
 }
 
 function db(c: Context<Vars>): Db {
@@ -121,43 +172,11 @@ async function refreshSchedule(c: Context<Vars>, userId: string): Promise<number
 
 // ── Envelope ───────────────────────────────────────────────────────────────
 
-class HttpError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-  }
-}
-
-function json(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
-
-function ok<T>(data: T, status = 200): Response {
-  return json(status, { success: true, data, error: null });
-}
-
-function fail(error: unknown): Response {
-  if (error instanceof HttpError) {
-    return json(error.status, {
-      success: false,
-      data: null,
-      error: { code: error.code, message: error.message, detail: null },
-    });
-  }
-  const message = error instanceof Error ? error.message : String(error);
-  console.error('[routes] unhandled', message);
-  return json(500, {
-    success: false,
-    data: null,
-    error: { code: ERROR.INTERNAL, message: 'Unexpected error.', detail: null },
-  });
-}
+import { HttpError, fail, json, ok } from './http-errors.js';
+import { parseCookies } from './session.js';
+import { resolveIdentity, UUID_RE } from './identity.js';
+import { authRoutes } from './auth.js';
+import type { Bindings, Vars } from './types.js';
 
 function notFound(what: string): HttpError {
   return new HttpError(ERROR.NOT_FOUND, `${what} not found.`, 404);

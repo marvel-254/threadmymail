@@ -240,39 +240,6 @@
 
 /* ── Sign in ────────────────────────────────────────────────────────────── */
 
-.si {
-  min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: var(--space-lg);
-  background:
-    radial-gradient(900px 520px at 70% 0%, rgba(99, 102, 241, 0.14), transparent 60%),
-    var(--surface-lowest);
-}
-.si-card { width: min(460px, 100%); padding: clamp(24px, 4vw, 38px); text-align: center; }
-.si-brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: var(--space-lg); font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--ink); }
-.si-title { font-size: 24px; line-height: 32px; margin-bottom: var(--space-sm); }
-.si-body { font-size: 14px; line-height: 22px; color: var(--ink-muted); margin-bottom: var(--space-lg); }
-.si-actions { display: flex; flex-direction: column; gap: var(--space-md); }
-.si-actions .btn { width: 100%; }
-.si-note {
-  margin-top: var(--space-lg);
-  padding-top: var(--space-lg);
-  border-top: 1px solid var(--glint);
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--ink-faint);
-  text-align: left;
-}
-.si-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: var(--space-lg); font-size: 12px; color: var(--ink-faint); }
-
-/* ── Responsive ─────────────────────────────────────────────────────────── */
-
-@media (max-width: 1023px) {
-  .lp-hero { grid-template-columns: 1fr; padding-top: var(--space-xl); }
-  .lp-h1 { max-width: 100%; }
-  .lp-links { display: none; }
-}
 @media (max-width: 767px) {
   .lp-nav, .lp-hero, .lp-section, .lp-foot { padding-left: var(--margin-mobile); padding-right: var(--margin-mobile); }
   .lp-cta { padding: 9px 12px; font-size: 13px; }
