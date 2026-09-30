@@ -82,8 +82,8 @@ function ScheduleBlock() {
   const quietOn = draft.quiet_hours !== null;
 
   return (
-    <section className="block">
-      <h3 className="block-title">Unattended activity</h3>
+    <section className="section">
+      <h3 className="section__title">Unattended activity</h3>
       <p className="muted small">
         The agent checks every five minutes. Outside the times below it does nothing at
         all — no database, no model call, no token spent.
@@ -112,7 +112,7 @@ function ScheduleBlock() {
         </label>
         <label className="field">
           <span>Quiet hours</span>
-          <div className="row-gap">
+          <div className="row">
             <input
               type="time"
               value={quiet.start}
@@ -143,19 +143,22 @@ function ScheduleBlock() {
 
       {note && <p className="muted small">{note}</p>}
 
-      <h4 className="block-subtitle">Next runs</h4>
+      <h4 className="section__sub">Next runs</h4>
       {timers.length === 0 && armed.length === 0 ? (
         <p className="muted small">
           Nothing scheduled. Create a skill with a time or new-mail trigger and it
           will appear here.
         </p>
       ) : (
-        <table className="table">
+        <table className="kv-table">
+          <caption className="sr-only">
+            Scheduled skills and when each one next runs
+          </caption>
           <thead>
             <tr>
-              <th>Skill</th>
-              <th>Trigger</th>
-              <th>Next</th>
+              <th scope="col">Skill</th>
+              <th scope="col">Trigger</th>
+              <th scope="col">Next</th>
             </tr>
           </thead>
           <tbody>
@@ -181,6 +184,20 @@ function ScheduleBlock() {
     </section>
   );
 }
+
+/**
+ * Contact policy labels.
+ *
+ * The wire values are `ask` / `allow` / `block` and they are stored that way, but
+ * a button reading "block" tells the user nothing about *what* is blocked. The
+ * verb is the part that matters when you are deciding whether to trust an agent
+ * with your outbox.
+ */
+const POLICY = [
+  { value: 'ask', label: 'Ask me first' },
+  { value: 'allow', label: 'Allow' },
+  { value: 'block', label: 'Block' },
+];
 
 const TRIGGER_LABEL = {
   digest: 'daily briefing',
@@ -366,8 +383,8 @@ export default function SettingsPanel({ onClose }) {
     const current = draft.ai_config[slot];
     const spec = byId.get(current.provider);
     return (
-      <div className="block">
-        <h3 className="block-title">{title}</h3>
+      <div className="section">
+        <h3 className="section__title">{title}</h3>
         <div className="grid-2">
           <label className="field">
             <span>{hint}</span>
@@ -426,9 +443,9 @@ export default function SettingsPanel({ onClose }) {
   };
 
   return (
-    <div className="sheet-backdrop" onClick={onClose} role="presentation">
+    <div className="sheet-scrim" onClick={onClose} role="presentation">
       <div
-        className="sheet glass-strong"
+        className="sheet t-raised"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label="Autonomy settings"
@@ -443,9 +460,9 @@ export default function SettingsPanel({ onClose }) {
         </header>
 
         <div className="sheet-body">
-          <section className={`kill ${engaged ? 'is-engaged' : ''}`}>
+          <section className="danger-zone" data-engaged={engaged}>
             <div>
-              <h3>
+              <h3 className="danger-zone__title">
                 <IconKill size={16} /> Kill switch
               </h3>
               <p className="muted small">
@@ -455,7 +472,7 @@ export default function SettingsPanel({ onClose }) {
               </p>
             </div>
             <button
-              className={`btn btn-sm ${engaged ? 'btn-primary' : 'btn-ghost'}`}
+              className={`btn btn-sm ${engaged ? 'btn-secondary' : 'btn-danger'}`}
               onClick={() => setKill(!engaged)}
               disabled={busy}
             >
@@ -463,8 +480,8 @@ export default function SettingsPanel({ onClose }) {
             </button>
           </section>
 
-          <section className="block">
-            <h3 className="block-title">Voice</h3>
+          <section className="section">
+            <h3 className="section__title">Voice</h3>
             <label className="field">
               <span>
                 Persona override <em>— leave empty for the default warm, dry, sassy voice</em>
@@ -478,14 +495,14 @@ export default function SettingsPanel({ onClose }) {
             </label>
           </section>
 
-          <section className="block">
-            <h3 className="block-title">Model routing</h3>
+          <section className="section">
+            <h3 className="section__title">Model routing</h3>
             {renderSlot('primary', 'Primary model', 'Anything user-facing')}
             {renderSlot('background', 'Background model', 'Cron, triage, digests — keep it cheap')}
           </section>
 
-          <section className="block">
-            <h3 className="block-title">Model providers</h3>
+          <section className="section">
+            <h3 className="section__title">Model providers</h3>
             {!writable && (
               <p className="muted small">
                 {providers.data?.reason ??
@@ -499,8 +516,8 @@ export default function SettingsPanel({ onClose }) {
             {catalogue.map((p) => {
               const status = statusOf(p.id);
               return (
-                <div key={p.id} className="block">
-                  <h3 className="block-title">
+                <div key={p.id} className="section">
+                  <h3 className="section__title">
                     {p.label}
                     {status?.has_key && (
                       <span className="muted small"> · key saved ({status.fingerprint})</span>
@@ -574,18 +591,20 @@ export default function SettingsPanel({ onClose }) {
             })}
           </section>
 
-          <section className="block">
-            <h3 className="block-title">Guardrails</h3>
+          <section className="section">
+            <h3 className="section__title">Guardrails</h3>
             <label className="field">
               <span>New external contacts</span>
-              <div className="seg">
-                {['ask', 'allow', 'block'].map((p) => (
+              <div className="row">
+                {POLICY.map((p) => (
                   <button
-                    key={p}
-                    className={`seg-btn ${draft.prefs.new_contact_policy === p ? 'is-on' : ''}`}
-                    onClick={() => setPrefs({ new_contact_policy: p })}
+                    key={p.value}
+                    className="chip"
+                    data-active={draft.prefs.new_contact_policy === p.value}
+                    aria-pressed={draft.prefs.new_contact_policy === p.value}
+                    onClick={() => setPrefs({ new_contact_policy: p.value })}
                   >
-                    {p}
+                    {p.label}
                   </button>
                 ))}
               </div>
@@ -599,8 +618,8 @@ export default function SettingsPanel({ onClose }) {
 
           <ScheduleBlock />
 
-          <section className="block">
-            <h3 className="block-title">Budget</h3>
+          <section className="section">
+            <h3 className="section__title">Budget</h3>
             <div className="grid-3">
               <label className="field">
                 <span>Daily tokens</span>

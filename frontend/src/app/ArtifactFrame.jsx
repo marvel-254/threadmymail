@@ -166,15 +166,20 @@ export default function ArtifactFrame({ artifact, theme, onMutated, height = 320
   };
 
   return (
-    <div className="artifact" style={styleVars}>
-      <div className="artifact-head">
-        <span className="artifact-kind">{artifact?.kind || 'artifact'}</span>
-        {!ready && <span className="artifact-status">loading…</span>}
+    <div className="artifact t-well" style={styleVars}>
+      <div className="artifact__head">
+        <span className="badge badge-accent">
+          <span className="ms" aria-hidden="true">
+            dashboard
+          </span>
+          {artifact?.kind || 'artifact'}
+        </span>
+        {!ready && <span className="artifact__status">loading…</span>}
       </div>
 
       <iframe
         ref={frameRef}
-        className="artifact-frame"
+        className="artifact__frame"
         title={artifact?.kind || 'Agent artifact'}
         sandbox="allow-scripts"
         srcDoc={srcdoc}
@@ -182,7 +187,11 @@ export default function ArtifactFrame({ artifact, theme, onMutated, height = 320
         loading="lazy"
       />
 
-      {error && <p className="artifact-error">{error}</p>}
+      {error && (
+        <p className="artifact__error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

@@ -4,8 +4,26 @@
  * The agent is the app: this is the primary pane. Tool calls are shown inline
  * (not hidden) because "what did it just do?" is the single most important
  * question an autonomous system has to answer honestly.
+ *
+ * The layout follows the agent dashboard design: a status header, a row of
+ * counters, the transcript, and a composer. Three things about it are not
+ * literal, and deliberately so:
+ *
+ *  - The counters count real events in this session. The design's chips read
+ *    "Processed / Urgent / Drafts Ready"; there is no notion of an urgent
+ *    message or a ready draft anywhere in the system, so claiming either would
+ *    be a number with nothing behind it. Runs, tool calls and tokens are
+ *    counted from what actually arrived over the socket.
+ *  - The approval card is the escalation, not a send-approval. The design's
+ *    version reads "Approve & Send / Edit Draft / Schedule", which presumes an
+ *    outbox this build has no scope to touch — the OAuth grant is read-only.
+ *    What the agent genuinely needs a decision on is its own escalation, so
+ *    that is what the card is for.
+ *  - Clicking a choice sends it as a message. There is no answer channel on the
+ *    socket; the agent reads the user's next message as the reply, so a choice
+ *    is a prefill that actually sends.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AgentStream as AgentStreamClient, cryptoId } from '../lib/ws.js';
 import { api } from '../lib/api.js';
 import ArtifactFrame from './ArtifactFrame.jsx';
@@ -18,6 +36,13 @@ const STATUS_LABEL = {
   offline: 'offline — retrying',
 };
 
+const QUICK_INTENTS = [
+  "What's waiting on me?",
+  "Summarize today's mail",
+  'Find 30 minutes with Dana next week',
+  'What did I promise this week?',
+];
+
 export default function AgentStream({ theme, onOpenSettings }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -28,6 +53,25 @@ export default function AgentStream({ theme, onOpenSettings }) {
   const clientRef = useRef(null);
   const scrollRef = useRef(null);
   const [backendMissing, setBackendMissing] = useState(false);
+  const [sent, setSent] = useState(0);
+
+  // Derived from the transcript, never from a separate poll: the socket is the
+  // only place run results exist, so counting the events we already received is
+  // both cheaper and more accurate than asking the API how many there were.
+  const tally = useMemo(() => {
+    let runs = 0;
+    let calls = 0;
+    let tokens = 0;
+    for (const m of messages) {
+      if (m.kind === 'done') {
+        runs += 1;
+        tokens += Number(m.tokens) || 0;
+      } else if (m.kind === 'tool_call') {
+        calls += 1;
+      }
+    }
+    return { runs, calls, tokens };
+  }, [messages]);
 
   useEffect(() => {
     const client = new AgentStreamClient();
@@ -95,17 +139,18 @@ export default function AgentStream({ theme, onOpenSettings }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  function send(event) {
+  function send(event, override) {
     event?.preventDefault();
-    const text = input.trim();
+    const text = (override ?? input).trim();
     if (!text) return;
     setInput('');
     setError(null);
+    setSent((n) => n + 1);
     setMessages((prev) => [...prev, { kind: 'user', text, at: Date.now() }]);
     const ok = clientRef.current?.sendMessage(text);
     if (!ok) {
       setBackendMissing(true);
-      setError('Not connected to the agent yet. Phase 0 is not deployed.');
+      setError('Not connected to the agent. The Worker may not be deployed yet.');
     }
   }
 
@@ -133,13 +178,20 @@ export default function AgentStream({ theme, onOpenSettings }) {
   }
 
   return (
-    <section className="pane pane-stream" aria-label="Agent stream">
-      <header className="pane-head">
-        <h2>
-          <IconStream size={18} /> Agent
-        </h2>
-        <div className="pane-head-actions">
-          <span className={`status status-${status}`}>{STATUS_LABEL[status]}</span>
+    <section className="stage stage-ai" aria-label="Agent stream">
+      <header className="stage__head">
+        <div className="stage__who">
+          <span className="stage__mark" aria-hidden="true">
+            <IconStream size={16} />
+          </span>
+          <div className="col">
+            <h2 className="stage__name">Millo</h2>
+            <span className={`status status-${status}`}>
+              {STATUS_LABEL[status]}
+            </span>
+          </div>
+        </div>
+        <div className="stage__tools">
           {activeRun && (
             <button className="btn btn-ghost btn-sm" onClick={interrupt}>
               <IconKill size={15} /> Stop
@@ -151,27 +203,53 @@ export default function AgentStream({ theme, onOpenSettings }) {
         </div>
       </header>
 
+      <div className="chip-row stage__stats" role="group" aria-label="Session counters">
+        <span className="badge badge-mute">
+          <span className="strong">{tally.runs}</span> {plural(tally.runs, 'run')}
+        </span>
+        <span className="badge badge-mute">
+          <span className="strong">{tally.calls}</span> tool{' '}
+          {plural(tally.calls, 'call')}
+        </span>
+        <span className="badge badge-mute">
+          <span className="strong">{tally.tokens.toLocaleString()}</span> tokens
+        </span>
+        {sent > 0 && (
+          <span className="badge badge-mute">
+            <span className="strong">{sent}</span> sent
+          </span>
+        )}
+      </div>
+
       {backendMissing && (
         <div className="notice" role="status">
-          <strong>Backend not deployed yet.</strong> Phase 0 (Worker + Neon) hasn&apos;t
-          run — see <code>docs/PLAN.md</code>. The interface below is fully wired and
-          will connect as soon as the Worker exists.
+          <strong>Cannot reach the agent.</strong> The Worker is not answering on the
+          WebSocket. Everything below stays wired and reconnects on its own.
         </div>
       )}
 
-      <div className="stream-scroll" ref={scrollRef}>
+      <div className="stage-scroll scroll-silk" ref={scrollRef}>
         {messages.length === 0 && (
-          <div className="stream-empty">
-            <p>Ask for something. The agent reads, acts, and reports back.</p>
-            <ul className="stream-suggestions">
-              {[
-                "What's waiting on me?",
-                "Summarize today's mail",
-                'Find 30 minutes with Dana next week',
-                'What did I promise this week?',
-              ].map((s) => (
+          <div className="feed-empty">
+            <p className="feed-empty-title">Ask for something</p>
+            <p className="feed-empty-body">
+              The agent reads, acts, and reports back. Every tool call it makes is
+              shown here as it happens.
+            </p>
+            <ul className="intents">
+              <li className="intents__label">
+                <span className="eyebrow">Quick intents</span>
+              </li>
+              {QUICK_INTENTS.map((s) => (
                 <li key={s}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setInput(s)}>
+                  <button
+                    className="chip"
+                    data-active={input === s}
+                    onClick={() => setInput(s)}
+                  >
+                    <span className="ms" aria-hidden="true">
+                      bolt
+                    </span>
                     {s}
                   </button>
                 </li>
@@ -181,7 +259,7 @@ export default function AgentStream({ theme, onOpenSettings }) {
         )}
 
         {messages.map((m, i) => (
-          <Message key={m.id || i} message={m} />
+          <Message key={m.id || i} message={m} onAnswer={(c) => send(null, c)} />
         ))}
 
         {artifacts.map((a) => (
@@ -196,27 +274,36 @@ export default function AgentStream({ theme, onOpenSettings }) {
 
       <form className="composer" onSubmit={send}>
         <input
-          className="composer-input"
+          className="input composer__input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask the agent, or tell it to do something…"
           aria-label="Message the agent"
           disabled={status !== 'open'}
         />
-        <button className="btn btn-primary btn-sm" type="submit" disabled={!input.trim()}>
-          <IconSend size={15} /> Send
+        <button
+          className="btn btn-primary composer__send"
+          type="submit"
+          disabled={!input.trim()}
+        >
+          <IconSend size={15} />
+          <span className="sr-only">Send</span>
         </button>
       </form>
 
-      {error && <p className="stream-error">{error}</p>}
+      {error && (
+        <p className="stream-error" role="alert">
+          {error}
+        </p>
+      )}
     </section>
   );
 }
 
-function Message({ message }) {
+export function Message({ message, onAnswer }) {
   if (message.kind === 'user') {
     return (
-      <div className="msg msg-user">
+      <div className="say say-user">
         <p>{message.text}</p>
       </div>
     );
@@ -224,45 +311,67 @@ function Message({ message }) {
 
   if (message.kind === 'agent') {
     return (
-      <div className="msg msg-agent">
+      <div className="say say-agent">
         <p>{message.text}</p>
       </div>
     );
   }
 
+  // The approval card from the agent dashboard, wired to the one real decision
+  // the agent can hand back. It used to render inert buttons, so a user who
+  // tapped one got silence and no indication anything had been sent.
   if (message.kind === 'escalation') {
+    const choices = message.choices?.length ? message.choices : ['yes', 'no'];
     return (
-      <div className="msg msg-escalation" role="alertdialog">
-        <strong>The agent is asking.</strong>
-        <p>{message.question}</p>
-        <div className="msg-actions">
-          {(message.choices || ['yes', 'no']).map((c) => (
-            <button key={c} className="btn btn-ghost btn-sm">
+      <div className="approval" role="group" aria-label="The agent needs a decision">
+        <div className="approval__head">
+          <span className="approval__mark" aria-hidden="true">
+            <span className="ms">priority_high</span>
+          </span>
+          <strong className="approval__title">Needs your answer</strong>
+        </div>
+        <p className="approval__question">{message.question}</p>
+        {message.context && (
+          <p className="approval__context">{message.context}</p>
+        )}
+        <div className="approval__actions">
+          {choices.map((c, i) => (
+            <button
+              key={c}
+              className={`btn btn-sm ${i === 0 ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => onAnswer?.(c)}
+            >
               {c}
             </button>
           ))}
         </div>
+        <p className="approval__hint">
+          Choosing one sends it as your reply. The agent is waiting.
+        </p>
       </div>
     );
   }
 
   if (message.kind === 'tool_call') {
     return (
-      <div className="msg msg-tool">
-        <span className="tool-name">{message.tool}</span>
-        <pre className="tool-args">{formatArgs(message.args)}</pre>
-      </div>
+      <details className="call">
+        <summary>
+          <span className="call__name">{message.tool}</span>
+          <span className="call__meta">called</span>
+        </summary>
+        <pre className="call__args">{formatArgs(message.args)}</pre>
+      </details>
     );
   }
 
   if (message.kind === 'tool_result') {
     return (
-      <div className={`msg msg-tool-result ${message.ok ? '' : 'is-error'}`}>
-        <span className="tool-summary">
+      <div className="result" data-ok={message.ok ? 'true' : 'false'}>
+        <span className="result__summary">
           {message.ok ? message.summary || 'ok' : 'failed'}
         </span>
         {message.latency_ms != null && (
-          <span className="tool-meta">{message.latency_ms}ms</span>
+          <span className="result__meta">{message.latency_ms}ms</span>
         )}
       </div>
     );
@@ -270,7 +379,10 @@ function Message({ message }) {
 
   if (message.kind === 'done') {
     return (
-      <div className="msg msg-done">
+      <div className="tick">
+        <span className="ms" aria-hidden="true">
+          check_circle
+        </span>
         run complete · {message.tokens ?? 0} tokens
         {message.cost_usd != null && ` · $${Number(message.cost_usd).toFixed(4)}`}
       </div>
@@ -278,6 +390,10 @@ function Message({ message }) {
   }
 
   return null;
+}
+
+function plural(n, word) {
+  return n === 1 ? word : `${word}s`;
 }
 
 function formatArgs(args) {

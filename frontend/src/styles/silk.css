@@ -365,6 +365,13 @@ button {
 .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 .btn-icon { padding: 9px; border-radius: var(--r-md); }
 
+/* Size modifier. Dense surfaces (settings, tool rows) need a button that fits
+   next to 12px text; padding is reduced rather than the font so the label keeps
+   the same optical weight as the control it sits beside. */
+.btn-sm { padding: 5px 10px; font-size: 12px; gap: 5px; border-radius: var(--r-sm); }
+.btn-sm .ms { font-size: 15px; }
+.btn-block { width: 100%; justify-content: center; }
+
 /* ── Inputs ─────────────────────────────────────────────────────────────── */
 
 .input {
@@ -545,6 +552,25 @@ textarea.input { resize: vertical; min-height: 96px; line-height: 22px; }
 .col { display: flex; flex-direction: column; }
 .spacer { flex: 1 1 auto; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* Layout helpers. Named for the number of columns so the markup says what it
+   means; `auto-fit` keeps them usable without a media query, because a grid
+   that cannot hold its contents is worse than one that reflows. */
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-md); }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-md); }
+.stack { display: flex; flex-direction: column; gap: var(--space-md); }
+.stack-sm { display: flex; flex-direction: column; gap: var(--space-sm); }
+.stack-lg { display: flex; flex-direction: column; gap: var(--space-lg); }
+
+/* Type helpers. `.muted` and `.small` are load-bearing rather than decorative:
+   they are how a dense settings surface signals that a value is secondary
+   without shrinking everything else. */
+.muted { color: var(--ink-muted); }
+.faint { color: var(--ink-faint); }
+.bright { color: var(--ink); }
+.small { font-size: 12px; line-height: 16px; }
+.mono { font-family: var(--font-mono); font-size: 12px; letter-spacing: -0.01em; }
+.strong { font-weight: 600; color: var(--ink); }
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
@@ -575,3 +601,382 @@ textarea.input { resize: vertical; min-height: 96px; line-height: 22px; }
   50% { opacity: 0.35; }
 }
 .pulse-dot { animation: silk-pulse 2.4s var(--ease-in-out) infinite; }
+
+/* ── Sections ───────────────────────────────────────────────────────────── */
+
+/*
+ * A titled group of settings or records.
+ *
+ * `t-well` rather than `t-raised` because these sit inside a sheet that is
+ * already raised; a raised card on a raised sheet produces an edge with no
+ * surface, which reads as a rendering fault rather than as depth.
+ */
+.section {
+  padding: var(--space-md);
+  border-radius: var(--r-md);
+  background: var(--surface-low);
+  border: 1px solid var(--glint);
+  box-shadow: var(--depth-minus-1);
+}
+.section + .section { margin-top: var(--space-md); }
+
+.section__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+.section__title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.section__sub {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-faint);
+}
+
+/* ── Key/value table ────────────────────────────────────────────────────── */
+
+/*
+ * Used for read-only values (a model id, a base URL, a fingerprint). Real
+ * tables would need row headers and a caption to be accessible; this is a
+ * definition list in disguise, so it is marked up as one and styled to look like
+ * the spec's key/value rows.
+ */
+.kv { display: flex; flex-direction: column; gap: 1px; }
+.kv__row {
+  display: grid;
+  grid-template-columns: minmax(96px, 34%) 1fr;
+  gap: var(--space-sm);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--glint);
+  align-items: baseline;
+}
+.kv__row:last-child { border-bottom: 0; }
+.kv__key { font-size: 12px; color: var(--ink-faint); }
+.kv__val { font-size: 12px; color: var(--ink-body); word-break: break-word; min-width: 0; }
+
+/* ── Danger zone ─────────────────────────────────────────────────────────── */
+
+/*
+ * The kill switch, and anything else that stops the agent.
+ *
+ * Colour is the only thing that marks this as different from the sections
+ * around it, so the resting state is already tinted and the engaged state adds a
+ * border. Tinting only on `data-engaged` would mean the control looks ordinary
+ * right up until the moment you need to find it again.
+ */
+.danger-zone {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-lg);
+  border-radius: var(--r-md);
+  background: var(--danger-container);
+  border: 1px solid color-mix(in srgb, var(--danger) 22%, transparent);
+  transition: border-color var(--t-base), background var(--t-base);
+}
+.danger-zone[data-engaged='true'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger), 0 0 18px -4px var(--danger);
+}
+.danger-zone__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+  margin-bottom: 3px;
+}
+.danger-zone .btn { margin-left: auto; flex-shrink: 0; }
+
+@media (max-width: 560px) {
+  .danger-zone { flex-direction: column; align-items: stretch; }
+  .danger-zone .btn { margin-left: 0; }
+}
+
+/* ── Table ──────────────────────────────────────────────────────────────── */
+
+/*
+ * Only used where the data really is tabular (scheduled runs: skill, trigger,
+ * time). Key/value pairs use `.kv` instead — a two-column layout in a table
+ * costs screen readers a row/column relationship they cannot use.
+ */
+.kv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.kv-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 0 10px 6px 0;
+  border-bottom: 1px solid var(--glint);
+}
+.kv-table td {
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid var(--glint);
+  color: var(--ink-body);
+  vertical-align: baseline;
+}
+.kv-table tr:last-child td { border-bottom: 0; }
+.kv-table td:last-child, .kv-table th:last-child { padding-right: 0; }
+
+/* ── Agent stream ───────────────────────────────────────────────────────── */
+
+/*
+ * Connection state, shown wherever the agent's liveness matters.
+ *
+ * The dot carries the state and the colour carries the meaning, so the text
+ * label and the dot agree: a colour-blind user reads "live" and a screen reader
+ * reads "live" and neither depends on distinguishing green from red. Only open
+ * and connecting glow — a steady glow on a connection that is merely idle would
+ * make the two indistinguishable at a glance.
+ */
+.status {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.status-open { color: var(--success); }
+.status-connecting { color: var(--accent-soft); }
+.status-offline { color: var(--danger); }
+.status-idle { color: var(--ink-faint); }
+.status-open::before,
+.status-connecting::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: var(--r-full);
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+  vertical-align: middle;
+}
+
+/* Header. Millo's name and state sit as one object so the eye does not have to
+   pair a name with a status that might belong to something else. */
+.stage__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--glint);
+  flex-shrink: 0;
+}
+.stage__who { display: flex; align-items: center; gap: var(--space-sm); min-width: 0; }
+.stage__mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-soft), var(--tertiary));
+  color: var(--on-primary);
+  box-shadow: var(--depth-1);
+}
+.stage__name {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 16px;
+}
+.stage__tools { margin-left: auto; display: flex; gap: var(--space-sm); flex-shrink: 0; }
+.stage__stats { padding: var(--space-sm) var(--space-lg) 0; }
+
+/* Quick intents. Labelled as a group so the list reads as one set of
+   suggestions rather than as loose buttons. */
+.intents {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin: var(--space-md) 0 0;
+  padding: 0;
+}
+.intents__label { width: 100%; margin-bottom: -2px; }
+
+/* Speech. The agent's own text is the thing being read most of the time, so it
+   gets the most contrast; the user's turns are visually recessed because they
+   are the known quantity. */
+.say {
+  max-width: 82%;
+  margin-bottom: var(--space-md);
+  font-size: 14px;
+  line-height: 22px;
+}
+.say p { margin: 0; white-space: pre-wrap; }
+.say-user {
+  margin-left: auto;
+  padding: 9px 13px;
+  border-radius: var(--r-lg) var(--r-lg) 4px var(--r-lg);
+  background: var(--surface-high);
+  border: 1px solid var(--glint);
+  color: var(--ink-body);
+}
+.say-agent { color: var(--ink); }
+
+/* Approval card — the one thing in the stream that needs a decision, so it is
+   the only element allowed the warning surface. */
+.approval {
+  margin-bottom: var(--space-md);
+  padding: var(--space-md);
+  border-radius: var(--r-md);
+  background: var(--surface-high);
+  border: 1px solid color-mix(in srgb, var(--warning) 28%, transparent);
+  box-shadow: var(--depth-1);
+}
+.approval__head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.approval__mark { color: var(--warning); display: grid; place-items: center; }
+.approval__mark .ms { font-size: 17px; }
+.approval__title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--warning);
+}
+.approval__question { font-size: 14px; line-height: 21px; color: var(--ink); margin: 0; }
+.approval__context { font-size: 12px; line-height: 17px; color: var(--ink-muted); margin: 6px 0 0; }
+.approval__actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-top: 12px; }
+.approval__hint { font-size: 11px; color: var(--ink-faint); margin: 10px 0 0; }
+
+/* Tool calls collapse by default. Arguments are the noisiest thing in the
+   stream and are almost never what you want at a glance, but they must stay
+   one click away — a tool call you cannot inspect is the failure mode this
+   whole surface exists to prevent. */
+.call {
+  margin-bottom: 6px;
+  border-radius: var(--r-sm);
+  background: var(--surface-low);
+  border: 1px solid var(--glint);
+  font-size: 12px;
+}
+.call summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 7px 10px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--ink-muted);
+}
+.call summary::-webkit-details-marker { display: none; }
+.call summary::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  flex-shrink: 0;
+  transition: transform var(--t-fast);
+}
+.call[open] summary::before { transform: rotate(90deg); }
+.call__name { font-family: var(--font-mono); color: var(--ink-body); }
+.call__meta { margin-left: auto; font-size: 11px; color: var(--ink-faint); }
+.call__args {
+  margin: 0;
+  padding: 9px 10px 10px 26px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--ink-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-top: 1px solid var(--glint);
+}
+
+.result {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  margin: 0 0 6px 14px;
+  padding-left: 10px;
+  border-left: 2px solid var(--glint);
+  font-size: 12px;
+  line-height: 17px;
+}
+.result[data-ok='true'] { border-left-color: color-mix(in srgb, var(--success) 45%, transparent); }
+.result[data-ok='false'] { border-left-color: var(--danger); }
+.result__summary { color: var(--ink-muted); }
+.result[data-ok='false'] .result__summary { color: var(--danger); }
+.result__meta { margin-left: auto; font-size: 11px; color: var(--ink-faint); flex-shrink: 0; }
+
+.tick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--space-sm) 0 var(--space-md);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.tick .ms { font-size: 14px; color: var(--success); }
+
+/* Notices and errors. */
+.notice {
+  margin: 0 var(--space-lg) var(--space-sm);
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-high);
+  border: 1px solid var(--glint);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ink-muted);
+}
+.notice strong { color: var(--ink-body); }
+
+.stream-error {
+  margin: 0;
+  padding: 8px var(--space-lg);
+  font-size: 12px;
+  color: var(--danger);
+  border-top: 1px solid var(--glint);
+}
+
+/* Composer. The send button is a square icon so the input keeps the width, and
+   the whole thing sits on one row at every breakpoint. */
+.composer {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--glint);
+  flex-shrink: 0;
+}
+.composer__input { flex: 1; min-width: 0; }
+.composer__send { padding: 0 15px; flex-shrink: 0; }
+
+/* ── Artifacts ──────────────────────────────────────────────────────────── */
+
+.artifact { margin-bottom: var(--space-md); overflow: hidden; }
+.artifact__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--glint);
+}
+.artifact__status { margin-left: auto; font-size: 11px; color: var(--ink-faint); }
+.artifact__frame { display: block; width: 100%; border: 0; background: transparent; }
+.artifact__error {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--danger);
+  border-top: 1px solid var(--glint);
+}

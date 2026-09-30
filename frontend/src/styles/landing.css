@@ -371,3 +371,15 @@
   .doc { padding-left: var(--margin-mobile); padding-right: var(--margin-mobile); }
   .doc-gap li { grid-template-columns: 1fr; gap: 4px; }
 }
+
+/*
+ * The hero's text column.
+ *
+ * A two-column hero at 1360px hands the copy column ~600px, which at a 3rem
+ * display size gives the headline a measure of well over 70 characters. Capping
+ * it is what keeps the headline readable; without this the grid does the layout
+ * but not the typography.
+ */
+.lp-hero-copy { max-width: 46rem; }
+
+.lp-security-copy { max-width: 58rem; }

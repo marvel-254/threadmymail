@@ -43,7 +43,7 @@ export default function TopBar({ view, railOpen, onToggleRail, onOpenSettings, o
   return (
     <header className="topbar t-plane">
       <button
-        className="btn-ghost brand-mark"
+        className="btn btn-ghost btn-icon"
         onClick={onToggleRail}
         aria-label={railOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         aria-pressed={railOpen}

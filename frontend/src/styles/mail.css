@@ -478,6 +478,45 @@
 }
 .sheet-title { font-size: 18px; margin-bottom: var(--space-md); }
 .sheet-body { font-size: 14px; line-height: 22px; color: var(--ink-muted); }
+
+/*
+ * A sheet is a flex column so the head and foot can stay put while the body
+ * scrolls, which is the whole reason to use a sheet instead of a taller div.
+ * Without `min-height: 0` on the body the scroll container cannot shrink and
+ * the foot slides off the bottom of the viewport.
+ */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--glint);
+  flex-shrink: 0;
+}
+.sheet-head h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.sheet-head > .btn { margin-left: auto; }
+.sheet-body { min-height: 0; overflow-y: auto; padding: var(--space-lg); }
+.sheet-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--glint);
+  flex-shrink: 0;
+}
 @keyframes silk-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes silk-rise {
   from { opacity: 0; transform: translateY(12px) scale(0.99); }
@@ -529,3 +568,8 @@
   .copilot-dock { margin: 0 0 var(--space-md); max-height: 52%; }
   .field-row { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* The autonomy label block. `min-width: 0` so the collapsed rail's ellipsis
+   actually engages — a flex child defaults to min-width: auto, which refuses to
+   shrink below its content and defeats the truncation set on `.autonomy-title`. */
+.autonomy-text { min-width: 0; }
