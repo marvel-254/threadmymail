@@ -256,7 +256,10 @@ export default function Landing() {
           <span>ThreadMyMail</span>
           <div className="spacer" />
           <Link to="/app">App</Link>
-          <a href="#security">Security</a>
+          <Link to="/system">System</Link>
+          <Link to="/docs">Docs</Link>
+          <Link to="/privacy">Privacy</Link>
+          <Link to="/terms">Terms</Link>
           <span className="lp-build">Silk · dark</span>
         </div>
       </footer>

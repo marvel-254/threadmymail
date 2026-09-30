@@ -2,14 +2,30 @@
  * Legacy pane styles — SettingsPanel, AgentStream, ArtifactFrame.
  *
  * These three predate the Silk redesign and still use their original class
- * names. Rather than half-port two 300-line components under time pressure,
- * the rules they need were lifted out of the old app.css verbatim into this
- * file, which deliberately contains NO :root, html, body or * rules: a global
- * reset here would fight silk.css, which owns the tokens and the base styles.
+ * names. Rather than half-port two 300-line components under time pressure, the
+ * rules they need were lifted out of the retired app.css into this file.
+ *
+ * Deliberately contains NO :root, html, body or * rules: a global reset here
+ * would fight silk.css, which owns the tokens and the base styles. Legacy
+ * colour variables were rewritten onto Silk tokens during the lift, because a
+ * `var(--undefined)` resolves to nothing at all and silently deletes whatever
+ * declaration it was in.
+ *
+ * Comments from the original file were dropped rather than carried over.
  *
  * Ported-to-Silk: none of these three yet. MailShell, the lists, the reader,
- * the copilot, the landing page and sign-in are all native Silk.
+ * the copilot, the landing page, sign-in, docs and /system are all native Silk.
  */
+.rail-btn.is-on {
+  background: var(--surface-highest);
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+}
+.rail-kill.is-engaged {
+  color: #fff;
+  background: #DC2626;
+  border-color: #DC2626;
+}
 .pane {
   display: flex; flex-direction: column; gap: 1rem; max-width: 900px; margin: 0 auto;
 }
@@ -19,7 +35,15 @@
   justify-content: space-between;
   gap: 1rem;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--glint);
+}
+.pane-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.15rem;
+  margin: 0;
+  color: var(--ink-body);
 }
 .pane-head-actions {
   display: flex; align-items: center; gap: 0.5rem;
@@ -34,12 +58,12 @@
   font-size: 0.82rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-muted);
+  color: var(--ink-muted);
   margin: 0;
-  font-family: var(--font-heading);
+  font-family: var(--font-display);
 }
 .muted {
-  color: var(--text-muted);
+  color: var(--ink-muted);
 }
 .small {
   font-size: 0.85rem;
@@ -47,14 +71,33 @@
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem;
 }
+.status {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--glint);
+  color: var(--ink-muted);
+  font-family: var(--font-display);
+}
 .notice {
   padding: 0.85rem 1rem;
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
   background: color-mix(in srgb, var(--primary) 8%, transparent);
-  color: var(--text);
+  color: var(--ink-body);
   font-size: 0.9rem;
   line-height: 1.5;
+}
+.notice code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  background: var(--surface-highest);
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+}
+.pane-stream {
+  min-height: calc(100vh - 4rem);
 }
 .stream-scroll {
   flex: 1;
@@ -67,19 +110,28 @@
   max-height: calc(100vh - 16rem);
 }
 .stream-empty {
-  color: var(--text-muted); display: flex; flex-direction: column; gap: 1rem;
+  color: var(--ink-muted); display: flex; flex-direction: column; gap: 1rem;
+}
+.stream-empty p {
+  margin: 0; font-size: 1rem;
 }
 .stream-suggestions {
   list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem;
+}
+.stream-suggestions li {
+  margin: 0;
 }
 .msg {
   padding: 0.7rem 0.9rem;
   border-radius: 14px;
   font-size: 0.93rem;
   line-height: 1.55;
-  border: 1px solid var(--border);
+  border: 1px solid var(--glint);
   max-width: 82%;
   animation: msgIn 180ms ease-out;
+}
+.msg p {
+  margin: 0; white-space: pre-wrap;
 }
 .msg-user {
   align-self: flex-end;
@@ -90,8 +142,8 @@
 }
 .msg-agent {
   align-self: flex-start;
-  background: var(--surface-strong);
-  box-shadow: var(--shadow-glass);
+  background: var(--surface-highest);
+  box-shadow: var(--depth-1);
 }
 .msg-tool, .msg-tool-result, .msg-done {
   align-self: flex-start;
@@ -99,9 +151,12 @@
   padding: 0.45rem 0.7rem;
   font-size: 0.82rem;
   border-radius: 10px;
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--text) 4%, transparent);
-  border: 1px dashed var(--border);
+  color: var(--ink-muted);
+  background: color-mix(in srgb, var(--ink-body) 4%, transparent);
+  border: 1px dashed var(--glint);
+}
+.msg-tool-result.is-error {
+  color: #DC2626; border-color: #DC266655;
 }
 .msg-done {
   align-self: center; font-size: 0.75rem; border-style: dotted;
@@ -114,10 +169,10 @@
   font-size: 0.76rem;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text-subtle);
+  color: var(--ink-faint);
 }
 .tool-meta {
-  margin-left: 0.5rem; color: var(--text-subtle);
+  margin-left: 0.5rem; color: var(--ink-faint);
 }
 .msg-escalation {
   align-self: flex-start;
@@ -134,9 +189,9 @@
   align-items: center;
   padding: 0.55rem;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-strong);
-  box-shadow: var(--shadow-glass);
+  border: 1px solid var(--glint);
+  background: var(--surface-highest);
+  box-shadow: var(--depth-1);
   position: sticky;
   bottom: 0.5rem;
 }
@@ -144,27 +199,39 @@
   flex: 1;
   border: none;
   background: transparent;
-  color: var(--text);
+  color: var(--ink-body);
   font: inherit;
   font-size: 0.95rem;
   padding: 0.4rem 0.6rem;
   outline: none;
   min-width: 0;
 }
+.composer-input::placeholder {
+  color: var(--ink-faint);
+}
 .stream-error {
   color: #DC2626; font-size: 0.85rem; margin: 0;
+}
+.artifact {
+  align-self: flex-start;
+  width: 100%;
+  border: 1px solid var(--glint);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface-highest);
+  box-shadow: var(--depth-1);
 }
 .artifact-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0.4rem 0.75rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--glint);
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-muted);
-  font-family: var(--font-heading);
+  color: var(--ink-muted);
+  font-family: var(--font-display);
 }
 .artifact-frame {
   width: 100%; border: 0; display: block; background: transparent;
@@ -177,19 +244,54 @@
   background: #D9770614;
   border-top: 1px solid #D9770644;
 }
+.field {
+  display: flex; flex-direction: column; gap: 0.3rem;
+}
+.field > span {
+  font-size: 0.8rem; font-weight: 600; color: var(--ink-muted);
+}
+.field > span em {
+  font-weight: 400; font-style: normal; color: var(--ink-faint);
+}
+.field input, .field textarea {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--glint);
+  background: color-mix(in srgb, var(--surface-lowest) 55%, transparent);
+  color: var(--ink-body);
+  outline: none;
+  width: 100%;
+}
+.field input:focus, .field textarea:focus {
+  border-color: var(--primary);
+}
+.field input[type='number'] {
+  font-variant-numeric: tabular-nums;
+}
 .seg {
-  display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  display: inline-flex; border: 1px solid var(--glint); border-radius: 10px; overflow: hidden;
 }
 .seg-btn {
   appearance: none;
   background: transparent;
   border: none;
-  border-right: 1px solid var(--border);
-  color: var(--text-muted);
+  border-right: 1px solid var(--glint);
+  color: var(--ink-muted);
   font: inherit;
   font-size: 0.82rem;
   padding: 0.35rem 0.8rem;
   cursor: pointer;
+}
+.seg-btn:last-child {
+  border-right: none;
+}
+.seg-btn.is-on {
+  background: var(--primary); color: #fff;
+}
+.chip.is-on {
+  background: var(--primary); border-color: var(--primary); color: #fff;
 }
 .grid-2 {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;
@@ -197,15 +299,79 @@
 .grid-3 {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem;
 }
+.block-subtitle {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  margin: 0.4rem 0 0;
+}
 .row-gap {
   display: flex; align-items: center; gap: 0.4rem;
+}
+.row-gap input[type='time'] {
+  flex: 1; min-width: 0;
+}
+.check {
+  display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.8rem;
+}
+.check input {
+  width: auto; margin: 0;
+}
+.table {
+  width: 100%; border-collapse: collapse; font-size: 0.85rem;
+}
+.table th {
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  padding: 0 0.6rem 0.35rem 0;
+  border-bottom: 1px solid var(--glint);
+}
+.table td {
+  padding: 0.45rem 0.6rem 0.45rem 0; border-bottom: 1px solid var(--glint);
+}
+.table tr:last-child td {
+  border-bottom: none;
+}
+.table time {
+  font-variant-numeric: tabular-nums;
+}
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.55);
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  z-index: 100;
+  animation: msgIn 140ms ease-out;
+}
+.sheet {
+  width: min(680px, 100%);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  overflow: hidden;
 }
 .sheet-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--glint);
+}
+.sheet-head h2 {
+  display: flex; align-items: center; gap: 0.5rem; margin: 0; font-size: 1.1rem;
+}
+.sheet-body {
+  padding: 1.25rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1.5rem;
 }
 .sheet-foot {
   display: flex;
@@ -213,5 +379,90 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.9rem 1.25rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--glint);
+}
+.kill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  border: 1px solid #DC262655;
+  background: #DC26260f;
+}
+.kill.is-engaged {
+  background: #DC262622; border-color: #DC2626;
+}
+.kill h3 {
+  display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.2rem; font-size: 0.98rem;
+}
+.kill p {
+  margin: 0;
+}
+.command-item.is-on {
+  background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary);
+}
+.auth-card .btn {
+  margin-top: 0.4rem;
+}
+.msg {
+  max-width: 94%;
+}
+.sheet-backdrop {
+  padding: 0.75rem; align-items: flex-end;
+}
+.sheet {
+  max-height: 92vh;
+}
+.msg, .sheet-backdrop {
+  animation: none;
+}
+
+/* Classes the new shell referenced that nothing defined. */
+
+.btn-sm { padding: 5px 11px; font-size: 12px; border-radius: var(--r-md); }
+
+.detail .stage-scroll { padding-top: var(--space-lg); }
+
+.autonomy-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+  text-align: left;
+}
+.autonomy-text .autonomy-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.brand-mark { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+
+/* Never had rules in the original stylesheet either; named so the intent reads. */
+
+.tool-summary { font-size: 12px; color: var(--ink-muted); }
+.artifact-kind, .artifact-status { font-size: 11px; color: var(--ink-faint); }
+.glass-strong { background: var(--surface-high); border-radius: var(--r-lg); }
+.lp-hero-copy { display: flex; flex-direction: column; justify-content: center; }
+.lp-security-copy { max-width: 78ch; }
+
+/*
+ * Connection state. The pill says "live" or "offline" in words, but words alone
+ * are missed at a glance — this is the one place in the agent UI where colour
+ * carries meaning, so it emits rather than sitting flat.
+ */
+
+.status-open { color: var(--success); }
+.status-connecting { color: var(--accent-soft); }
+.status-offline { color: var(--danger); }
+.status-idle { color: var(--ink-faint); }
+.status-open::before,
+.status-connecting::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: var(--r-full);
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+  vertical-align: middle;
 }

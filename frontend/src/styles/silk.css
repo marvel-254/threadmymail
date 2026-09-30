@@ -80,6 +80,9 @@
   --success: #6ee7b7;
   --warning: #fcd34d;
   --danger: #ffb4ab;
+  /* Low-alpha danger fill. Used by .notice and error states; the plain
+     --danger is a foreground colour and reads as a pink block if used as one. */
+  --danger-container: rgba(255, 180, 171, 0.12);
   --danger-deep: #93000a;
 
   /* ── Elevation: the 4 tactile tiers ────────────────────────────────────
