@@ -80,12 +80,20 @@ The icon check needs Google's `codepoints` file:
 
 ### Not finished
 
-`app/SettingsPanel.jsx` (649 lines), `app/AgentStream.jsx` (310) and
-`app/ArtifactFrame.jsx` (188) still use pre-redesign class names. Their rules
-live in `styles/legacy-panes.css`, which is a verbatim lift from the retired
-`app.css` with legacy colour variables rewritten onto Silk tokens. They render
-correctly and match the design language, but they are not yet native Silk
-components. Everything else is.
+- **`System.jsx` reads the wrong endpoints.** `api.providers()` hits
+  `/settings/providers`, which returns the 14-provider catalogue with no
+  `has_key` field, so the derived `configured` list is always empty and every
+  provider shows "not set". Separately `config` is hard-coded to
+  `Promise.resolve(null)`, so the Model section renders "not set" even though
+  `/v1/settings` returns `ai_config.primary`.
+- **Preloader / enclave-init / decryption loader screens** are still not built.
+  They were dropped rather than shipped, because they claimed an AWS Nitro
+  Enclave handshake that does not exist. A plain loading state ships instead.
+- **No logo or Millo raster asset.** `MilloMark` is inline SVG.
+
+Everything else is native Silk. `styles/legacy-panes.css` is deleted; the four
+stylesheets are `silk.css` (tokens + primitives), `mail.css` (the three-pane
+grid), `landing.css`, `auth.css`.
 
 ---
 
@@ -160,26 +168,53 @@ footer still said "PWA Phase 1".
 
 ## ⚠️ Known risks, in priority order
 
-### 🔴 Published with no authentication
+### 🔴 Sign-in cannot complete — one Google Cloud project is left to do
 
-`threadmymail.pages.dev` is public and every request is attributed to a single
-hardcoded user. **Anyone with the URL has that account** — todos, skills, and
-the credential store. CORS limits which *browser* can reach the API; it does
-nothing about the URL being guessable.
+**The public-access hole is closed.** `/app` is gated, every data endpoint
+returns 401 without a session, and the `X-User-Id` header that used to let
+anyone impersonate the single dev user is ignored in production. Verified
+against production on 2026-09-30.
 
-Treat the URL as a shared password. **Google OAuth is the only thing that
-fixes this**, and it is the next thing to build.
+What is missing is the other half. `SESSION_SECRET` is provisioned
+(`openssl rand -hex 32`, sealed with `secret bulk`). **`GOOGLE_CLIENT_ID` and
+`GOOGLE_CLIENT_SECRET` are not set**, so:
 
-### 🔴 The sign-in button is a dead end — **fixed 2026-09-30**
+- `GET /v1/auth/session` → `200 {"authenticated":false,"dev_mode":false}` — correct
+- `GET /v1/auth/google` → `503 NOT_CONFIGURED: GOOGLE_CLIENT_ID is unset`
 
-`/signin` used to render "Continue with Google", which navigated to
-`/v1/auth/google` → **404**. `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are
-declared in `Env` but nothing reads them, and there is no `/auth/*` route in the
-Worker.
+The app is therefore in the secure-but-unusable state: locked, and no way in.
+To finish it, in the [Google Cloud console](https://console.cloud.google.com/apis/credentials):
 
-The redesign removed the button rather than shipping it. `/signin` now says
-that accounts do not exist yet and links to `/app` directly. When OAuth is
-built it becomes one button, and this risk disappears.
+1. Create a project (or pick an existing one).
+2. Enable the **Google Drive API**, **Gmail API** and **Google Calendar API**.
+3. OAuth consent screen → **External** → add `marvel.254@gmail.com` as a test user.
+4. Credentials → **OAuth client ID** → **Web application**.
+5. Authorised redirect URI, exactly: `https://threadmymail-worker.twistedoliver211fs.workers.dev/v1/auth/google/callback`
+6. Then:
+   ```bash
+   cd apps/worker
+   printf '{"GOOGLE_CLIENT_ID":"…","GOOGLE_CLIENT_SECRET":"…"}' > /tmp/g.json
+   chmod 600 /tmp/g.json
+   ./node_modules/.bin/wrangler secret bulk /tmp/g.json
+   shred -u /tmp/g.json
+   ```
+
+`wrangler.jsonc` already has `GOOGLE_REDIRECT_URI` set to that same URI.
+
+**A first login creates a *new* `users` row.** The dev user's existing todos
+and skills belong to a different account and will not appear.
+
+### 🟡 `oauth_tokens` has no UNIQUE constraint
+
+`drizzle/0000_initial.sql` creates a plain index on `(user_id, provider)`, not
+a UNIQUE constraint, so `ON CONFLICT` is unavailable and token storage is a
+select-then-write inside a transaction instead. That is correct but racy: two
+concurrent callbacks for the same user can leave two refresh tokens, and the
+loser is whichever row the reader happens to see first.
+
+The fix is one statement against live Neon:
+`CREATE UNIQUE INDEX oauth_tokens_user_provider ON oauth_tokens (user_id, provider);`
+Not run unilaterally — it is a live-schema change.
 
 ### 🟡 Cloudflare OAuth expires roughly daily
 
@@ -272,6 +307,15 @@ node apps/worker/scripts/db-push.mjs drizzle/0000_initial.sql
 ---
 
 ## Testing
+
+`bash apps/worker/scripts/run-tests.sh` — **149 tests, 5 suites, all passing.**
+
+The script discovers `test/*_test.mjs` itself. Do not hardcode the list: an
+earlier version defaulted to two suite names and printed "34 passed" while
+skipping the other 115. A runner that under-reports reads as a green light.
+
+Node strips types but does not rewrite the `.js` specifiers the source uses for
+ESM, so the script bundles each test with esbuild first.
 
 ```bash
 cd apps/worker

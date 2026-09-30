@@ -310,15 +310,29 @@ Add long timeouts to any `wrangler` invocation. If a command returns nothing,
    every stored key undecryptable while Settings still lists them.
    Setting it surfaced a second bug, now fixed in `878dce5` — a single
    undecryptable row used to blank the entire key list.
-4. ⏸️ **Google OAuth is the LAST item of the FINAL phase** (user decision,
-   2026-09-28). Do not build `/auth/google` or sessions before then.
-   `DEV_USER_ID` in `routes.ts` is the deliberate stand-in. Until it lands,
-   "new mail" is the event trigger firing off the sync cursor, not real Gmail.
-   **This is now the one thing standing between the published app and being
-   public:** the frontend is live at `threadmymail.pages.dev` while every
-   request is still attributed to `DEV_USER_ID` with no login, so anyone with
-   the URL has that account. Treat the URL as a shared password. CORS is
-   configured to allow exactly that one origin (`CORS_ORIGINS`) — never `*`.
+4. ✅ **Google OAuth is built and deployed** (2026-09-30), overriding the
+    earlier deferral. `/v1/auth/google`, `/v1/auth/google/callback`,
+    `/v1/auth/session` and `/v1/auth/logout` are live. Sessions are stateless
+    HMAC-SHA256 cookies over `SESSION_SECRET` (provisioned), HttpOnly,
+    Secure, SameSite=Lax, 7-day TTL. `resolveIdentity()` in
+    `http/identity.ts` is the gate: in production a session is the *only*
+    accepted credential and `X-User-Id` is ignored outright; `DEV_USER_ID` and
+    the header survive only outside production. Verified against production:
+    every data endpoint returns 401 unauthenticated, and a spoofed `X-User-Id`
+    returns 401 too.
+    **Remaining:** `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are not set, so
+    `/v1/auth/google` answers `503 NOT_CONFIGURED` and nobody can sign in yet.
+    See HANDOFF.md for the console steps.
+    Scopes are deliberately read-only (`openid email profile gmail.readonly
+    calendar.readonly`). `gmail.send` is *not* requested — `email.send` exists
+    and outward tool calls are shadowed by a per-skill dry-run policy, but that
+    is a user-editable setting, not a permission boundary. Sending mail on
+    someone's behalf with no review step is a decision to make deliberately,
+    not a side effect of wiring up login.
+    The stateless-cookie cost is real and stated rather than hidden: a logout
+    cannot revoke an already-issued token, so 7 days is the bound. Anything
+    that must be revocable (kill switch, credential rotation) lives in the
+    database instead.
 5. ⚠️ **Hyperdrive** configs (`DB`, `DB_FRESH`) — bound in `wrangler.jsonc`,
    connection resolution unverified (audit item).
 6. ⚠️ **CI is a Python pipeline** — will need replacing with TypeScript.
