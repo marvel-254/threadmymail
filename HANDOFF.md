@@ -1,4 +1,4 @@
-# Handoff — 2026-09-29
+# Handoff — 2026-09-30
 
 Where things stand after today's session, written for whoever picks this up
 next. For the reasoning behind decisions, see `agent.md` (current state and
@@ -13,17 +13,87 @@ invariants) and `IMPLEMENTATION_SUMMARY.md` (chronological session log).
 | App | **https://threadmymail.pages.dev/app** |
 | API | `https://threadmymail-worker.twistedoliver211fs.workers.dev` |
 | Worker version | last successful deploy; `/health` confirms `environment: production` |
-| Provider keys stored | **0** — clean slot, nothing to rotate or re-enter |
+| Provider keys stored | **0** — clean slot, nothing to rotate or re-entered |
 | HEAD | see `git log --oneline -1` |
 
-**Nothing is broken and nothing is half-deployed.** Everything committed today
-is live and verified, and `scripts/deploy.sh` has been run end to end from a
-clean tree: Worker deployed, frontend deployed, then verified against
-production.
+> **The redesign below is committed but NOT yet deployed.** Cloudflare OAuth
+> expired mid-session and `wrangler login` needs a browser. Until someone runs
+> `wrangler login` from `apps/worker`, production is still serving the pre-
+> redesign UI. The Worker is untouched by the redesign — only the frontend
+> changed — so nothing in production is broken or inconsistent.
+
+**Nothing is broken.** Everything deployed before the redesign is live and
+verified, and `scripts/deploy.sh` has been run end to end from a clean tree:
+Worker deployed, frontend deployed, then verified against production.
 
 ---
 
-## What was done today
+## The redesign
+
+The Stitch design set was rebuilt as a real three-pane mail client, responsive
+from a single codebase rather than eight duplicated mobile screens.
+
+| Design screen | What it is now |
+|---|---|
+| `ai_dashboard_dark_mode` | `mail/MailShell.jsx` — rail, feed, workstation |
+| `desktop_settings` | `app/SettingsPanel.jsx` (lifted, not yet re-skinned) |
+| `system_preloader_enclave_init` | **dropped** — it claimed an AWS Nitro Enclave that does not exist |
+| `enterprise_admin_dashboard` | **`/system`** — shows real `/health`, providers, usage and model instead of invented user tables |
+| `documentation_hub` | **`/docs`** — written from the Worker source, with a "not built" list |
+| `privacy_policy` / `terms_of_service` | **`/privacy`**, **`/terms`** — grounded in the real architecture |
+| `email_thread_skeleton_decryption_loader` | **`/app`** — plain loading states; there is no decryption step to show off |
+| `*_add_account_modal` | **`/app`** connect prompt — states plainly that linking is not built |
+| `mobile_*` (8 screens) | the same components at `<768px`; no separate mobile files |
+| `landing_page`, `get_started_sign_in` | `pages/Landing.jsx`, `pages/SignIn.jsx` |
+
+### Copy that was removed rather than shipped
+
+The mockup copy made specific, checkable claims this build cannot support:
+"SOC2 Type II Certified", "Silk Vault Private Enclave", "AWS Nitro Enclave
+Handshake", "within 12 milliseconds", "Traverses 100,000+ past emails",
+"Gmail and Outlook", an intelligent quarantine filter, SSN/routing-number
+masking, and "3.8 hours"/"14 minutes" of invented time saved. All replaced
+with what is implemented.
+
+Kept: the Millo branding, the Silk palette, the typography, and the nav.
+
+### Three bugs a green build did not catch
+
+1. **The icon font was never loaded.** `.ms` set `font-family: 'Material
+   Symbols Outlined'` but `index.html` had no stylesheet for it, so every icon
+   would have rendered as the literal word `auto_awesome`. The build was green
+   throughout.
+2. **Eight undefined CSS variables.** `var(--text)` and friends were referenced
+   but never declared. An undefined custom property resolves to *nothing*, so
+   `color: var(--text)` deleted itself and the element inherited its colour.
+3. **`/activity` and `/todos` have no per-item GET.** The detail pane refetched
+   the list, passed the array to `Object.entries`, and rendered `[object
+   Object]`. The lists now pass the row they already hold.
+
+All three were found by checking, not by watching the build. The checks are
+worth repeating after any frontend change:
+
+```bash
+# every var() resolves to a declared token
+# every className in JSX is defined in some stylesheet
+# every Material Symbols name exists in the font
+```
+
+The icon check needs Google's `codepoints` file:
+`https://raw.githubusercontent.com/google/material-design-icons/master/variablefont/MaterialSymbolsOutline%5BFILL%2CGRAD%2Copsz%2Cwght%5D.codepoints`
+
+### Not finished
+
+`app/SettingsPanel.jsx` (649 lines), `app/AgentStream.jsx` (310) and
+`app/ArtifactFrame.jsx` (188) still use pre-redesign class names. Their rules
+live in `styles/legacy-panes.css`, which is a verbatim lift from the retired
+`app.css` with legacy colour variables rewritten onto Silk tokens. They render
+correctly and match the design language, but they are not yet native Silk
+components. Everything else is.
+
+---
+
+## What was done earlier today
 
 ### 1. Provisioned `ENCRYPTION_KEY` in production
 
@@ -104,16 +174,26 @@ nothing about the URL being guessable.
 Treat the URL as a shared password. **Google OAuth is the only thing that
 fixes this**, and it is the next thing to build.
 
-### 🔴 The sign-in button is a dead end
+### 🔴 The sign-in button is a dead end — **fixed 2026-09-30**
 
-`/signin` renders "Continue with Google", which navigates to
+`/signin` used to render "Continue with Google", which navigated to
 `/v1/auth/google` → **404**. `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are
-declared in `Env` but nothing reads them, and there is no `/auth/*` route in
-the Worker. `/app` is not gated at all.
+declared in `Env` but nothing reads them, and there is no `/auth/*` route in the
+Worker.
 
-This is expected — OAuth is deferred to the last item of the final phase by
-explicit decision (2026-09-28) — but it means the deployed UI advertises a
-login that does not exist.
+The redesign removed the button rather than shipping it. `/signin` now says
+that accounts do not exist yet and links to `/app` directly. When OAuth is
+built it becomes one button, and this risk disappears.
+
+### 🔴 Cloudflare auth is expired right now
+
+Both `~/.wrangler/config/default.toml` and `~/.config/.wrangler/config/default.toml`
+return **HTTP 403 "Invalid access token"** when probed against
+`api.cloudflare.com/client/v4/accounts`. This blocks every deploy, including
+the redesign.
+
+**Fix:** run `wrangler login` **from `apps/worker`**. Production is unaffected —
+it is still serving the last successful build.
 
 ### 🟡 Two wrangler credential locations, and only one works
 
