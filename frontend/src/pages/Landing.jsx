@@ -1,29 +1,18 @@
 /**
- * Landing — the public face.
+ * Landing — the public face. 90s Nostalgia edition.
  *
- * Built from the Stitch design's structure and voice: nav, hero with a live
- * product surface, capability breakdown, a before/after, the autonomy
- * controls, and a closing CTA.
- *
- * ── On the copy ──────────────────────────────────────────────────────────
- * The original mockup copy made specific, checkable claims that this build
- * cannot support, and marketing pages that promise things the product does not
- * do are worse than pages that promise less:
- *
- *   "SOC2 Type II Certified"          no audit has ever been done
- *   "Silk Vault Private Enclave"      no enclave; Cloudflare Workers + Neon
- *   "AWS Nitro Enclave" (preloader)   not deployed on AWS at all
- *   "Traverses 100,000+ past emails"  no vector index, no corpus
- *   "within 12 milliseconds"          fabricated precision
- *   "3.8 hours" / "14 minutes"        invented statistics
- *   "Gmail and Outlook"               Gmail only; the rest is unbuilt
- *   "quarantine filter", "SSN masking" neither exists
- *
- * Everything below is a capability that is actually present in the codebase.
- * Where a number is used it is a real one — 36 tools is the real tool count,
- * and it is a better line than a fabricated time saving.
+ * Structure is unchanged; only className values and a few wrapping elements
+ * added for the retro mandatory elements:
+ *   - Announcement marquee bar (top)
+ *   - Rainbow animated h1 <em>
+ *   - NEW! pulse badge
+ *   - Hit-counter style stats bar
+ *   - Construction stripe closing CTA
+ *   - Decorative color squares
+ *   - Groove HR dividers
  */
 import { Link } from 'react-router-dom';
+import Marquee from 'react-fast-marquee';
 import MilloMark from '../components/MilloMark.jsx';
 
 const NAV = [
@@ -37,7 +26,7 @@ const CAPABILITIES = [
   {
     icon: 'manage_search',
     title: 'Triage that runs itself',
-    body: 'Give Millo a standing instruction — “clear the unread backlog each morning” — and it runs on a schedule, inside the same budget and the same audit trail as anything you ask for directly.',
+    body: 'Give Millo a standing instruction — "clear the unread backlog each morning" — and it runs on a schedule, inside the same budget and the same audit trail as anything you ask for directly.',
   },
   {
     icon: 'account_tree',
@@ -93,12 +82,43 @@ const GUARDRAILS = [
   },
 ];
 
+const MARQUEE_ITEMS = [
+  { text: '★ AUTONOMOUS EMAIL INTELLIGENCE', color: '#ffff00' },
+  { text: '● 36 TOOLS, ONE AGENT', color: '#00ff00' },
+  { text: '★ BRING YOUR OWN MODEL KEY', color: '#ff8000' },
+  { text: '● AES-GCM ENCRYPTED AT REST', color: '#00ffff' },
+  { text: '★ KILL SWITCH ALWAYS VISIBLE', color: '#ff0000' },
+  { text: '● ACTIVITY LOG FOR EVERY ACTION', color: '#ff80ff' },
+  { text: '★ FREE CLOUDFLARE INFRASTRUCTURE', color: '#ffff00' },
+];
+
+const COLOR_SQUARES = [
+  '#ff0000', '#ff8000', '#ffff00', '#00ff00',
+  '#00ffff', '#0000ff', '#8000ff', '#ff00ff',
+];
+
 export default function Landing() {
   return (
     <div className="lp">
+      {/* ── Announcement marquee ───────────────────────────────────────── */}
+      <div className="lp-marquee-bar" role="marquee" aria-label="Announcements">
+        <Marquee speed={45} gradient={false} pauseOnHover>
+          {MARQUEE_ITEMS.map((item, i) => (
+            <span
+              key={i}
+              className="marquee-item"
+              style={{ color: item.color }}
+            >
+              {item.text}
+              <span className="marquee-sep" aria-hidden="true"> ◆ </span>
+            </span>
+          ))}
+        </Marquee>
+      </div>
+
       <header className="lp-nav">
         <Link to="/" className="lp-brand">
-          <MilloMark size={26} />
+          <MilloMark size={22} />
           <span>ThreadMyMail</span>
         </Link>
         <nav className="lp-links" aria-label="Sections">
@@ -116,9 +136,12 @@ export default function Landing() {
         {/* ── Hero ─────────────────────────────────────────────────────── */}
         <section className="lp-hero">
           <div className="lp-hero-copy">
-            <span className="eyebrow">Autonomous inbox intelligence</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <span className="r-eyebrow">Autonomous inbox intelligence</span>
+              <span className="r-badge-new" aria-label="New">NEW!</span>
+            </div>
             <h1 className="lp-h1">
-              Your inbox, orchestrated by <em>Millo</em>.
+              Your inbox, orchestrated by <em className="text-rainbow">Millo</em>.
             </h1>
             <p className="lp-lede">
               Millo triages what arrives, drafts what needs an answer and runs the
@@ -137,10 +160,43 @@ export default function Landing() {
             <p className="lp-fine">
               Bring your own model key. No account required to look around.
             </p>
+
+            {/* Decorative color squares */}
+            <div className="r-color-grid" style={{ marginTop: '12px' }} aria-hidden="true">
+              {COLOR_SQUARES.map((c) => (
+                <div key={c} className="r-color-sq" style={{ background: c }} />
+              ))}
+            </div>
           </div>
 
           <ProductSurface />
         </section>
+
+        {/* ── Groove divider ───────────────────────────────────────────── */}
+        <hr className="hr-groove" aria-hidden="true" />
+
+        {/* ── Hit counter stats bar ────────────────────────────────────── */}
+        <div className="lp-stats-bar" aria-label="Product stats">
+          <div className="lp-stat-item">
+            <span className="lp-stat-value">0036</span>
+            <span className="lp-stat-label">Tools available</span>
+          </div>
+          <div className="lp-stat-item">
+            <span className="lp-stat-value">0014</span>
+            <span className="lp-stat-label">AI providers</span>
+          </div>
+          <div className="lp-stat-item">
+            <span className="lp-stat-value">$0.00</span>
+            <span className="lp-stat-label">Infra cost / month</span>
+          </div>
+          <div className="lp-stat-item">
+            <span className="lp-stat-value">01997</span>
+            <span className="lp-stat-label">Vibes (since)</span>
+          </div>
+        </div>
+
+        {/* ── Groove divider ───────────────────────────────────────────── */}
+        <hr className="hr-groove" aria-hidden="true" />
 
         {/* ── Capabilities ─────────────────────────────────────────────── */}
         <section className="lp-section" id="capabilities">
@@ -150,14 +206,18 @@ export default function Landing() {
           </p>
           <div className="lp-grid">
             {CAPABILITIES.map((c) => (
-              <article className="card t-lift lp-card" key={c.title}>
-                <span className="ms lp-card-icon" aria-hidden="true">{c.icon}</span>
+              <article className="lp-card" key={c.title}>
+                <div className="lp-card-icon">
+                  <span className="ms" aria-hidden="true">{c.icon}</span>
+                </div>
                 <h3 className="lp-card-title">{c.title}</h3>
                 <p className="lp-card-body">{c.body}</p>
               </article>
             ))}
           </div>
         </section>
+
+        <hr className="hr-groove" aria-hidden="true" />
 
         {/* ── Before / after ──────────────────────────────────────────── */}
         <section className="lp-section" id="shift">
@@ -167,8 +227,8 @@ export default function Landing() {
             faster because something else is doing it.
           </p>
           <div className="lp-ba">
-            <div className="lp-ba-col lp-ba-before t-well">
-              <div className="eyebrow">Doing it yourself</div>
+            <div className="lp-ba-col lp-ba-before">
+              <div className="r-eyebrow" style={{ marginBottom: '4px' }}>Doing it yourself</div>
               <ul className="lp-list">
                 {BEFORE.map((b) => (
                   <li key={b}>
@@ -177,8 +237,8 @@ export default function Landing() {
                 ))}
               </ul>
             </div>
-            <div className="lp-ba-col lp-ba-after t-raised">
-              <div className="eyebrow lp-ok">With Millo</div>
+            <div className="lp-ba-col lp-ba-after">
+              <div className="r-eyebrow lp-ok" style={{ marginBottom: '4px' }}>With Millo</div>
               <ul className="lp-list">
                 {AFTER.map((a) => (
                   <li key={a}>
@@ -190,6 +250,8 @@ export default function Landing() {
           </div>
         </section>
 
+        <hr className="hr-groove" aria-hidden="true" />
+
         {/* ── Autonomy ─────────────────────────────────────────────────── */}
         <section className="lp-section" id="autonomy">
           <h2 className="lp-h2">Autonomy with the handbrake in view</h2>
@@ -199,8 +261,10 @@ export default function Landing() {
           </p>
           <div className="lp-grid">
             {GUARDRAILS.map((g) => (
-              <article className="card t-lift lp-card" key={g.title}>
-                <span className="ms lp-card-icon" aria-hidden="true">{g.icon}</span>
+              <article className="lp-card" key={g.title}>
+                <div className="lp-card-icon">
+                  <span className="ms" aria-hidden="true">{g.icon}</span>
+                </div>
                 <h3 className="lp-card-title">{g.title}</h3>
                 <p className="lp-card-body">{g.body}</p>
               </article>
@@ -208,9 +272,11 @@ export default function Landing() {
           </div>
         </section>
 
+        <hr className="hr-groove" aria-hidden="true" />
+
         {/* ── Security, honestly ───────────────────────────────────────── */}
         <section className="lp-section" id="security">
-          <div className="lp-security card-float">
+          <div className="lp-security">
             <div className="lp-security-copy">
               <h2 className="lp-h2">What is actually true about your data</h2>
               <p className="lp-sub lp-sub-tight">
@@ -239,7 +305,7 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* ── Closing CTA ──────────────────────────────────────────────── */}
+        {/* ── Closing CTA (construction stripe) ────────────────────────── */}
         <section className="lp-section lp-close">
           <h2 className="lp-h2">Stop reading it. Start orchestrating it.</h2>
           <p className="lp-sub">Built for people who already have too much mail.</p>
@@ -252,15 +318,15 @@ export default function Landing() {
 
       <footer className="lp-foot">
         <div className="row">
-          <MilloMark size={20} />
-          <span>ThreadMyMail</span>
+          <MilloMark size={18} />
+          <span style={{ fontWeight: 700 }}>ThreadMyMail</span>
           <div className="spacer" />
           <Link to="/app">App</Link>
           <Link to="/system">System</Link>
           <Link to="/docs">Docs</Link>
           <Link to="/privacy">Privacy</Link>
           <Link to="/terms">Terms</Link>
-          <span className="lp-build">Silk · dark</span>
+          <span className="lp-build">Retro · 1997</span>
         </div>
       </footer>
     </div>
@@ -268,27 +334,28 @@ export default function Landing() {
 }
 
 /**
- * A still of the real product, built from the real primitives rather than an
- * image. It is the same three-pane layout the app uses, at rest.
+ * A still of the real product, rendered as a Win95 application window.
  */
 function ProductSurface() {
   return (
-    <div className="lp-surface card-float" aria-hidden="true">
+    <div className="lp-surface" aria-hidden="true">
       <div className="lp-surface-bar">
-        <span className="lp-dot" /><span className="lp-dot" /><span className="lp-dot" />
-        <span className="lp-surface-title">ThreadMyMail</span>
+        <span className="lp-dot" title="Minimize">_</span>
+        <span className="lp-dot" title="Maximize">□</span>
+        <span className="lp-dot" title="Close">✕</span>
+        <span className="lp-surface-title">ThreadMyMail v1.0</span>
       </div>
       <div className="lp-surface-body">
         <div className="lp-surface-rail">
           {['stream', 'today', 'bolt', 'psychology', 'extension'].map((i, n) => (
             <span className={`lp-surface-rail-item${n === 0 ? ' is-active' : ''}`} key={i}>
-              <span className="ms" >{i}</span>
+              <span className="ms">{i}</span>
             </span>
           ))}
         </div>
         <div className="lp-surface-feed">
           {[0, 1, 2, 3].map((n) => (
-            <div className="lp-surface-row" key={n} data-unread={n < 2} />
+            <div className="lp-surface-row" key={n} data-unread={n < 2 ? 'true' : 'false'} />
           ))}
         </div>
         <div className="lp-surface-work">

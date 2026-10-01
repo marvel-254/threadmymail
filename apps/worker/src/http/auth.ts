@@ -232,7 +232,9 @@ export function authRoutes() {
 
       c.header('Set-Cookie', setCookie, { append: true });
       c.header('Set-Cookie', clearState, { append: true });
-      return c.redirect(frontend, 302);
+      // Keep successful sign-ins inside the authenticated app. Returning to
+      // `/` silently showed the landing page and made login appear discarded.
+      return c.redirect(`${frontend}/app`, 302);
     },
 
     /**
@@ -311,7 +313,8 @@ function redirectWith(
   hash: string,
 ): Response {
   c.header('Set-Cookie', setCookie, { append: true });
-  return c.redirect(`${target}/app${hash}`, 302);
+  // Sign-in reads the fragment and displays the failure reason.
+  return c.redirect(`${target}/signin${hash}`, 302);
 }
 
 /**

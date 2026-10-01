@@ -39,28 +39,22 @@ export default defineConfig({
           { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           // Maskable variants sit the logo in the 80% safe zone on a solid
           // brand field — required for Android adaptive icons.
-          {
-            src: 'pwa-192x192-maskable.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
-          {
-            src: 'pwa-512x512-maskable.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
+          { src: 'pwa-192x192-maskable.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: 'pwa-512x512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
         navigateFallback: '/index.html',
+        // OAuth start and callback are top-level navigations. Do not let the
+        // app-shell fallback turn those API paths into the landing page.
+        navigateFallbackDenylist: [/^\/v1(?:\/|$)/],
         runtimeCaching: [
           {
             // The agent stream is a WebSocket and must never be cached.
             urlPattern: /\/v1\/agent\/stream$/i,
             handler: 'NetworkOnly',
+            method: 'GET',
           },
           {
             // Session, credentials and provider keys are per-user and
@@ -68,6 +62,7 @@ export default defineConfig({
             // metadata on another user's device via a shared cache entry.
             urlPattern: /\/v1\/(auth\/session|auth\/logout|settings|settings\/providers|settings\/usage|credentials)$/i,
             handler: 'NetworkOnly',
+            method: 'GET',
           },
           {
             // Read-heavy endpoints tolerate short staleness; the server is the
@@ -80,6 +75,14 @@ export default defineConfig({
               networkTimeoutSeconds: 10,
               cacheableResponse: { statuses: [200] },
             },
+            method: 'GET',
+          },
+          {
+            // Catch-all: any other /v1/* request (e.g. OAuth start, skills,
+            // emails sync) must reach the same-origin OAuth proxy as-is.
+            urlPattern: /^\/v1\//i,
+            handler: 'NetworkOnly',
+            method: 'GET',
           },
         ],
       },

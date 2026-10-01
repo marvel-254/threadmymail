@@ -1,0 +1,815 @@
+/*
+ * retro-landing.css — Landing page styles, 90s Nostalgia edition.
+ *
+ * Structured after landing.css's class hierarchy (.lp-*, .doc-*, .sys-*)
+ * but overrides every visual property to match the Win95 aesthetic.
+ * No structural changes — the same JSX classes, new paint.
+ */
+
+/* ── Page shell ─────────────────────────────────────────────────────────── */
+
+.lp {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  /* bg-tile handled by body in retro.css */
+  background-color: var(--r-bg);
+  color: var(--r-fg);
+}
+
+/* ── Announcement marquee (inserted above nav in Landing.jsx) ───────────── */
+
+.lp-marquee-bar {
+  background: #000080;
+  color: #ffffff;
+  font-family: var(--r-font-body);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 5px 0;
+  border-bottom: 2px solid #000000;
+  overflow: hidden;
+}
+
+/* ── Nav ────────────────────────────────────────────────────────────────── */
+
+.lp-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--r-space-sm);
+  padding: 4px var(--r-space-md);
+  background: var(--r-silver);
+  border-bottom: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.lp-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--r-font-heading);
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--r-fg);
+  text-decoration: none;
+}
+.lp-brand:hover { color: var(--r-fg); text-decoration: none; }
+
+.lp-links {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+.lp-links a {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--r-fg);
+  text-decoration: none;
+  padding: 4px 10px;
+  background: var(--r-silver);
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  display: inline-flex;
+  align-items: center;
+}
+.lp-links a:hover {
+  background: #d0d0d0;
+  color: var(--r-fg);
+  text-decoration: none;
+}
+.lp-links a:active {
+  border-color: #808080 #ffffff #ffffff #808080;
+  transform: translate(1px, 1px);
+}
+
+.lp-cta {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 5px 14px;
+}
+
+.millo-mark { display: block; flex: 0 0 auto; }
+
+/* ── Hero ───────────────────────────────────────────────────────────────── */
+
+.lp-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--r-space-lg);
+  align-items: start;
+  padding: var(--r-space-xl) var(--r-space-lg);
+  max-width: var(--r-max-w);
+  margin: 0 auto;
+  width: 100%;
+}
+
+.lp-hero-copy {
+  max-width: 100%;
+}
+
+.lp-h1 {
+  font-family: var(--r-font-heading);
+  font-size: clamp(28px, 4vw, 52px);
+  font-weight: 900;
+  line-height: 1.05;
+  text-transform: uppercase;
+  text-shadow: 3px 3px 0 #808080;
+  color: #000000;
+  margin: var(--r-space-sm) 0 var(--r-space-md);
+}
+
+.lp-h1 em {
+  font-style: normal;
+  display: inline;
+  animation: rainbow 4s linear infinite;
+}
+
+.lp-lede {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #000000;
+  max-width: 52ch;
+  margin-bottom: var(--r-space-md);
+  font-family: var(--r-font-body);
+}
+
+.lp-hero-actions {
+  display: flex;
+  gap: var(--r-space-sm);
+  flex-wrap: wrap;
+  margin-bottom: var(--r-space-sm);
+  align-items: center;
+}
+
+.lp-fine {
+  font-family: var(--r-font-mono);
+  font-size: 11px;
+  color: #808080;
+  margin: 0;
+}
+
+/* ── Product surface (Win95 window preview) ─────────────────────────────── */
+
+.lp-surface {
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow:
+    inset -1px -1px 0 #404040,
+    inset 1px 1px 0 #dfdfdf;
+  background: #c0c0c0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.lp-surface-bar {
+  background: linear-gradient(to right, #000080, #1084d0);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+}
+
+.lp-dot {
+  width: 12px;
+  height: 12px;
+  background: #c0c0c0;
+  border: 1px solid;
+  border-color: #ffffff #404040 #404040 #ffffff;
+  font-size: 8px;
+  line-height: 12px;
+  text-align: center;
+}
+
+.lp-surface-title {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  margin-left: 4px;
+  font-family: var(--r-font-body);
+}
+
+.lp-surface-body {
+  display: grid;
+  grid-template-columns: 40px 1fr 1.4fr;
+  gap: 8px;
+  padding: 8px;
+  min-height: 240px;
+  background: #c0c0c0;
+}
+
+.lp-surface-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lp-surface-rail-item {
+  width: 38px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  color: #000000;
+  font-size: 14px;
+}
+.lp-surface-rail-item.is-active {
+  background: #000080;
+  color: #ffffff;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040, inset -1px -1px 0 #dfdfdf;
+}
+
+.lp-surface-feed { display: flex; flex-direction: column; gap: 4px; }
+.lp-surface-row {
+  height: 36px;
+  background: #ffffff;
+  border: 1px solid #808080;
+}
+.lp-surface-row[data-unread='true'] {
+  background: #ffffcc;
+  border-left: 3px solid #0000ff;
+}
+
+.lp-surface-work { display: flex; flex-direction: column; gap: 6px; }
+.lp-surface-ai {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  background: #ffffcc;
+  border: 1px solid #808080;
+  color: #000080;
+  font-size: 12px;
+  font-family: var(--r-font-body);
+}
+.lp-surface-ai-lines { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.lp-surface-ai-lines i {
+  height: 5px;
+  background: #c0c0c0;
+  border: 1px solid #808080;
+  display: block;
+  animation: win-shimmer 1.8s ease-in-out infinite;
+}
+.lp-surface-ai-lines i:nth-child(2) { width: 85%; }
+.lp-surface-ai-lines i:nth-child(3) { width: 60%; }
+
+.lp-surface-bubble {
+  flex: 1;
+  background: #ffffff;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+}
+.lp-surface-copilot {
+  height: 28px;
+  background: #ffffff;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+}
+.lp-surface-caret {
+  width: 2px;
+  height: 14px;
+  background: #000000;
+  animation: blink-hard 1s step-end infinite;
+}
+
+/* ── Sections ───────────────────────────────────────────────────────────── */
+
+.lp-section {
+  max-width: var(--r-max-w);
+  margin: 0 auto;
+  width: 100%;
+  padding: var(--r-space-xl) var(--r-space-lg);
+  scroll-margin-top: 48px;
+}
+
+.lp-h2 {
+  font-family: var(--r-font-heading);
+  font-size: clamp(20px, 2.4vw, 30px);
+  font-weight: 900;
+  text-transform: uppercase;
+  text-shadow: 2px 2px 0 #808080;
+  color: #000000;
+  max-width: 30ch;
+  margin-bottom: var(--r-space-sm);
+}
+
+.lp-sub {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #000000;
+  max-width: 62ch;
+  margin-bottom: var(--r-space-lg);
+  font-family: var(--r-font-body);
+}
+.lp-sub-tight { margin-bottom: var(--r-space-md); }
+
+/* Capabilities grid as Win95 card grid */
+.lp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--r-space-md);
+}
+
+.lp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  padding: var(--r-space-md);
+}
+
+/* Replaces card t-lift — no hover lift in retro */
+.card.t-lift.lp-card:hover {
+  background: #d0d0d0;
+  transform: none;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+}
+
+.lp-card-icon {
+  font-size: 20px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  background: #000080;
+  color: #ffffff;
+  border: 2px solid;
+  border-color: #5555ff #000040 #000040 #5555ff;
+  margin-bottom: 2px;
+  flex-shrink: 0;
+}
+
+/* The .ms class from silk.css will apply — give it the right container */
+.lp-card > .ms.lp-card-icon {
+  font-size: 18px;
+}
+
+.lp-card-title {
+  font-family: var(--r-font-heading);
+  font-size: 14px;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #000000;
+  line-height: 1.2;
+}
+
+.lp-card-body {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #000000;
+  font-family: var(--r-font-body);
+  margin: 0;
+}
+
+/* ── Before / after ─────────────────────────────────────────────────────── */
+
+.lp-ba {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--r-space-md);
+}
+
+.lp-ba-col {
+  padding: var(--r-space-md);
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040, inset -1px -1px 0 #dfdfdf;
+}
+
+.lp-ba-before { background: #e8e8e8; }
+.lp-ba-after  { background: #ffffcc; border-color: #ffffff #808080 #808080 #ffffff; box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf; }
+
+/* Override t-well / t-raised on these elements */
+.lp-ba-before.t-well,
+.lp-ba-after.t-raised {
+  box-shadow: none;
+  background: inherit;
+}
+.lp-ba-before.t-well::before,
+.lp-ba-after.t-raised::before { display: none; }
+
+.lp-ok { color: #00aa00; font-weight: 700; }
+
+.lp-list {
+  list-style: none;
+  margin: var(--r-space-sm) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lp-list li {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #000000;
+  padding: 4px 0;
+  border-bottom: 1px solid #c0c0c0;
+  font-family: var(--r-font-body);
+}
+.lp-list li:last-child { border-bottom: none; }
+
+.lp-x     { color: #ff0000; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+.lp-check { color: #00aa00; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+
+/* ── Security (construction stripe section) ─────────────────────────────── */
+
+/* The security section gets a construction stripe border */
+.lp-section#security {
+  position: relative;
+}
+.lp-section#security::before {
+  content: '';
+  display: block;
+  height: 12px;
+  background: repeating-linear-gradient(
+    45deg,
+    #ffff00,
+    #ffff00 10px,
+    #000000 10px,
+    #000000 20px
+  );
+  margin-bottom: var(--r-space-md);
+}
+
+.lp-security {
+  background: #ffffcc;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  padding: var(--r-space-lg);
+}
+
+/* Override card-float on security section */
+.lp-security.card-float {
+  border-radius: 0;
+  box-shadow:
+    inset -1px -1px 0 #404040,
+    inset 1px 1px 0 #dfdfdf;
+}
+
+.lp-security-copy { max-width: 100%; }
+
+.lp-facts {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.lp-facts > div {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: var(--r-space-md);
+  padding: 8px 0;
+  border-top: 2px solid #c0c0c0;
+}
+.lp-facts > div:first-child { border-top: none; }
+.lp-facts dt {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #000000;
+  font-family: var(--r-font-body);
+}
+.lp-facts dd {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #000000;
+  margin: 0;
+  font-family: var(--r-font-body);
+}
+
+/* ── Closing CTA (construction stripe bg) ───────────────────────────────── */
+
+.lp-close {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: repeating-linear-gradient(
+    45deg,
+    #ffff00,
+    #ffff00 10px,
+    #000000 10px,
+    #000000 20px
+  );
+  padding-top: var(--r-space-xl);
+  padding-bottom: var(--r-space-xl);
+}
+
+.lp-close .lp-h2 {
+  color: #ffffff;
+  text-shadow: 2px 2px 0 #000000, -1px -1px 0 #000000;
+  max-width: 26ch;
+}
+
+.lp-close .lp-sub {
+  color: #ffffff;
+  text-shadow: 1px 1px 0 #000000;
+}
+
+.lp-cta-lg {
+  padding: 10px 28px;
+  font-size: 15px;
+}
+
+/* ── Hit counter stats section ──────────────────────────────────────────── */
+
+.lp-stats-bar {
+  background: #000000;
+  border-top: 2px solid #808080;
+  border-bottom: 2px solid #808080;
+  padding: var(--r-space-md) var(--r-space-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--r-space-xl);
+  flex-wrap: wrap;
+}
+
+.lp-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.lp-stat-value {
+  font-family: var(--r-font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: #00ff00;
+  letter-spacing: 0.1em;
+}
+
+.lp-stat-label {
+  font-family: var(--r-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #808080;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+
+.lp-foot {
+  margin-top: auto;
+  padding: var(--r-space-sm) var(--r-space-lg);
+  background: #c0c0c0;
+  border-top: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  font-size: 12px;
+  color: #000000;
+  font-family: var(--r-font-body);
+}
+
+.lp-foot .row,
+.lp-foot .r-row {
+  gap: var(--r-space-md);
+  flex-wrap: wrap;
+}
+
+.lp-foot a {
+  color: #0000ff;
+  text-decoration: underline;
+  font-size: 12px;
+}
+.lp-foot a:hover { color: #ff0000; }
+
+.lp-build {
+  font-family: var(--r-font-mono);
+  font-size: 10px;
+  color: #808080;
+}
+
+/* ── Docs / System / Legal pages ────────────────────────────────────────── */
+
+.doc {
+  min-height: 100dvh;
+  padding: var(--r-space-lg) var(--r-space-lg) calc(var(--r-space-xl) * 2);
+  max-width: var(--r-max-w);
+  margin: 0 auto;
+  background: var(--r-bg);
+  color: var(--r-fg);
+}
+
+.doc-head {
+  padding-bottom: var(--r-space-md);
+  border-bottom: 4px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  margin-bottom: var(--r-space-lg);
+}
+
+.doc-sec {
+  margin-bottom: var(--r-space-xl);
+  background: #ffffff;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+  padding: var(--r-space-md);
+}
+
+/* The section heading gets a titlebar treatment */
+.doc-sec > h2:first-child {
+  background: linear-gradient(to right, #000080, #1084d0);
+  color: #ffffff;
+  font-family: var(--r-font-body);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 3px 8px;
+  margin: calc(-1 * var(--r-space-md)) calc(-1 * var(--r-space-md)) var(--r-space-md);
+  text-transform: none;
+  letter-spacing: 0;
+  text-shadow: none;
+}
+
+.doc-note {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #000000;
+  max-width: 72ch;
+  margin: 0 0 var(--r-space-sm);
+  font-family: var(--r-font-body);
+}
+.doc-note code {
+  font-family: var(--r-font-mono);
+  font-size: 12px;
+  background: #e8e8e8;
+  padding: 1px 4px;
+  border: 1px solid #808080;
+  color: #000080;
+}
+.doc-note-bad {
+  border-left: 3px solid #ff0000;
+  padding-left: var(--r-space-sm);
+  color: #800000;
+  background: #fff0f0;
+}
+
+.doc-count { color: #808080; font-weight: 700; }
+.lp-count  { font-family: var(--r-font-mono); font-size: 12px; color: #808080; }
+
+.doc-alert {
+  display: flex;
+  gap: var(--r-space-md);
+  padding: var(--r-space-sm) var(--r-space-md);
+  background: #ffffcc;
+  border: 2px solid #000000;
+  margin-bottom: var(--r-space-lg);
+}
+.doc-alert p { font-size: 13px; line-height: 1.5; color: #000000; margin: 0; }
+
+.doc-gap {
+  list-style: none;
+  margin: 0 0 var(--r-space-md);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.doc-gap li {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: var(--r-space-md);
+  padding: 8px 0;
+  border-bottom: 1px solid #c0c0c0;
+}
+.doc-gap li:last-child { border-bottom: none; }
+.doc-gap strong { font-size: 13px; font-weight: 700; color: #000000; font-family: var(--r-font-body); }
+.doc-gap span   { font-size: 13px; line-height: 1.5; color: #000000; font-family: var(--r-font-body); }
+
+.doc-clause { padding: var(--r-space-sm) 0; border-top: 1px solid #c0c0c0; }
+.doc-clause h2 {
+  font-family: var(--r-font-body);
+  font-size: 13px;
+  font-weight: 700;
+  color: #000000;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  background: none;
+  padding: 0;
+  letter-spacing: 0.05em;
+  text-shadow: none;
+}
+.doc-clause p { font-size: 12px; line-height: 1.6; color: #000000; margin: 0; max-width: 72ch; font-family: var(--r-font-body); }
+
+/* ── System page ────────────────────────────────────────────────────────── */
+
+.sys-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--r-space-sm);
+  margin-bottom: var(--r-space-md);
+}
+
+/* Hit-counter style stat */
+.sys-stat {
+  background: #000000;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+  padding: var(--r-space-sm);
+}
+
+/* Override t-well on sys-stat */
+.sys-stat.t-well {
+  background: #000000;
+  box-shadow: inset 1px 1px 0 #404040;
+}
+
+.sys-stat-label {
+  font-family: var(--r-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #808080;
+  margin-bottom: 4px;
+}
+
+.sys-stat-value {
+  font-family: var(--r-font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: #00ff00;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+}
+.sys-stat[data-tone='ok']  .sys-stat-value { color: #00ff00; }
+.sys-stat[data-tone='bad'] .sys-stat-value { color: #ff0000; font-size: 13px; }
+
+.sys-providers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 2px;
+  border: 2px solid #808080;
+}
+
+.sys-provider {
+  display: flex;
+  align-items: center;
+  gap: var(--r-space-sm);
+  padding: 6px 10px;
+  background: #e8e8e8;
+  border-right: 1px solid #808080;
+  border-bottom: 1px solid #808080;
+  /* override card depth-1 */
+  box-shadow: none;
+  border-radius: 0;
+}
+.sys-provider[data-on='true'] { background: #ffffcc; }
+
+.sys-provider-icon { font-size: 16px; color: #808080; flex: 0 0 16px; }
+.sys-provider[data-on='true'] .sys-provider-icon { color: #00aa00; }
+
+.sys-provider-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.sys-provider-label { font-size: 12px; font-weight: 700; color: #000000; font-family: var(--r-font-body); }
+.sys-provider-id    { font-size: 10px; color: #808080; font-family: var(--r-font-mono); }
+
+/* Retro-ify the badges used in sys-provider */
+.sys-provider .badge {
+  border-radius: 0;
+  font-family: var(--r-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  background: #c0c0c0;
+  color: #000000;
+  border: 1px solid #808080;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.sys-provider .badge-success {
+  background: #00aa00;
+  color: #ffffff;
+  border-color: #006600;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .lp-hero          { grid-template-columns: 1fr; }
+  .lp-ba            { grid-template-columns: 1fr; }
+  .lp-nav           { flex-wrap: wrap; }
+  .lp-links         { display: none; }
+  .lp-surface-body  { grid-template-columns: 1fr; min-height: 0; }
+  .lp-surface-rail  { flex-direction: row; }
+  .lp-facts > div   { grid-template-columns: 1fr; gap: 2px; }
+  .lp-stats-bar     { gap: var(--r-space-lg); }
+  .doc              { padding: var(--r-space-md); }
+  .doc-gap li       { grid-template-columns: 1fr; gap: 2px; }
+  .lp-section       { padding: var(--r-space-lg) var(--r-space-md); }
+}

@@ -1,36 +1,21 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
+import Marquee from 'react-fast-marquee';
 import MilloMark from '../components/MilloMark.jsx';
 import { api } from '../lib/api.js';
 import { useSession } from '../lib/useSession.js';
 
 /**
- * Sign in with Google.
+ * Sign in with Google. 90s Nostalgia edition.
  *
- * ── On the copy ─────────────────────────────────────────────────────────────
- *
- * The structure here is the design's: avatar, status chip, one button, a
- * divider, then three trust points. The words inside that structure are not the
- * design's, because the design's made claims this build cannot support —
- * "Silk Vault enclave; absolutely zero LLM training", "SOC2 Type II compliant",
- * "4,200+ partners, founders and executives". Each has been replaced with a
- * statement that is true today and can be checked.
- *
- * ── On the button ───────────────────────────────────────────────────────────
- *
- * This is a full page navigation, not a fetch. The OAuth round trip needs a
- * top-level redirect, and the HttpOnly session cookie has to come back on a real
- * document load. `window.location.assign` rather than an href so the click is
- * explicit and the button can show that something is happening.
+ * Structure: Win95 dialog window with title bar, beveled Google button,
+ * alternating-row trust list, marquee footer.
  */
 export default function SignIn() {
   const { session, loading } = useSession();
   const [configError, setConfigError] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  // The OAuth callback redirects back with a fragment describing what happened.
-  // Surfacing it matters: a failed consent that silently lands on a working
-  // sign-in page looks like the app ignoring the user.
   useEffect(() => {
     const hash = window.location.hash.replace(/^#/, '');
     if (!hash.startsWith('error=')) return;
@@ -51,7 +36,7 @@ export default function SignIn() {
 
   return (
     <div className="si">
-      <nav className="si-topnav">
+      <nav className="si-topnav" aria-label="Navigation">
         <Link to="/" className="si-navlink">
           <span className="ms" aria-hidden="true">arrow_back</span>
           Back to Overview
@@ -66,100 +51,118 @@ export default function SignIn() {
         </Link>
       </nav>
 
-      <div className="si-orb si-orb--a" aria-hidden="true" />
-      <div className="si-orb si-orb--b" aria-hidden="true" />
+      {/* Win95 dialog card */}
+      <div className="si-card" role="main">
+        {/* Title bar is rendered via .si-card::before pseudo-element in CSS */}
+        <div className="si-card-body-inner">
+          <div className="si-avatar">
+            <span className="si-avatar__ring" aria-hidden="true" />
+            <MilloMark size={64} />
+            <span className="si-avatar__dot" aria-hidden="true" />
+          </div>
 
-      <div className="si-card">
-        <div className="si-avatar">
-          <span className="si-avatar__ring" aria-hidden="true" />
-          <MilloMark size={72} />
-          <span className="si-avatar__dot" aria-hidden="true" />
+          <p className="si-chip">
+            <span className="ms" aria-hidden="true">auto_awesome</span>
+            Autonomous Copilot Ready
+          </p>
+
+          <h1 className="si-title">Get Started with Millo</h1>
+          <p className="si-body">
+            Autonomous email triage, contract extraction, and executive responses.
+            Millo works in your own account and only acts on the tools you allow.
+          </p>
+
+          {configError ? (
+            <p className="si-error" role="alert">
+              <span className="ms" aria-hidden="true">error_outline</span>
+              {configError}
+            </p>
+          ) : null}
+
+          <button
+            type="button"
+            className="btn-google"
+            onClick={start}
+            disabled={disabled}
+          >
+            <GoogleGlyph />
+            <span>{busy ? 'Redirecting…' : 'Continue with Google'}</span>
+          </button>
+
+          <p className="si-scope">
+            ThreadMyMail asks Google for <strong>read-only</strong> access to mail
+            and calendar. It cannot send or delete anything.
+          </p>
+
+          <div className="si-divider"><span>Why this is safe</span></div>
+
+          <ul className="si-trust">
+            <li>
+              <span className="ms si-trust__icon" aria-hidden="true">lock</span>
+              <strong>Your keys, your account</strong>
+              <p>
+                Model API keys are stored encrypted against your user row and are
+                never sent to the browser — you can only see whether one is set.
+              </p>
+            </li>
+            <li>
+              <span className="ms si-trust__icon" aria-hidden="true">person</span>
+              <strong>Signed in as one person</strong>
+              <p>
+                Every request is scoped to your account. There is no shared
+                workspace and no URL that grants access on its own.
+              </p>
+            </li>
+            <li>
+              <span className="ms si-trust__icon" aria-hidden="true">front_hand</span>
+              <strong>Nothing happens without a tool call</strong>
+              <p>
+                Millo can only act through tools you can see and switch off, and
+                the kill switch stops a running job immediately.
+              </p>
+            </li>
+          </ul>
+
+          {session?.dev_mode ? (
+            <p className="si-note">
+              This deployment is running without authentication, so signing in is
+              not required. <Link to="/app">Open the app anyway</Link>.
+            </p>
+          ) : null}
         </div>
-
-        <p className="si-chip">
-          <span className="ms" aria-hidden="true">auto_awesome</span>
-          Autonomous Copilot Ready
-        </p>
-
-        <h1 className="si-title">Get Started with</h1>
-        <p className="si-body">
-          Autonomous email triage, contract extraction, and executive responses.
-          Millo works in your own account and only acts on the tools you allow.
-        </p>
-
-        {configError ? (
-          <p className="si-error" role="alert">
-            <span className="ms" aria-hidden="true">error_outline</span>
-            {configError}
-          </p>
-        ) : null}
-
-        <button
-          type="button"
-          className="btn btn-google"
-          onClick={start}
-          disabled={disabled}
-        >
-          <GoogleGlyph />
-          <span>{busy ? 'Redirecting…' : 'Continue with Google'}</span>
-        </button>
-
-        <p className="si-scope">
-          ThreadMyMail asks Google for <strong>read-only</strong> access to mail
-          and calendar. It cannot send or delete anything.
-        </p>
-
-        <div className="si-divider"><span>Why this is safe</span></div>
-
-        <ul className="si-trust">
-          <li>
-            <span className="ms si-trust__icon" aria-hidden="true">lock</span>
-            <strong>Your keys, your account</strong>
-            <p>
-              Model API keys are stored encrypted against your user row and are
-              never sent to the browser — you can only see whether one is set.
-            </p>
-          </li>
-          <li>
-            <span className="ms si-trust__icon" aria-hidden="true">person</span>
-            <strong>Signed in as one person</strong>
-            <p>
-              Every request is scoped to your account. There is no shared
-              workspace and no URL that grants access on its own.
-            </p>
-          </li>
-          <li>
-            <span className="ms si-trust__icon" aria-hidden="true">front_hand</span>
-            <strong>Nothing happens without a tool call</strong>
-            <p>
-              Millo can only act through tools you can see and switch off, and
-              the kill switch stops a running job immediately.
-            </p>
-          </li>
-        </ul>
-
-        {session?.dev_mode ? (
-          <p className="si-note">
-            This deployment is running without authentication, so signing in is
-            not required. <Link to="/app">Open the app anyway</Link>.
-          </p>
-        ) : null}
       </div>
 
+      {/* Marquee footer */}
       <footer className="si-foot">
         <Link to="/terms">Terms of Service</Link>
+        <span className="si-foot__sep" aria-hidden="true">◆</span>
         <Link to="/privacy">Privacy Policy</Link>
+        <span className="si-foot__sep" aria-hidden="true">◆</span>
         <Link to="/docs">Documentation</Link>
-        <span className="si-foot__sep" aria-hidden="true">
-          <span className="ms">shield_lock</span>
-        </span>
+        <span className="si-foot__sep" aria-hidden="true">◆</span>
         <span>© {new Date().getFullYear()} ThreadMyMail</span>
       </footer>
+
+      {/* Marquee announcement strip at very bottom */}
+      <div className="r-marquee-bar" style={{ width: '100%' }} aria-hidden="true">
+        <Marquee speed={35} gradient={false}>
+          <span className="marquee-item" style={{ color: '#ffff00' }}>★ SECURE SIGN-IN</span>
+          <span className="marquee-sep">◆</span>
+          <span className="marquee-item" style={{ color: '#00ff00' }}>● READ-ONLY GOOGLE ACCESS</span>
+          <span className="marquee-sep">◆</span>
+          <span className="marquee-item" style={{ color: '#ff8000' }}>★ ENCRYPTED CREDENTIALS</span>
+          <span className="marquee-sep">◆</span>
+          <span className="marquee-item" style={{ color: '#00ffff' }}>● KILL SWITCH INCLUDED</span>
+          <span className="marquee-sep">◆</span>
+          <span className="marquee-item" style={{ color: '#ff80ff' }}>★ YOUR KEY, YOUR ACCOUNT</span>
+          <span className="marquee-sep">◆</span>
+        </Marquee>
+      </div>
     </div>
   );
 }
 
-/** Google's mark, inline so there is no extra request and no icon font dependency. */
+/** Google's mark — inline SVG, no extra request. */
 function GoogleGlyph() {
   return (
     <svg className="si-google-glyph" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
@@ -171,7 +174,6 @@ function GoogleGlyph() {
   );
 }
 
-/** Callback failures, in the words of someone who has to fix it. */
 const ERROR_COPY = {
   not_configured:
     'Google sign-in is not configured on this deployment. The owner needs to set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',

@@ -1,16 +1,8 @@
 /**
- * System — the honest version of the design's "Enterprise Admin" screen.
+ * System — live deployment state. 90s Nostalgia edition.
  *
- * The mockup showed a multi-tenant admin console: user tables, seat counts,
- * org-wide audit exports, a policy engine. None of that exists. This app has
- * exactly one account and no admin concept at all.
- *
- * So rather than build a dashboard full of invented numbers, this shows the
- * things that are genuinely true and genuinely useful to see: whether the
- * Worker is healthy, which providers exist, which one is configured, and what
- * has actually been spent.
- *
- * Every figure below comes from the running API. Nothing here is hard-coded.
+ * Hit-counter style stat boxes (black bg, green mono text),
+ * Win95 section cards with titlebar heading, alternating provider rows.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
@@ -40,9 +32,7 @@ export default function System() {
     setState('ready');
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const configured = new Set(status.filter((s) => s.has_key).map((s) => s.provider || s.id));
   const primary = config?.ai_config?.primary;
@@ -50,27 +40,33 @@ export default function System() {
   return (
     <div className="doc">
       <header className="doc-head">
-        <span className="eyebrow">System</span>
-        <h1 className="lp-h1" style={{ fontSize: 32 }}>Deployment</h1>
+        <span className="r-eyebrow">System</span>
+        <h1 className="lp-h1" style={{ fontSize: '28px', textShadow: '2px 2px 0 #808080' }}>
+          Deployment
+        </h1>
         <p className="lp-sub">
           Live state, read from the API. There is no organisation console here
-          because this build has no organisations &mdash; it has one account.
+          because this build has no organisations — it has one account.
         </p>
       </header>
 
-      {state === 'loading' && <p className="feed-note">Reading from the API…</p>}
+      {state === 'loading' && (
+        <p className="feed-note" style={{ fontFamily: 'Courier New, monospace' }}>
+          Reading from the API…
+        </p>
+      )}
 
       {state === 'ready' && (
         <>
           <section className="doc-sec">
-            <h2 className="lp-h2" style={{ fontSize: 20 }}>Health</h2>
+            <h2 className="lp-h2" style={{ fontSize: '18px' }}>Health</h2>
             <div className="sys-grid">
               <Stat label="Status" value={health?.status || 'unreachable'} tone={health?.status === 'ok' ? 'ok' : 'bad'} />
               <Stat label="Environment" value={health?.environment || '—'} />
               <Stat label="Version" value={health?.version || '—'} />
               <Stat
                 label="Credentials"
-                value={health?.credentials_encrypted ? 'encrypted at rest' : 'NOT ENCRYPTED'}
+                value={health?.credentials_encrypted ? 'ENCRYPTED' : 'NOT ENCRYPTED'}
                 tone={health?.credentials_encrypted ? 'ok' : 'bad'}
               />
             </div>
@@ -83,7 +79,7 @@ export default function System() {
           </section>
 
           <section className="doc-sec">
-            <h2 className="lp-h2" style={{ fontSize: 20 }}>Usage</h2>
+            <h2 className="lp-h2" style={{ fontSize: '18px' }}>Usage</h2>
             <div className="sys-grid">
               <Stat label="Agent runs" value={fmt(usage?.runs)} />
               <Stat label="Tokens" value={fmt(usage?.tokens)} />
@@ -94,13 +90,13 @@ export default function System() {
             </div>
             <p className="doc-note">
               Counts every run since the beginning. Zero is a truthful answer, not
-              a placeholder &mdash; the model key has not been set yet.
+              a placeholder — the model key has not been set yet.
             </p>
           </section>
 
           <section className="doc-sec">
-            <h2 className="lp-h2" style={{ fontSize: 20 }}>Model</h2>
-            <dl className="lp-facts">
+            <h2 className="lp-h2" style={{ fontSize: '18px' }}>Model</h2>
+            <dl className="lp-facts" style={{ borderTop: '2px solid #c0c0c0' }}>
               <div>
                 <dt>Primary provider</dt>
                 <dd>{primary?.provider || <em>not set</em>}</dd>
@@ -115,7 +111,7 @@ export default function System() {
               </div>
             </dl>
             {!primary || primary.model === 'mock-model' ? (
-              <p className="doc-note doc-note-bad">
+              <p className="doc-note doc-note-bad" style={{ marginTop: '8px' }}>
                 Still pointed at the mock provider. Paste a real key in Settings
                 before judging how the agent behaves.
               </p>
@@ -123,8 +119,9 @@ export default function System() {
           </section>
 
           <section className="doc-sec">
-            <h2 className="lp-h2" style={{ fontSize: 20 }}>
-              Providers <span className="lp-count">{providers.length}</span>
+            <h2 className="lp-h2" style={{ fontSize: '18px' }}>
+              Providers{' '}
+              <span className="lp-count">{providers.length}</span>
             </h2>
             <div className="sys-providers">
               {providers.map((p) => {
@@ -138,14 +135,14 @@ export default function System() {
                       <span className="sys-provider-label">{p.label}</span>
                       <span className="sys-provider-id">{p.id}</span>
                     </div>
-                    {p.local ? <span className="badge badge-mute">local</span> : null}
+                    {p.local  ? <span className="badge badge-mute">local</span>  : null}
                     {p.custom ? <span className="badge badge-mute">custom</span> : null}
                     {on ? <span className="badge badge-success">key set</span> : null}
                   </div>
                 );
               })}
             </div>
-            <p className="doc-note">
+            <p className="doc-note" style={{ marginTop: '8px' }}>
               {configured.size} of {providers.length} configured. The API returns a
               fingerprint and a hint, never the key.
             </p>
@@ -158,7 +155,7 @@ export default function System() {
 
 function Stat({ label, value, tone }) {
   return (
-    <div className="sys-stat t-well" data-tone={tone || 'neutral'}>
+    <div className="sys-stat" data-tone={tone || 'neutral'}>
       <div className="sys-stat-label">{label}</div>
       <div className="sys-stat-value">{value}</div>
     </div>

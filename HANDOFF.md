@@ -1,4 +1,4 @@
-# Handoff — 2026-09-30
+# Handoff — 2026-10-01
 
 Where things stand after today's session, written for whoever picks this up
 next. For the reasoning behind decisions, see `agent.md` (current state and
@@ -10,17 +10,33 @@ invariants) and `IMPLEMENTATION_SUMMARY.md` (chronological session log).
 
 | | |
 |---|---|
-| App | **https://threadmymail.pages.dev/app** |
-| API | `https://threadmymail-worker.twistedoliver211fs.workers.dev` |
+| App | **https://threadmymail.omixsystems.store/app** |
+| Pages fallback | `https://threadmymail.pages.dev/app` |
+| API origin | `https://threadmymail-worker.twistedoliver211fs.workers.dev` (proxied same-origin at `/v1/*`) |
 | Worker version | last successful deploy; `/health` confirms `environment: production` |
 | Provider keys stored | **0** — clean slot, nothing to rotate or re-entered |
-| HEAD | see `git log --oneline -1` |
+| HEAD | `ab705e9`; latest legal, custom-domain, and proxy changes are deployed from the working tree and remain uncommitted |
 
-**The redesign is deployed and verified.** `scripts/deploy.sh` ran end to end
-from a clean tree: Worker deployed, frontend deployed, then checked against
-production. Bundle `index-BXfoqg0f.js` / `index-jSzBMj_O.css` confirmed live.
+**The frontend and Worker are deployed.** The latest deploy ran typecheck/build,
+published the same-origin API proxy and updated legal pages, and verified Worker
+health, Pages app, and the custom-domain privacy page. The logo source image is
+in the repo as `desired-logo.jpeg`, with converted `logo-desired.png`.
 
-**Nothing is broken.**
+**Google OAuth client credentials are set as Cloudflare Worker secrets.** The
+production OAuth start endpoint has been checked: it returns a Google authorize
+redirect using the configured client ID, exact callback, and a state cookie on
+the custom hostname. The Pages proxy preserves Worker redirects for the browser,
+and the PWA service worker excludes `/v1/*` from its app-shell navigation
+fallback. Those two redirect layers had caused the OAuth navigation to land on
+the marketing page. Successful consent opens `/app`, and failures return to
+`/signin` where the error is visible. The remaining step is the account owner's
+Google consent and a successful callback/session check.
+
+**Next session starts with rebranding around `logo-desired.png`.** The source
+image `desired-logo.jpeg` is preserved, and `logo-desired.png` is the converted
+PNG. Begin by reviewing the mark and applying it across the app's brand surfaces:
+favicon/PWA icons, sign-in, landing, and app navigation. Then verify the sign-in
+return path and complete the first Google consent if needed.
 
 ---
 
@@ -94,7 +110,7 @@ Everything else is native Silk. `styles/legacy-panes.css` is deleted; the four
 stylesheets are `silk.css` (tokens + primitives), `mail.css` (the three-pane
 grid), `landing.css`, `auth.css`.
 
-### Installable: done, but not yet deployed (commit `e28c4ef`)
+### Installable: deployed (commit `e28c4ef`)
 
 A manifest already existed via `vite-plugin-pwa`; what shipped in that commit
 was a correction of it plus the install banner.
@@ -113,9 +129,7 @@ was a correction of it plus the install banner.
 - iOS gets the Share → Add to Home Screen instruction, because Safari has no
   install API at all.
 
-**Not deployed** — the Cloudflare OAuth had expired again (see below), so
-`scripts/deploy.sh` refused to run. Everything is committed and verified
-locally; it needs one `wrangler login` and a re-run.
+The PWA changes are now deployed with the latest frontend release.
 
 ---
 
@@ -190,38 +204,57 @@ footer still said "PWA Phase 1".
 
 ## ⚠️ Known risks, in priority order
 
-### 🔴 Sign-in cannot complete — one Google Cloud project is left to do
+### 🟡 Complete the first Google consent
 
 **The public-access hole is closed.** `/app` is gated, every data endpoint
 returns 401 without a session, and the `X-User-Id` header that used to let
 anyone impersonate the single dev user is ignored in production. Verified
 against production on 2026-09-30.
 
-What is missing is the other half. `SESSION_SECRET` is provisioned
-(`openssl rand -hex 32`, sealed with `secret bulk`). **`GOOGLE_CLIENT_ID` and
-`GOOGLE_CLIENT_SECRET` are not set**, so:
+`SESSION_SECRET`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` are provisioned
+in the production Worker. The OAuth start endpoint is live and returns a Google
+redirect. After the owner completes consent, verify:
 
-- `GET /v1/auth/session` → `200 {"authenticated":false,"dev_mode":false}` — correct
-- `GET /v1/auth/google` → `503 NOT_CONFIGURED: GOOGLE_CLIENT_ID is unset`
+- `GET https://threadmymail.omixsystems.store/v1/auth/session` reports
+  `authenticated:true`
+- the callback returns to `/app` and the account appears in the session UI
 
-The app is therefore in the secure-but-unusable state: locked, and no way in.
-To finish it, in the [Google Cloud console](https://console.cloud.google.com/apis/credentials):
+The Pages proxy passes upstream 302 responses through with `redirect: 'manual'`,
+and the PWA service worker's navigation fallback denies `/v1/*`. Without these,
+redirects could be followed server-side or the cached SPA shell could swallow
+the OAuth navigation and send the browser to the landing page. The callback
+redirects successful consent to `/app` and failures to `/signin#...` so the
+error is displayed. The deploy script now checks that the live OAuth start
+route returns a Google 302 and sets its state cookie. Open
+`https://threadmymail.omixsystems.store/signin`, continue with Google, and
+grant the requested identity, Gmail read-only, and Calendar read-only scopes.
+If the consent screen is still in Testing, the signing-in Google account must
+be in its Test users list. The browser may show Google's unverified-app warning;
+that is expected while the app is in test mode.
 
-1. Create a project (or pick an existing one).
-2. Enable the **Google Drive API**, **Gmail API** and **Google Calendar API**.
-3. OAuth consent screen → **External** → add `marvel.254@gmail.com` as a test user.
-4. Credentials → **OAuth client ID** → **Web application**.
-5. Authorised redirect URI, exactly: `https://threadmymail-worker.twistedoliver211fs.workers.dev/v1/auth/google/callback`
-6. Then:
-   ```bash
-   cd apps/worker
-   printf '{"GOOGLE_CLIENT_ID":"…","GOOGLE_CLIENT_SECRET":"…"}' > /tmp/g.json
-   chmod 600 /tmp/g.json
-   ./node_modules/.bin/wrangler secret bulk /tmp/g.json
-   shred -u /tmp/g.json
-   ```
+The client must have these values in the [Google Cloud console](https://console.cloud.google.com/apis/credentials):
 
-`wrangler.jsonc` already has `GOOGLE_REDIRECT_URI` set to that same URI.
+1. Authorized JavaScript origin: `https://threadmymail.omixsystems.store`.
+   Authorized redirect URI, exactly:
+   `https://threadmymail.omixsystems.store/v1/auth/google/callback`.
+   Branding URLs: homepage `https://threadmymail.omixsystems.store`, privacy
+   `https://threadmymail.omixsystems.store/privacy`, terms
+   `https://threadmymail.omixsystems.store/terms`; authorized domain
+   `omixsystems.store`. If Google requests ownership verification, add its TXT
+   record at Namecheap. Do not change the company's nameservers.
+2. Google client ID and secret have been uploaded as Cloudflare Worker secrets
+   with Wrangler. No credential values are stored in the repository.
+
+The Pages Function proxies `/v1/*` to the API Worker, so OAuth and session
+cookies stay on the custom app hostname. `wrangler.jsonc` has
+`GOOGLE_REDIRECT_URI` set to that callback URL. The site is also available at
+`https://threadmymail.omixsystems.store`; its legal links are `/privacy` and
+`/terms`. DNS for the company's root domain remains at Namecheap.
+Verified: the custom-host session endpoint returns HTTP 200 with
+`authenticated:false` and `dev_mode:false` before login. OAuth start returns
+HTTP 302 to Google's authorization endpoint and sets the state cookie on the
+custom hostname. Use the custom hostname for OAuth; the `pages.dev` alias does
+not share its OAuth state/session cookie.
 
 **A first login creates a *new* `users` row.** The dev user's existing todos
 and skills belong to a different account and will not appear.

@@ -74,13 +74,12 @@
   // without this file claiming to be the production host.
   "vars": {
     "ENVIRONMENT": "production",
-    // Unused until Google OAuth is built (agent.md §9 defers it to last). Set
-    // here so the day it is switched on it is not still pointing at localhost.
-    "GOOGLE_REDIRECT_URI": "https://threadmymail-worker.twistedoliver211fs.workers.dev/auth/google/callback",
-    // The published frontend. Only this exact origin — no wildcard, because
-    // every request is still DEV_USER_ID with no login (see src/http/cors.ts).
-    // Add any new origin here, never "*".
-    "CORS_ORIGINS": "https://threadmymail.pages.dev"
+    // OAuth callback is proxied by the Pages Function so the session cookie
+    // belongs to the same hostname as the frontend.
+    "GOOGLE_REDIRECT_URI": "https://threadmymail.omixsystems.store/v1/auth/google/callback",
+    // Published frontends. Exact origins only — no wildcard. Add each public
+    // frontend host here so credentialed browser requests remain scoped.
+    "CORS_ORIGINS": "https://threadmymail.omixsystems.store,https://threadmymail.pages.dev"
   }
 
   // NOTE: there is deliberately NO "ai" binding. Model access is BYOK through

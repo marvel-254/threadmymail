@@ -1,10 +1,9 @@
 /**
- * Millo — the copilot's mark.
+ * Millo — the copilot's mark. Retro palette edition.
  *
- * Drawn rather than imported so it inherits the current palette and stays crisp
- * at any size. The designs shipped raster avatars (screen.png); a 1px SVG line
- * is sharper on the OLED-dark surfaces this app is read on, and costs nothing
- * to load.
+ * The gradient now uses Win95 navy → blue rather than the Silk lavender/indigo.
+ * The envelope + pulse motif is preserved; it is still drawn rather than
+ * imported, so it inherits the current context colour for the surrounding icon.
  */
 export default function MilloMark({ size = 28, title = 'Millo' }) {
   return (
@@ -18,27 +17,41 @@ export default function MilloMark({ size = 28, title = 'Millo' }) {
       className="millo-mark"
     >
       <defs>
+        {/* Win95 titlebar navy → bright blue gradient */}
         <linearGradient id="millo-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#c0c1ff" />
-          <stop offset="100%" stopColor="#6366f1" />
+          <stop offset="0%" stopColor="#000080" />
+          <stop offset="100%" stopColor="#1084d0" />
+        </linearGradient>
+        {/* Bright pulse line — lime green to match hit-counter */}
+        <linearGradient id="millo-p" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#00ff00" />
+          <stop offset="100%" stopColor="#00aa00" />
         </linearGradient>
       </defs>
-      {/* Envelope — it is a mail assistant. */}
-      <rect x="3" y="8" width="26" height="17" rx="4" fill="url(#millo-g)" opacity="0.22" />
+
+      {/* Envelope body — mail assistant identity */}
+      <rect
+        x="3" y="8" width="26" height="17"
+        fill="url(#millo-g)"
+        opacity="0.9"
+      />
+
+      {/* Envelope flap fold line */}
       <path
         d="M4.5 10.5 16 18.5l11.5-8"
-        stroke="url(#millo-g)"
+        stroke="#ffffff"
         strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        strokeLinecap="square"
+        strokeLinejoin="miter"
       />
-      {/* The pulse, offset up-right: something running behind the mail. */}
+
+      {/* The pulse line — something is running behind the mail */}
       <path
         d="M21 4.5h2.5l1.2 3 1.2-3H28"
-        stroke="#7bd0ff"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        stroke="url(#millo-p)"
+        strokeWidth="2"
+        strokeLinecap="square"
+        strokeLinejoin="miter"
       />
     </svg>
   );

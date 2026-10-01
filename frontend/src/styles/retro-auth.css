@@ -1,0 +1,510 @@
+/*
+ * retro-auth.css — Sign-in page, 90s Nostalgia edition.
+ *
+ * Overrides the .si-* class hierarchy from auth.css.
+ * Structure: tiled bg, centred Win95 window card, beveled Google button,
+ * trust list as alternating rows, marquee footer.
+ */
+
+/* ── Page shell ─────────────────────────────────────────────────────────── */
+
+.si {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--r-space-md);
+  padding: calc(var(--r-space-lg) + env(safe-area-inset-top, 0px))
+           max(var(--r-space-md), env(safe-area-inset-right, 0px))
+           calc(var(--r-space-xl) + env(safe-area-inset-bottom, 0px))
+           max(var(--r-space-md), env(safe-area-inset-left, 0px));
+  overflow-x: hidden;
+  /* bg-tile from body in retro.css */
+}
+
+/* Kill the neomorphic orbs */
+.si-orb { display: none; }
+
+/* ── Top nav links ──────────────────────────────────────────────────────── */
+
+.si-topnav {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  padding: 4px;
+}
+
+.si-navlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #000000;
+  text-decoration: none;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  font-family: var(--r-font-body);
+  transition: none;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.si-navlink:hover {
+  background: #d0d0d0;
+  color: #000000;
+  text-decoration: none;
+}
+.si-navlink:active {
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040, inset -1px -1px 0 #dfdfdf;
+  transform: translate(1px, 1px);
+}
+.si-navlink .ms { font-size: 14px; }
+
+/* ── Card (Win95 dialog window) ─────────────────────────────────────────── */
+
+.si-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  /* Win95 window */
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow:
+    inset -1px -1px 0 #404040,
+    inset 1px 1px 0 #dfdfdf;
+  backdrop-filter: none;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+  padding: 0;
+  /* No backdrop blur — retro doesn't do glass */
+}
+
+/* Title bar */
+.si-card::before {
+  content: 'ThreadMyMail — Sign In';
+  display: block;
+  background: linear-gradient(to right, #000080, #1084d0);
+  color: #ffffff;
+  font-family: var(--r-font-body);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 3px 8px;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Card body area */
+.si-card-body-inner {
+  padding: var(--r-space-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--r-space-sm);
+}
+
+/* ── Avatar ─────────────────────────────────────────────────────────────── */
+
+.si-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--r-space-sm);
+  /* center */
+  align-self: center;
+}
+
+/* Replace the pulsing lavender ring with a Win95 inset frame */
+.si-avatar__ring {
+  position: absolute;
+  inset: -6px;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+  border-radius: 0;
+  animation: none;
+}
+
+.si-avatar__dot {
+  position: absolute;
+  right: -4px;
+  bottom: 0px;
+  width: 12px;
+  height: 12px;
+  border-radius: 0;
+  background: #00aa00;
+  border: 2px solid #ffffff;
+}
+
+/* ── Status chip ────────────────────────────────────────────────────────── */
+
+.si-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: #000080;
+  color: #ffffff;
+  border: 2px solid;
+  border-color: #5555ff #000040 #000040 #5555ff;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--r-font-body);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 0;
+  margin-bottom: var(--r-space-sm);
+  align-self: center;
+}
+.si-chip .ms { font-size: 14px; color: #ffff00; }
+
+/* ── Copy ─────────────────────────────────────────────────────────────────── */
+
+.si-title {
+  font-family: var(--r-font-heading);
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: #000000;
+  text-shadow: 2px 2px 0 #808080;
+  margin-bottom: 4px;
+  text-align: center;
+  align-self: center;
+  /* Override the Silk variable */
+  background: none;
+  -webkit-background-clip: unset;
+  -webkit-text-fill-color: #000000;
+}
+
+.si-body {
+  max-width: 32rem;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #000000;
+  font-family: var(--r-font-body);
+  margin-bottom: var(--r-space-md);
+  text-align: center;
+  align-self: center;
+}
+
+.si-scope {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #808080;
+  font-family: var(--r-font-mono);
+  text-align: center;
+}
+.si-scope strong { color: #000000; font-weight: 700; }
+
+.si-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin-bottom: var(--r-space-sm);
+  padding: 6px 10px;
+  background: #fff0f0;
+  border: 2px solid #ff0000;
+  color: #800000;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  font-family: var(--r-font-body);
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.si-error .ms { font-size: 16px; flex-shrink: 0; color: #ff0000; }
+
+/* ── Google button ──────────────────────────────────────────────────────── */
+
+.btn-google {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 16px;
+  background: #c0c0c0;
+  color: #000000;
+  font-family: var(--r-font-body);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  cursor: pointer;
+  transition: none;
+  border-radius: 0;
+  backdrop-filter: none;
+  filter: none;
+}
+.btn-google:hover:not(:disabled) {
+  background: #d0d0d0;
+  transform: none;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  filter: none;
+}
+.btn-google:active:not(:disabled) {
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040, inset -1px -1px 0 #dfdfdf;
+  transform: translate(1px, 1px);
+}
+.btn-google:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-google:focus-visible {
+  outline: 2px dotted #000000;
+  outline-offset: 2px;
+}
+.si-google-glyph { width: 18px; height: 18px; flex-shrink: 0; }
+
+/* ── Divider ────────────────────────────────────────────────────────────── */
+
+.si-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--r-space-sm);
+  width: 100%;
+  margin: var(--r-space-md) 0 var(--r-space-sm);
+  color: #808080;
+  font-family: var(--r-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.si-divider::before,
+.si-divider::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(to bottom, #808080 0%, #808080 50%, #ffffff 50%, #ffffff 100%);
+}
+
+/* ── Trust points ────────────────────────────────────────────────────────── */
+
+.si-trust {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  text-align: left;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+}
+
+.si-trust li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'icon title' '. body';
+  gap: 2px 8px;
+  align-items: start;
+  padding: 8px 10px;
+  border-bottom: 1px solid #c0c0c0;
+  background: #ffffff;
+}
+.si-trust li:nth-child(even) { background: #e8e8e8; }
+.si-trust li:last-child { border-bottom: none; }
+
+.si-trust__icon {
+  grid-area: icon;
+  font-size: 16px;
+  color: #000080;
+  margin-top: 1px;
+}
+
+.si-trust strong {
+  grid-area: title;
+  font-size: 12px;
+  font-weight: 700;
+  color: #000000;
+  font-family: var(--r-font-body);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.si-trust p {
+  grid-area: body;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #808080;
+  margin: 0;
+  font-family: var(--r-font-body);
+}
+
+/* ── Notes ──────────────────────────────────────────────────────────────── */
+
+.si-note {
+  margin-top: var(--r-space-md);
+  font-size: 11px;
+  line-height: 1.5;
+  color: #808080;
+  font-family: var(--r-font-mono);
+  text-align: center;
+}
+.si-note a { color: #0000ff; }
+
+/* ── Footer marquee bar ─────────────────────────────────────────────────── */
+
+.si-foot {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--r-space-sm);
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 11px;
+  color: #808080;
+  padding: var(--r-space-sm) var(--r-space-md);
+  background: #c0c0c0;
+  border-top: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  width: 100%;
+  font-family: var(--r-font-body);
+  margin-top: auto;
+}
+.si-foot a {
+  color: #0000ff;
+  text-decoration: underline;
+  font-size: 11px;
+}
+.si-foot a:hover { color: #ff0000; }
+
+.si-foot__sep { color: #808080; }
+.si-foot__sep .ms { font-size: 12px; vertical-align: middle; }
+
+/* ── Shell boot / error states ──────────────────────────────────────────── */
+
+.shell-boot {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--r-space-md);
+  padding: var(--r-space-xl);
+  text-align: center;
+  background: #c0c0c0;
+}
+.shell-boot__mark {
+  display: grid;
+  place-items: center;
+  animation: none;
+}
+.shell-boot__icon {
+  font-size: 40px;
+  color: #ff0000;
+}
+.shell-boot__label {
+  font-family: var(--r-font-heading);
+  font-size: 16px;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #000000;
+}
+.shell-boot__detail {
+  max-width: 26rem;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #808080;
+  font-family: var(--r-font-body);
+}
+
+/* ── Install banner ─────────────────────────────────────────────────────── */
+
+.install {
+  position: fixed;
+  z-index: 60;
+  left: max(var(--r-space-md), env(safe-area-inset-left, 0px));
+  bottom: calc(var(--r-space-sm) + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: center;
+  gap: var(--r-space-md);
+  width: min(360px, calc(100vw - 2 * var(--r-space-md)));
+  padding: var(--r-space-sm) var(--r-space-md);
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  border-radius: 0;
+  backdrop-filter: none;
+}
+
+.install__body { display: flex; align-items: center; gap: var(--r-space-sm); min-width: 0; }
+.install__mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  background: #000080;
+  color: #ffffff;
+  border: 2px solid;
+  border-color: #5555ff #000040 #000040 #5555ff;
+  border-radius: 0;
+  box-shadow: none;
+}
+.install__mark .ms { font-size: 18px; }
+.install__text { min-width: 0; }
+.install__title {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #000000;
+  font-family: var(--r-font-body);
+  text-transform: uppercase;
+}
+.install__sub { font-size: 10px; color: #808080; font-family: var(--r-font-mono); margin: 1px 0 0; }
+.install__actions { margin-left: auto; display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.install__x {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  background: #c0c0c0;
+  color: #000000;
+  cursor: pointer;
+  border-radius: 0;
+}
+.install__x:hover { background: #d0d0d0; }
+.install__x:focus-visible { outline: 2px dotted #000000; outline-offset: 1px; }
+.install__x .ms { font-size: 14px; }
+
+@media (max-width: 480px) {
+  .si-card { max-width: 100%; }
+  .si-topnav { gap: 2px; }
+  .install {
+    left: var(--r-space-sm);
+    right: var(--r-space-sm);
+    width: auto;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .install__actions { margin-left: 0; justify-content: flex-end; }
+}

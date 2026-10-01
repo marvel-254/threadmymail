@@ -1,154 +1,124 @@
 /*
- * Silk — the ThreadMyMail design system.
+ * silk.css — stripped to structural utilities only.
  *
- * Implemented as a token layer rather than a utility framework. Neomorphism is
- * carried entirely by shadow pairs and a single consistent surface colour per
- * tier; a utility framework would scatter those values across class strings and
- * make the light source impossible to keep coherent. Tokens make it one edit.
+ * The dark neomorphic token layer has been replaced by retro.css.
+ * This file keeps only the classes that app components reference
+ * for layout structure, typography helpers, and icon rendering.
+ * All colour/shadow/gradient tokens are overridden by retro.css
+ * (loaded after this file).
  *
- * Source of truth: docs/design/silk_neomorphic_dark/DESIGN.md
- *
- * ── On the two colour systems in the spec ──────────────────────────────────
- * DESIGN.md describes both a Material-3 ramp (#0b1326 …) and a prose "palette
- * architecture" (#0f172a base, #6366f1 indigo). They disagree. Resolution, from
- * counting actual usage across all 20 screens:
- *
- *   surfaces  → M3 ramp.  #0b1326 appears 103×, #172033 19×, #0b1120 8×.
- *               The prose base #0f172a appears 0× and is not a real colour
- *               here.
- *   accents   → both, in different roles. Lavender (#c0c1ff 59×, #8083ff 28×)
- *               carries solid fills and text. Indigo #6366f1 appears only 13×
- *               and almost always as a glow — rgba(99,102,241,…) — which is
- *               what the prose means by "violet-indigo luminescence... like
- *               darkroom instrument lights". So: lavender is the pigment,
- *               indigo is the light.
- *   tertiary  → M3 #7bd0ff (56×) over the prose's #38bdf8 (9×).
- *
- * The virtual light source is top-left (-135°) on every tier. That is not
- * decorative: it is the only reason the depth reads as physical. Changing it on
- * one component breaks the illusion for the whole screen.
+ * DO NOT re-add glow, blur, or neomorphic shadow values here.
  */
 
-/* ── Typography ─────────────────────────────────────────────────────────── */
+/* ── Google Fonts — removed. System fonts from retro.css take over. ─────── */
+/* Previously: Plus Jakarta Sans, Space Grotesk, Material Symbols Outlined    */
+/* Material Symbols is still loaded for .ms icons — keep that import only.   */
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
 
+/* ── CSS tokens (stub values — all visual ones overridden by retro.css) ─── */
+
 :root {
-  /* ── Surface continuum ─────────────────────────────────────────────────
-     One family, five depths. A neomorphic element MUST sit on the same colour
-     as its parent or the extrusion stops reading as carved from anything. */
-  --surface-lowest: #060e20;
-  --surface-low: #0b1326;
-  --surface: #131b2e;
-  --surface-container: #171f33;
-  --surface-high: #222a3d;
-  --surface-highest: #2d3449;
+  /* These are referenced by SettingsPanel and other app components via
+     var(). We keep them as stubs so nothing breaks at runtime, but the
+     retro.css / retro-*.css layer provides the visible appearance. */
+  --surface-lowest:    #c0c0c0;
+  --surface-low:       #c0c0c0;
+  --surface:           #c0c0c0;
+  --surface-container: #e8e8e8;
+  --surface-high:      #e8e8e8;
+  --surface-highest:   #d0d0d0;
+  --surface-inset:     #ffffff;
 
-  /* Recessed wells carve from this, not from --surface. */
-  --surface-inset: #0e1626;
+  --on-surface:         #000000;
+  --on-surface-variant: #000000;
+  --ink:                #000000;
+  --ink-body:           #000000;
+  --ink-muted:          #808080;
+  --ink-faint:          #808080;
 
-  /* ── Ink ──────────────────────────────────────────────────────────────── */
-  --on-surface: #dae2fd;
-  --on-surface-variant: #c7c4d7;
-  --ink: #f1f5f9;
-  --ink-body: #cbd5e1;
-  --ink-muted: #94a3b8;
-  --ink-faint: #475569;
+  --outline:         #808080;
+  --outline-variant: #c0c0c0;
 
-  --outline: #908fa0;
-  --outline-variant: #464554;
+  --primary:           #0000ff;
+  --on-primary:        #ffffff;
+  --primary-container: #000080;
+  --on-primary-container: #ffffff;
 
-  /* ── Accents ─────────────────────────────────────────────────────────── */
-  --primary: #c0c1ff;
-  --on-primary: #1000a9;
-  --primary-container: #8083ff;
-  --on-primary-container: #0d0096;
+  --secondary:           #0000ff;
+  --secondary-container: #000080;
+  --on-secondary-container: #ffffff;
 
-  --secondary: #bdc2ff;
-  --secondary-container: #2f3aa3;
-  --on-secondary-container: #a8afff;
+  --tertiary:    #00ff00;
+  --on-tertiary: #000000;
 
-  --tertiary: #7bd0ff;
-  --on-tertiary: #00354a;
+  --accent:      #0000ff;
+  --accent-deep: #000080;
+  --accent-soft: #0000ff;
 
-  /* Pigment vs light. See the header note. */
-  --accent: #6366f1;
-  --accent-deep: #4f46e5;
-  --accent-soft: #818cf8;
+  --success: #00aa00;
+  --warning: #ff8000;
+  --danger:  #ff0000;
+  --danger-container: rgba(255, 0, 0, 0.1);
+  --danger-deep: #800000;
 
-  --success: #6ee7b7;
-  --warning: #fcd34d;
-  --danger: #ffb4ab;
-  /* Low-alpha danger fill. Used by .notice and error states; the plain
-     --danger is a foreground colour and reads as a pink block if used as one. */
-  --danger-container: rgba(255, 180, 171, 0.12);
-  --danger-deep: #93000a;
+  /* Elevation — all replaced by bevel. Zero-value stubs so var() resolves. */
+  --depth-minus-1: none;
+  --depth-0:       none;
+  --depth-1:       none;
+  --depth-2:       none;
+  --depth-hover:   none;
+  --aura:          none;
+  --aura-wide:     none;
+  --focus-ring:    none;
+  --glint:         rgba(0, 0, 0, 0.15);
+  --glint-strong:  rgba(0, 0, 0, 0.25);
 
-  /* ── Elevation: the 4 tactile tiers ────────────────────────────────────
-     Every shadow pairs a dark umbra (bottom-right) with a light specular
-     glint (top-left). Dropping the glint is the single most common way to
-     make this style look like flat dark mode. */
-  --depth-minus-1: inset 3px 3px 6px rgba(0, 0, 0, 0.65),
-    inset -2px -2px 5px rgba(255, 255, 255, 0.035);
+  /* Shape — all corners must be 0 in the retro theme.
+     Still declared so var() calls in legacy code don't produce empty values. */
+  --r-sm:   0px;
+  --r-md:   0px;
+  --r-lg:   0px;
+  --r-xl:   0px;
+  --r-full: 0px;
 
-  --depth-0: none;
+  /* Space */
+  --gutter:        12px;
+  --gutter-mobile: 8px;
+  --margin:        16px;
+  --margin-mobile: 8px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 48px;
 
-  --depth-1: 4px 4px 10px rgba(0, 0, 0, 0.5), -3px -3px 8px rgba(255, 255, 255, 0.04);
+  /* Type — overridden by retro.css body rule */
+  --font-display: "Arial Black", Impact, Haettenschweiler, sans-serif;
+  --font-body:    "MS Sans Serif", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  --font-mono:    "Courier New", Courier, monospace;
 
-  --depth-2: 8px 12px 24px rgba(0, 0, 0, 0.65), -4px -4px 12px rgba(255, 255, 255, 0.05);
+  /* Layout dims */
+  --rail:            220px;
+  --rail-collapsed:  52px;
+  --feed:            380px;
+  --work-min:        480px;
+  --topbar:          36px;
 
-  --depth-hover: 5px 6px 14px rgba(0, 0, 0, 0.55), -3px -3px 9px rgba(255, 255, 255, 0.05);
+  /* Motion — instant/snap for retro */
+  --ease-out:    linear;
+  --ease-in-out: linear;
+  --t-fast:      0ms;
+  --t-base:      50ms;
+  --t-slow:      100ms;
 
-  /* Active elements emit rather than merely reflect. */
-  --aura: 0 0 20px rgba(99, 102, 241, 0.22);
-  --aura-wide: 0 0 24px rgba(129, 140, 248, 0.5);
+  /* Safe areas */
+  --safe-top:    env(safe-area-inset-top,    0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left,   0px);
+  --safe-right:  env(safe-area-inset-right,  0px);
 
-  --focus-ring: 0 0 0 2px rgba(99, 102, 241, 0.45);
-
-  /* Hairlines are specular, not borders. A visible border flattens the effect. */
-  --glint: rgba(255, 255, 255, 0.06);
-  --glint-strong: rgba(255, 255, 255, 0.09);
-
-  /* ── Shape ─────────────────────────────────────────────────────────────
-     Token level 2. Severe corners destroy the sculpted read. */
-  --r-sm: 6px;
-  --r-md: 8px;
-  --r-lg: 16px;
-  --r-xl: 24px;
-  --r-full: 9999px;
-
-  /* ── Space ─────────────────────────────────────────────────────────── */
-  --gutter: 1.5rem;
-  --gutter-mobile: 0.75rem;
-  --margin: 2rem;
-  --margin-mobile: 1rem;
-  --space-xs: 0.25rem;
-  --space-sm: 0.5rem;
-  --space-md: 1rem;
-  --space-lg: 1.5rem;
-  --space-xl: 2rem;
-
-  /* ── Type ──────────────────────────────────────────────────────────── */
-  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
-  --font-body: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-
-  /* ── Layout ────────────────────────────────────────────────────────── */
-  --rail: 240px;
-  --rail-collapsed: 64px;
-  --feed: 380px;
-  --work-min: 560px;
-  --topbar: 56px;
-
-  /* ── Motion ──────────────────────────────────────────────────────────
-     Short and unfussy. This interface is meant to be lived in for hours;
-     anything slower becomes fatigue. */
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --t-fast: 120ms;
-  --t-base: 200ms;
-  --t-slow: 320ms;
+  --tabs-h: 52px;
 }
 
 /* ── Base ────────────────────────────────────────────────────────────────── */
@@ -165,84 +135,14 @@ body,
   height: 100%;
 }
 
-body {
-  margin: 0;
-  background: var(--surface-low);
-  color: var(--ink-body);
-  font-family: var(--font-body);
-  font-size: 14px;
-  line-height: 22px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
+/* body, h1-h4, a, button are fully overridden in retro.css */
 
-h1,
-h2,
-h3,
-h4 {
-  font-family: var(--font-display);
-  color: var(--ink);
-  margin: 0;
-  letter-spacing: -0.01em;
-}
+/* ── Iconography (.ms) ──────────────────────────────────────────────────── */
 
-h1 { font-size: 28px; line-height: 36px; font-weight: 600; }
-h2 { font-size: 24px; line-height: 32px; font-weight: 600; }
-h3 { font-size: 20px; line-height: 28px; font-weight: 500; }
-h4 { font-size: 16px; line-height: 24px; font-weight: 600; }
-
-p { margin: 0 0 var(--space-md); }
-p:last-child { margin-bottom: 0; }
-
-a {
-  color: var(--accent-soft);
-  text-decoration: none;
-  transition: color var(--t-fast) var(--ease-out);
-}
-a:hover { color: var(--primary); }
-
-button {
-  font-family: inherit;
-  font-size: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-
-/* One focus treatment everywhere. Never remove it without replacing it —
-   the recessed wells make the default ring almost invisible. */
-:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-  border-radius: var(--r-sm);
-}
-
-::selection {
-  background: rgba(99, 102, 241, 0.35);
-  color: var(--ink);
-}
-
-/* ── Scrollbars ───────────────────────────────────────────────────────────
-   Recessed, like everything else. A default light scrollbar is a bright bar
-   across a dark screen. */
-.scroll-silk {
-  scrollbar-width: thin;
-  scrollbar-color: var(--surface-highest) transparent;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.scroll-silk::-webkit-scrollbar { width: 10px; height: 10px; }
-.scroll-silk::-webkit-scrollbar-track { background: transparent; }
-.scroll-silk::-webkit-scrollbar-thumb {
-  background: var(--surface-highest);
-  border-radius: var(--r-full);
-  border: 3px solid transparent;
-  background-clip: content-box;
-}
-.scroll-silk::-webkit-scrollbar-thumb:hover { background-clip: content-box; background-color: var(--outline-variant); }
-
-/* ── Iconography ────────────────────────────────────────────────────────── */
-
+/*
+ * Material Symbols — kept as the icon system because components reference it
+ * via className="ms". The font is loaded via the @import above.
+ */
 .ms {
   font-family: 'Material Symbols Outlined';
   font-weight: normal;
@@ -259,835 +159,470 @@ button {
   -webkit-font-smoothing: antialiased;
   user-select: none;
   vertical-align: middle;
+  color: inherit;
 }
 
-/* ── Elevation primitives ───────────────────────────────────────────────── */
+/* ── Focus ───────────────────────────────────────────────────────────────── */
 
-.t-well      { background: var(--surface-inset); box-shadow: var(--depth-minus-1); }
-.t-plane     { background: var(--surface-low); box-shadow: var(--depth-0); }
-.t-raised    { background: var(--surface-container); box-shadow: var(--depth-1); }
-.t-floating  { background: var(--surface-high); box-shadow: var(--depth-2); }
-
-/* Any raised element gets its top specular edge. */
-.t-raised,
-.t-floating {
-  position: relative;
+:focus-visible {
+  outline: 2px dotted #000000;
+  outline-offset: 2px;
+  box-shadow: none;
+  border-radius: 0;
 }
+
+::selection {
+  background: #000080;
+  color: #ffffff;
+}
+
+/* ── Scrollbars ──────────────────────────────────────────────────────────── */
+
+.scroll-silk {
+  scrollbar-width: thin;
+  scrollbar-color: #808080 #c0c0c0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.scroll-silk::-webkit-scrollbar { width: 12px; height: 12px; }
+.scroll-silk::-webkit-scrollbar-track { background: #c0c0c0; }
+.scroll-silk::-webkit-scrollbar-thumb {
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+}
+.scroll-silk::-webkit-scrollbar-thumb:hover { background: #d0d0d0; }
+
+/* ── Elevation stubs (no visual effect — retro CSS owns appearance) ─────── */
+
+/*
+ * These classes are applied in JSX markup. We keep them as zero-effect stubs
+ * so removing them from markup is not required (a large JSX refactor for no
+ * gain). The retro CSS layer applies the actual Win95 bevel through element
+ * or component-specific rules.
+ */
+.t-well      { /* retro: inset bevel — see retro-*.css context rules */ }
+.t-plane     { /* retro: flat silver background */ }
+.t-raised    { /* retro: outset bevel */ }
+.t-floating  { /* retro: deep outset bevel */ }
 .t-raised::before,
-.t-floating::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: var(--glint);
-  border-radius: inherit;
-  pointer-events: none;
-}
+.t-floating::before { display: none; } /* no glint line */
 
-/* Interactive lift. 1px only — the shadow does the work, not the travel. */
-.t-lift {
-  transition: box-shadow var(--t-base) var(--ease-out),
-    transform var(--t-base) var(--ease-out),
-    background-color var(--t-base) var(--ease-out);
-}
-.t-lift:hover {
-  box-shadow: var(--depth-hover);
-  transform: translateY(-1px);
-}
-@media (prefers-reduced-motion: reduce) {
-  .t-lift { transition: none; }
-  .t-lift:hover { transform: none; }
-}
+.t-lift              { transition: none; }
+.t-lift:hover        { transform: none; box-shadow: none; }
+.t-active            { }
 
-.t-active {
-  background: var(--surface-highest);
-  box-shadow: var(--depth-minus-1);
-  transform: none;
-}
-
-/* ── Buttons ────────────────────────────────────────────────────────────── */
+/* ── Buttons (structural, visual overridden in retro.css) ───────────────── */
 
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-sm);
-  padding: 9px 16px;
-  border: 0;
-  border-radius: var(--r-lg);
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 20px;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  background: #c0c0c0;
+  color: #000000;
+  font-family: "MS Sans Serif", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
   white-space: nowrap;
-  transition: box-shadow var(--t-base) var(--ease-out),
-    transform var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out),
-    background-color var(--t-base) var(--ease-out);
+  cursor: pointer;
+  transition: none;
+  border-radius: 0;
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
+.btn:hover   { background: #d0d0d0; }
+.btn:active  { border-color: #808080 #ffffff #ffffff #808080; box-shadow: inset 1px 1px 0 #404040, inset -1px -1px 0 #dfdfdf; transform: translate(1px, 1px); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-/* Primary: the only element that both extrudes and emits. */
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%);
-  color: #fff;
-  box-shadow: inset 1px 1px 1px rgba(255, 255, 255, 0.25),
-    4px 4px 12px rgba(0, 0, 0, 0.4), 0 0 16px rgba(99, 102, 241, 0.3);
+  background: #0000ff;
+  color: #ffffff;
+  border-color: #5555ff #000080 #000080 #5555ff;
 }
-.btn-primary:hover {
-  box-shadow: inset 1px 1px 1px rgba(255, 255, 255, 0.25),
-    5px 5px 14px rgba(0, 0, 0, 0.45), var(--aura-wide);
-}
-.btn-primary:active {
-  box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.4),
-    inset -1px -1px 3px rgba(255, 255, 255, 0.1);
-  transform: translateY(1px);
-}
+.btn-primary:hover { background: #2222ff; color: #ffffff; }
+.btn-primary:active { border-color: #000080 #5555ff #5555ff #000080; }
 
 .btn-secondary {
-  background: var(--surface-container);
-  color: var(--ink-body);
-  box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.5), -2px -2px 6px rgba(255, 255, 255, 0.04);
+  background: #c0c0c0;
+  color: #000000;
 }
-.btn-secondary:hover { color: var(--ink); }
-.btn-secondary:hover { box-shadow: var(--depth-hover); }
-.btn-secondary:active { box-shadow: var(--depth-minus-1); transform: translateY(1px); }
 
 .btn-ghost {
   background: transparent;
-  color: var(--ink-muted);
-  padding: 8px;
-  border-radius: var(--r-md);
+  color: #000000;
+  border-color: transparent;
+  box-shadow: none;
+  padding: 4px 8px;
+  text-transform: none;
+  letter-spacing: 0;
 }
-.btn-ghost:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
+.btn-ghost:hover { background: rgba(0,0,0,0.08); border-color: transparent; box-shadow: none; }
 
-.btn-danger { background: var(--danger-container, #93000a); color: #fff; box-shadow: var(--depth-1); }
-.btn-danger:hover { background: var(--danger); color: #2b0a08; }
+.btn-danger {
+  background: #ff0000;
+  color: #ffffff;
+  border-color: #ff5555 #800000 #800000 #ff5555;
+}
+.btn-danger:hover { background: #ff2222; color: #ffffff; }
 
-.btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
-.btn-icon { padding: 9px; border-radius: var(--r-md); }
-
-/* Size modifier. Dense surfaces (settings, tool rows) need a button that fits
-   next to 12px text; padding is reduced rather than the font so the label keeps
-   the same optical weight as the control it sits beside. */
-.btn-sm { padding: 5px 10px; font-size: 12px; gap: 5px; border-radius: var(--r-sm); }
-.btn-sm .ms { font-size: 15px; }
+.btn-sm { padding: 3px 10px; font-size: 11px; gap: 4px; }
+.btn-sm .ms { font-size: 14px; }
 .btn-block { width: 100%; justify-content: center; }
+.btn-icon { padding: 4px 6px; }
 
-/* ── Inputs ─────────────────────────────────────────────────────────────── */
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
 
 .input {
   width: 100%;
-  padding: 11px 14px;
-  background: var(--surface-inset);
-  border: 0;
-  border-radius: var(--r-lg);
-  color: var(--ink);
-  font-family: var(--font-body);
-  font-size: 14px;
-  line-height: 22px;
-  box-shadow: var(--depth-minus-1);
-  transition: box-shadow var(--t-base) var(--ease-out);
+  padding: 4px 8px;
+  background: #ffffff;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040, inset -1px -1px 0 #dfdfdf;
+  color: #000000;
+  font-family: "MS Sans Serif", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  border-radius: 0;
+  transition: none;
 }
-.input::placeholder { color: var(--ink-faint); }
-.input:focus { outline: none; box-shadow: var(--depth-minus-1), var(--focus-ring); }
-
-textarea.input { resize: vertical; min-height: 96px; line-height: 22px; }
+.input::placeholder { color: #808080; }
+.input:focus {
+  outline: 2px dotted #000000;
+  outline-offset: 1px;
+  box-shadow: inset 1px 1px 0 #404040, inset -1px -1px 0 #dfdfdf;
+}
+textarea.input { resize: vertical; min-height: 80px; }
 
 .label {
   display: block;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 16px;
-  letter-spacing: 0.02em;
-  color: var(--ink-muted);
-  margin-bottom: var(--space-sm);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #000000;
+  margin-bottom: 3px;
+  font-family: "MS Sans Serif", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
+.field   { margin-bottom: 16px; }
+.hint    { font-size: 11px; color: #808080; margin-top: 3px; font-family: "Courier New", Courier, monospace; }
 
-.field { margin-bottom: var(--space-lg); }
-.hint { font-size: 12px; line-height: 16px; color: var(--ink-faint); margin-top: var(--space-sm); }
-
-/* ── Checkbox / switch ──────────────────────────────────────────────────── */
+/* ── Checkbox / switch (structural stubs) ────────────────────────────────── */
 
 .check {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  border: 0;
-  border-radius: 4px;
-  background: var(--surface-inset);
-  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.7);
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+  background: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: transparent;
-  transition: box-shadow var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+  cursor: pointer;
+  border-radius: 0;
 }
 .check[data-on='true'] {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.4), -1px -1px 3px rgba(255, 255, 255, 0.1);
+  background: #000080;
+  color: #ffffff;
+  box-shadow: none;
 }
-.check .ms { font-size: 14px; }
+.check .ms { font-size: 12px; }
 
-.switch {
-  width: 42px;
-  height: 24px;
-  flex: 0 0 42px;
-  border: 0;
-  border-radius: var(--r-full);
-  background: var(--surface-inset);
-  box-shadow: var(--depth-minus-1);
-  position: relative;
-  padding: 0;
-  transition: background-color var(--t-base) var(--ease-out);
-}
-.switch::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  border-radius: var(--r-full);
-  background: var(--surface-highest);
-  box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
-  transition: transform var(--t-base) var(--ease-out), background-color var(--t-base) var(--ease-out);
-}
-.switch[data-on='true'] { background: rgba(99, 102, 241, 0.35); }
-.switch[data-on='true']::after {
-  transform: translateX(18px);
-  background: var(--accent);
-  box-shadow: 0 0 10px rgba(99, 102, 241, 0.6);
-}
+/* switch is fully overridden in retro-mail.css */
 
-/* ── Chips & pills ──────────────────────────────────────────────────────── */
+/* ── Chips ───────────────────────────────────────────────────────────────── */
 
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border: 0;
-  border-radius: var(--r-full);
-  background: var(--surface-container);
-  color: var(--ink-muted);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 16px;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #c0c0c0;
+  color: #000000;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: "MS Sans Serif", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  border-radius: 0;
   letter-spacing: 0.02em;
-  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.4), -1px -1px 3px rgba(255, 255, 255, 0.03);
-  transition: all var(--t-base) var(--ease-out);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: none;
 }
-.chip:hover { color: var(--ink-body); }
+.chip:hover { background: #d0d0d0; color: #000000; }
 .chip[data-active='true'] {
-  background: var(--surface-inset);
-  color: var(--accent-soft);
-  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.6), 0 0 10px rgba(99, 102, 241, 0.15);
+  background: #000080;
+  color: #ffffff;
+  border-color: #5555ff #000040 #000040 #5555ff;
+  box-shadow: none;
 }
-.chip .ms { font-size: 15px; }
+.chip .ms { font-size: 13px; }
 
-/* ── Cards ──────────────────────────────────────────────────────────────── */
+/* ── Cards (structural, visual from retro-*.css context rules) ──────────── */
 
 .card {
-  background: var(--surface-container);
-  border-radius: var(--r-lg);
-  box-shadow: var(--depth-1);
-  padding: 20px;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  border-radius: 0;
+  padding: 16px;
 }
 .card-float {
-  background: var(--surface-high);
-  border-radius: var(--r-xl);
-  box-shadow: var(--depth-2);
-  padding: 24px;
-}
-
-/* AI summary carries a gradient wash across its top edge. */
-.card-ai {
-  position: relative;
-  background: var(--surface-container);
-  border-radius: var(--r-lg);
-  box-shadow: var(--depth-1);
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+  border-radius: 0;
   padding: 20px;
+}
+.card-ai {
+  background: #ffffcc;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040;
+  border-radius: 0;
+  padding: 16px;
   overflow: hidden;
+  position: relative;
 }
-.card-ai::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: var(--glint);
-}
-.card-ai::after {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 84px;
-  background: linear-gradient(90deg, rgba(99, 102, 241, 0.2) 0%, transparent 100%);
-  pointer-events: none;
-}
+.card-ai::before { display: none; }
+.card-ai::after  { display: none; }
 .card-ai > * { position: relative; z-index: 1; }
 
-/* ── Badges ─────────────────────────────────────────────────────────────── */
+/* ── Badges ──────────────────────────────────────────────────────────────── */
 
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: var(--r-sm);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 14px;
-  letter-spacing: 0.03em;
+  gap: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: "Courier New", Courier, monospace;
   text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid #808080;
+  border-radius: 0;
+  background: #c0c0c0;
+  color: #000000;
 }
-.badge-accent { background: rgba(99, 102, 241, 0.18); color: var(--accent-soft); }
-.badge-success { background: rgba(110, 231, 183, 0.14); color: var(--success); }
-.badge-warn { background: rgba(252, 211, 77, 0.14); color: var(--warning); }
-.badge-danger { background: rgba(255, 180, 171, 0.14); color: var(--danger); }
-.badge-mute { background: var(--surface-highest); color: var(--ink-muted); }
+.badge-accent  { background: #0000ff; color: #ffffff; border-color: #000080; }
+.badge-success { background: #00aa00; color: #ffffff; border-color: #006600; }
+.badge-warn    { background: #ff8000; color: #ffffff; border-color: #804000; }
+.badge-danger  { background: #ff0000; color: #ffffff; border-color: #800000; }
+.badge-mute    { background: #c0c0c0; color: #000000; border-color: #808080; }
 
-/* ── Utility ────────────────────────────────────────────────────────────── */
+/* ── Layout utilities ────────────────────────────────────────────────────── */
 
-.row { display: flex; align-items: center; gap: var(--space-sm); }
-.col { display: flex; flex-direction: column; }
+.row    { display: flex; align-items: center; gap: 8px; }
+.col    { display: flex; flex-direction: column; }
 .spacer { flex: 1 1 auto; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; }
+.stack    { display: flex; flex-direction: column; gap: 16px; }
+.stack-sm { display: flex; flex-direction: column; gap: 8px; }
+.stack-lg { display: flex; flex-direction: column; gap: 24px; }
 
-/* Layout helpers. Named for the number of columns so the markup says what it
-   means; `auto-fit` keeps them usable without a media query, because a grid
-   that cannot hold its contents is worse than one that reflows. */
-.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-md); }
-.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-md); }
-.stack { display: flex; flex-direction: column; gap: var(--space-md); }
-.stack-sm { display: flex; flex-direction: column; gap: var(--space-sm); }
-.stack-lg { display: flex; flex-direction: column; gap: var(--space-lg); }
+/* ── Typography utilities ────────────────────────────────────────────────── */
 
-/* Type helpers. `.muted` and `.small` are load-bearing rather than decorative:
-   they are how a dense settings surface signals that a value is secondary
-   without shrinking everything else. */
-.muted { color: var(--ink-muted); }
-.faint { color: var(--ink-faint); }
-.bright { color: var(--ink); }
-.small { font-size: 12px; line-height: 16px; }
-.mono { font-family: var(--font-mono); font-size: 12px; letter-spacing: -0.01em; }
-.strong { font-weight: 600; color: var(--ink); }
+.muted  { color: #808080; }
+.faint  { color: #808080; }
+.bright { color: #000000; font-weight: 700; }
+.small  { font-size: 11px; line-height: 1.4; }
+.mono   { font-family: "Courier New", Courier, monospace; font-size: 11px; }
+.strong { font-weight: 700; color: #000000; }
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
-
 .eyebrow {
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 14px;
-  letter-spacing: 0.12em;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-faint);
+  color: #808080;
+  font-family: "Courier New", Courier, monospace;
+}
+.divider {
+  height: 4px;
+  background: linear-gradient(to bottom, #808080 0%, #808080 50%, #ffffff 50%, #ffffff 100%);
+  border: 0;
+  margin: 16px 0;
 }
 
-.divider { height: 1px; background: var(--glint); border: 0; margin: var(--space-md) 0; }
+/* ── Pulse dot ───────────────────────────────────────────────────────────── */
 
-/* Live data should announce itself to a screen reader, quietly. */
 .pulse-dot {
-  width: 6px; height: 6px; border-radius: var(--r-full);
-  background: var(--success);
-  box-shadow: 0 0 8px var(--success);
+  width: 8px;
+  height: 8px;
+  background: #00aa00;
+  border: 1px solid #006600;
+  border-radius: 0;
+  box-shadow: none;
+  flex-shrink: 0;
 }
-@media (prefers-reduced-motion: reduce) {
-  .pulse-dot { animation: none !important; }
-}
-@keyframes silk-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-.pulse-dot { animation: silk-pulse 2.4s var(--ease-in-out) infinite; }
+/* Animation is set in retro-mail.css per context */
 
-/* ── Sections ───────────────────────────────────────────────────────────── */
+/* ── Section ─────────────────────────────────────────────────────────────── */
 
-/*
- * A titled group of settings or records.
- *
- * `t-well` rather than `t-raised` because these sit inside a sheet that is
- * already raised; a raised card on a raised sheet produces an edge with no
- * surface, which reads as a rendering fault rather than as depth.
- */
 .section {
-  padding: var(--space-md);
-  border-radius: var(--r-md);
-  background: var(--surface-low);
-  border: 1px solid var(--glint);
-  box-shadow: var(--depth-minus-1);
+  padding: 12px;
+  background: #e8e8e8;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: inset 1px 1px 0 #404040;
 }
-.section + .section { margin-top: var(--space-md); }
-
+.section + .section { margin-top: 8px; }
 .section__head {
   display: flex;
   align-items: baseline;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-sm);
+  gap: 6px;
+  margin-bottom: 6px;
 }
 .section__title {
-  font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ink);
-}
-.section__sub {
+  font-family: "MS Sans Serif", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-size: 12px;
-  line-height: 16px;
-  color: var(--ink-faint);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #000000;
 }
+.section__sub { font-size: 11px; color: #808080; font-family: "Courier New", Courier, monospace; }
 
-/* ── Key/value table ────────────────────────────────────────────────────── */
+/* ── KV table ────────────────────────────────────────────────────────────── */
 
-/*
- * Used for read-only values (a model id, a base URL, a fingerprint). Real
- * tables would need row headers and a caption to be accessible; this is a
- * definition list in disguise, so it is marked up as one and styled to look like
- * the spec's key/value rows.
- */
-.kv { display: flex; flex-direction: column; gap: 1px; }
+.kv { display: flex; flex-direction: column; gap: 0; }
 .kv__row {
   display: grid;
-  grid-template-columns: minmax(96px, 34%) 1fr;
-  gap: var(--space-sm);
-  padding: 7px 0;
-  border-bottom: 1px solid var(--glint);
+  grid-template-columns: minmax(88px, 32%) 1fr;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid #c0c0c0;
   align-items: baseline;
 }
 .kv__row:last-child { border-bottom: 0; }
-.kv__key { font-size: 12px; color: var(--ink-faint); }
-.kv__val { font-size: 12px; color: var(--ink-body); word-break: break-word; min-width: 0; }
+.kv__row:nth-child(even) { background: #e8e8e8; padding-left: 2px; }
+.kv__key { font-family: "Courier New", Courier, monospace; font-size: 10px; color: #808080; text-transform: uppercase; letter-spacing: 0.06em; }
+.kv__val { font-size: 12px; color: #000000; word-break: break-word; min-width: 0; font-family: "MS Sans Serif", "Segoe UI", Tahoma, sans-serif; }
 
 /* ── Danger zone ─────────────────────────────────────────────────────────── */
 
-/*
- * The kill switch, and anything else that stops the agent.
- *
- * Colour is the only thing that marks this as different from the sections
- * around it, so the resting state is already tinted and the engaged state adds a
- * border. Tinting only on `data-engaged` would mean the control looks ordinary
- * right up until the moment you need to find it again.
- */
 .danger-zone {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-md);
-  margin-bottom: var(--space-lg);
-  border-radius: var(--r-md);
-  background: var(--danger-container);
-  border: 1px solid color-mix(in srgb, var(--danger) 22%, transparent);
-  transition: border-color var(--t-base), background var(--t-base);
+  gap: 16px;
+  padding: 12px;
+  margin-bottom: 16px;
+  background: #fff0f0;
+  border: 2px solid #ff0000;
 }
 .danger-zone[data-engaged='true'] {
-  border-color: var(--danger);
-  box-shadow: 0 0 0 1px var(--danger), 0 0 18px -4px var(--danger);
+  border-color: #ff0000;
+  background: #ffe0e0;
 }
 .danger-zone__title {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--danger);
-  margin-bottom: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: "MS Sans Serif", "Segoe UI", Tahoma, sans-serif;
+  text-transform: uppercase;
+  color: #800000;
+  margin-bottom: 2px;
 }
 .danger-zone .btn { margin-left: auto; flex-shrink: 0; }
-
 @media (max-width: 560px) {
   .danger-zone { flex-direction: column; align-items: stretch; }
   .danger-zone .btn { margin-left: 0; }
 }
 
-/* ── Table ──────────────────────────────────────────────────────────────── */
+/* ── KV data table ───────────────────────────────────────────────────────── */
 
-/*
- * Only used where the data really is tabular (scheduled runs: skill, trigger,
- * time). Key/value pairs use `.kv` instead — a two-column layout in a table
- * costs screen readers a row/column relationship they cannot use.
- */
-.kv-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
+.kv-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .kv-table th {
   text-align: left;
-  font-size: 10px;
-  font-weight: 600;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 9px;
+  font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-faint);
-  padding: 0 10px 6px 0;
-  border-bottom: 1px solid var(--glint);
+  color: #808080;
+  padding: 0 8px 4px 0;
+  border-bottom: 2px solid #808080;
 }
 .kv-table td {
-  padding: 8px 10px 8px 0;
-  border-bottom: 1px solid var(--glint);
-  color: var(--ink-body);
+  padding: 5px 8px 5px 0;
+  border-bottom: 1px solid #c0c0c0;
+  color: #000000;
   vertical-align: baseline;
+  font-family: "MS Sans Serif", "Segoe UI", Tahoma, sans-serif;
 }
+.kv-table tr:nth-child(even) td { background: #e8e8e8; }
 .kv-table tr:last-child td { border-bottom: 0; }
 .kv-table td:last-child, .kv-table th:last-child { padding-right: 0; }
 
-/* ── Agent stream ───────────────────────────────────────────────────────── */
+/* ── Status ──────────────────────────────────────────────────────────────── */
 
-/*
- * Connection state, shown wherever the agent's liveness matters.
- *
- * The dot carries the state and the colour carries the meaning, so the text
- * label and the dot agree: a colour-blind user reads "live" and a screen reader
- * reads "live" and neither depends on distinguishing green from red. Only open
- * and connecting glow — a steady glow on a connection that is merely idle would
- * make the two indistinguishable at a glance.
- */
 .status {
   display: inline-flex;
   align-items: center;
-  font-size: 11px;
-  line-height: 14px;
-  color: var(--ink-faint);
+  font-family: "Courier New", Courier, monospace;
+  font-size: 10px;
+  color: #808080;
   white-space: nowrap;
 }
-.status-open { color: var(--success); }
-.status-connecting { color: var(--accent-soft); }
-.status-offline { color: var(--danger); }
-.status-idle { color: var(--ink-faint); }
+.status-open       { color: #00aa00; }
+.status-connecting { color: #0000ff; }
+.status-offline    { color: #ff0000; }
+.status-idle       { color: #808080; }
 .status-open::before,
 .status-connecting::before {
-  content: '';
+  content: '●';
   display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 6px;
-  border-radius: var(--r-full);
-  background: currentColor;
-  box-shadow: 0 0 8px currentColor;
-  vertical-align: middle;
+  margin-right: 4px;
+  font-size: 9px;
 }
 
-/* Header. Millo's name and state sit as one object so the eye does not have to
-   pair a name with a status that might belong to something else. */
-.stage__head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-md) var(--space-lg);
-  border-bottom: 1px solid var(--glint);
-  flex-shrink: 0;
-}
-.stage__who { display: flex; align-items: center; gap: var(--space-sm); min-width: 0; }
-.stage__mark {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-soft), var(--tertiary));
-  color: var(--on-primary);
-  box-shadow: var(--depth-1);
-}
-.stage__name {
-  font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ink);
-  line-height: 16px;
-}
-.stage__tools { margin-left: auto; display: flex; gap: var(--space-sm); flex-shrink: 0; }
-.stage__stats { padding: var(--space-sm) var(--space-lg) 0; }
+/* ── Notice / stream-error stubs ─────────────────────────────────────────── */
 
-/* Quick intents. Labelled as a group so the list reads as one set of
-   suggestions rather than as loose buttons. */
-.intents {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-  margin: var(--space-md) 0 0;
-  padding: 0;
-}
-.intents__label { width: 100%; margin-bottom: -2px; }
-
-/* Speech. The agent's own text is the thing being read most of the time, so it
-   gets the most contrast; the user's turns are visually recessed because they
-   are the known quantity. */
-.say {
-  max-width: 82%;
-  margin-bottom: var(--space-md);
-  font-size: 14px;
-  line-height: 22px;
-}
-.say p { margin: 0; white-space: pre-wrap; }
-.say-user {
-  margin-left: auto;
-  padding: 9px 13px;
-  border-radius: var(--r-lg) var(--r-lg) 4px var(--r-lg);
-  background: var(--surface-high);
-  border: 1px solid var(--glint);
-  color: var(--ink-body);
-}
-.say-agent { color: var(--ink); }
-
-/* Approval card — the one thing in the stream that needs a decision, so it is
-   the only element allowed the warning surface. */
-.approval {
-  margin-bottom: var(--space-md);
-  padding: var(--space-md);
-  border-radius: var(--r-md);
-  background: var(--surface-high);
-  border: 1px solid color-mix(in srgb, var(--warning) 28%, transparent);
-  box-shadow: var(--depth-1);
-}
-.approval__head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
-.approval__mark { color: var(--warning); display: grid; place-items: center; }
-.approval__mark .ms { font-size: 17px; }
-.approval__title {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--warning);
-}
-.approval__question { font-size: 14px; line-height: 21px; color: var(--ink); margin: 0; }
-.approval__context { font-size: 12px; line-height: 17px; color: var(--ink-muted); margin: 6px 0 0; }
-.approval__actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-top: 12px; }
-.approval__hint { font-size: 11px; color: var(--ink-faint); margin: 10px 0 0; }
-
-/* Tool calls collapse by default. Arguments are the noisiest thing in the
-   stream and are almost never what you want at a glance, but they must stay
-   one click away — a tool call you cannot inspect is the failure mode this
-   whole surface exists to prevent. */
-.call {
-  margin-bottom: 6px;
-  border-radius: var(--r-sm);
-  background: var(--surface-low);
-  border: 1px solid var(--glint);
-  font-size: 12px;
-}
-.call summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: 7px 10px;
-  cursor: pointer;
-  list-style: none;
-  color: var(--ink-muted);
-}
-.call summary::-webkit-details-marker { display: none; }
-.call summary::before {
-  content: '';
-  width: 0;
-  height: 0;
-  border-left: 4px solid currentColor;
-  border-top: 3.5px solid transparent;
-  border-bottom: 3.5px solid transparent;
-  flex-shrink: 0;
-  transition: transform var(--t-fast);
-}
-.call[open] summary::before { transform: rotate(90deg); }
-.call__name { font-family: var(--font-mono); color: var(--ink-body); }
-.call__meta { margin-left: auto; font-size: 11px; color: var(--ink-faint); }
-.call__args {
-  margin: 0;
-  padding: 9px 10px 10px 26px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--ink-muted);
-  white-space: pre-wrap;
-  word-break: break-word;
-  border-top: 1px solid var(--glint);
-}
-
-.result {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-sm);
-  margin: 0 0 6px 14px;
-  padding-left: 10px;
-  border-left: 2px solid var(--glint);
-  font-size: 12px;
-  line-height: 17px;
-}
-.result[data-ok='true'] { border-left-color: color-mix(in srgb, var(--success) 45%, transparent); }
-.result[data-ok='false'] { border-left-color: var(--danger); }
-.result__summary { color: var(--ink-muted); }
-.result[data-ok='false'] .result__summary { color: var(--danger); }
-.result__meta { margin-left: auto; font-size: 11px; color: var(--ink-faint); flex-shrink: 0; }
-
-.tick {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: var(--space-sm) 0 var(--space-md);
-  font-size: 11px;
-  color: var(--ink-faint);
-}
-.tick .ms { font-size: 14px; color: var(--success); }
-
-/* Notices and errors. */
+/* Full rules live in retro-mail.css; these are fallback declarations so the
+   classes don't render as unstyled text if retro-mail is not loaded. */
 .notice {
-  margin: 0 var(--space-lg) var(--space-sm);
-  padding: 10px 12px;
-  border-radius: var(--r-sm);
-  background: var(--surface-high);
-  border: 1px solid var(--glint);
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--ink-muted);
-}
-.notice strong { color: var(--ink-body); }
-
-.stream-error {
-  margin: 0;
-  padding: 8px var(--space-lg);
-  font-size: 12px;
-  color: var(--danger);
-  border-top: 1px solid var(--glint);
-}
-
-/* Composer. The send button is a square icon so the input keeps the width, and
-   the whole thing sits on one row at every breakpoint. */
-.composer {
-  display: flex;
-  gap: var(--space-sm);
-  padding: var(--space-md) var(--space-lg);
-  border-top: 1px solid var(--glint);
-  flex-shrink: 0;
-}
-.composer__input { flex: 1; min-width: 0; }
-.composer__send { padding: 0 15px; flex-shrink: 0; }
-
-/* ── Artifacts ──────────────────────────────────────────────────────────── */
-
-.artifact { margin-bottom: var(--space-md); overflow: hidden; }
-.artifact__head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--glint);
-}
-.artifact__status { margin-left: auto; font-size: 11px; color: var(--ink-faint); }
-.artifact__frame { display: block; width: 100%; border: 0; background: transparent; }
-.artifact__error {
-  margin: 0;
-  padding: 8px 10px;
-  font-size: 12px;
-  color: var(--danger);
-  border-top: 1px solid var(--glint);
-}
-
-/* ── Safe areas ─────────────────────────────────────────────────────────── */
-
-/*
- * `viewport-fit=cover` plus `black-translucent` in index.html means the status
- * bar and the home indicator draw over the app. The fallbacks are not optional:
- * without them the topbar sits under the notch on a notched iPhone and the tab
- * bar sits under the home indicator, with no scroll to recover it.
- */
-:root {
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-left: env(safe-area-inset-left, 0px);
-  --safe-right: env(safe-area-inset-right, 0px);
-
-  /* Height of the mobile tab bar. Declared at :root rather than on
-     .mobile-tabs so the install banner can read it too: a custom property
-     inherits down the tree, never sideways, so a value scoped to the tab bar
-     would be invisible to the banner sitting beside it. */
-  --tabs-h: 58px;
-}
-
-/* ── Install banner ─────────────────────────────────────────────────────── */
-
-/*
- * Pinned bottom-left rather than centred: it has to clear the mobile tab bar,
- * and on desktop it should sit near the thumb without covering the composer.
- *
- * The whole bar is one landmark with a label, and the actions are real buttons,
- * because a dismissible prompt with no keyboard-reachable way out is a trap.
- */
-.install {
-  position: fixed;
-  z-index: 60;
-  left: max(var(--gutter), var(--safe-left));
-  bottom: calc(var(--space-md) + var(--safe-bottom));
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  width: min(30rem, calc(100vw - 2 * var(--space-md)));
-  padding: var(--space-md);
-  border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--surface-high) 92%, transparent);
-  backdrop-filter: blur(18px);
-  border: 1px solid var(--glint-strong);
-  box-shadow: var(--depth-2);
-  animation: install-rise var(--t-slow) var(--ease-out);
-}
-@keyframes install-rise {
-  from { opacity: 0; transform: translateY(14px); }
-  to   { opacity: 1; transform: none; }
-}
-
-.install__body { display: flex; align-items: center; gap: var(--space-sm); min-width: 0; }
-.install__mark {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  border-radius: var(--r-md);
-  background: linear-gradient(135deg, var(--accent-soft), var(--tertiary));
-  color: var(--on-primary);
-  box-shadow: var(--depth-1);
-}
-.install__mark .ms { font-size: 19px; }
-.install__text { min-width: 0; }
-.install__title {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-  line-height: 17px;
-}
-.install__sub {
-  margin: 1px 0 0;
+  padding: 6px 10px;
+  background: #ffffcc;
+  border: 1px solid #808080;
   font-size: 11px;
-  line-height: 15px;
-  color: var(--ink-faint);
+  color: #000000;
 }
-.install__actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.install__x {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--ink-faint);
-  cursor: pointer;
-  transition: color var(--t-fast), background var(--t-fast);
+.stream-error {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: #800000;
+  background: #fff0f0;
+  border-top: 2px solid #ff0000;
 }
-.install__x:hover { color: var(--ink); background: rgba(255, 255, 255, 0.06); }
-.install__x:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 1px; }
-.install__x .ms { font-size: 17px; }
 
-@media (max-width: 767px) {
-  /* Stacks, and clears the tab bar rather than sitting on top of it.
-     The breakpoint matches the one that reveals .mobile-tabs — any narrower and
-     the banner would cover the tabs across the 620–767px range. */
-  .install {
-    left: var(--space-sm);
-    right: var(--space-sm);
-    width: auto;
-    flex-direction: column;
-    align-items: stretch;
-    bottom: calc(var(--tabs-h) + var(--space-sm) + var(--safe-bottom));
-  }
-  .install__actions { margin-left: 0; justify-content: flex-end; }
+/* ── Safe area helpers ───────────────────────────────────────────────────── */
+/* Declared here so they are available regardless of which page is loaded. */
+:root {
+  --safe-top:    env(safe-area-inset-top,    0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left,   0px);
+  --safe-right:  env(safe-area-inset-right,  0px);
+  --tabs-h: 52px;
 }

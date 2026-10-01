@@ -32,9 +32,10 @@ WORKER="$ROOT/apps/worker"
 FRONTEND="$ROOT/frontend"
 
 # ── Source of truth for the deployed addresses ──────────────────────────────
-# The frontend bundle must point at these. Kept here (not inline in the build
-# command) so there is exactly one place to change when the Worker moves.
+# Health checks target the Worker directly. Browser requests use the same-origin
+# Pages Function in /functions so the browser session cookie stays first-party.
 API_ORIGIN="${API_ORIGIN:-https://threadmymail-worker.twistedoliver211fs.workers.dev}"
+APP_ORIGIN="${APP_ORIGIN:-https://threadmymail.omixsystems.store}"
 PAGES_PROJECT="threadmymail"
 CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-9e7ca541fc83eab0e3608e50d7a0be47}"
 
@@ -116,25 +117,24 @@ WRANGLER="$WORKER/node_modules/.bin/wrangler"
 step "Typechecking the Worker"
 (cd "$WORKER" && npx tsc --noEmit) || fail "typecheck failed — not deploying"
 
-# ── 4. Build the frontend with the real API baked in ────────────────────────
+# ── 4. Build the frontend with its same-origin API route ───────────────────
 if [ "$SKIP_FRONTEND" = 0 ]; then
   step "Building the frontend"
-  # Assert the variables are non-empty. A typo here is silent otherwise: the
-  # bundle falls back to '/v1' and the published site 404s on every call.
-  [ -n "$API_ORIGIN" ] || fail "API_ORIGIN is empty"
-  echo "  VITE_API_BASE = $API_ORIGIN/v1"
-  echo "  VITE_WS_URL   = ${API_ORIGIN/http:/https:}"
+  # /v1 is handled by functions/v1/[[path]].js, keeping OAuth and the session
+  # cookie on the custom app hostname rather than cross-site on workers.dev.
+  echo "  VITE_API_BASE = /v1 (same-origin Pages Function)"
+  echo "  VITE_WS_URL   = wss://${APP_ORIGIN#https://}/v1/agent/stream"
   (cd "$FRONTEND" && \
-    VITE_API_BASE="$API_ORIGIN/v1" \
-    VITE_WS_URL="wss://${API_ORIGIN#https://}/v1/agent/stream" \
+    VITE_API_BASE="/v1" \
+    VITE_WS_URL="wss://${APP_ORIGIN#https://}/v1/agent/stream" \
     npx vite build) || fail "frontend build failed"
 
-  # Verify the URL actually made it into the bundle before publishing.
+  # Verify the same-origin route actually made it into the bundle.
   BUNDLE="$(grep -ro '/assets/index-[A-Za-z0-9_-]*\.js' "$FRONTEND/dist/index.html" | head -1)"
-  if ! grep -qF "$API_ORIGIN/v1" "$FRONTEND/dist$BUNDLE"; then
-    fail "the API origin is not in $BUNDLE — refusing to publish a bundle that calls the wrong host"
+  if ! grep -qF '"/v1"' "$FRONTEND/dist$BUNDLE"; then
+    fail "the same-origin API base is not in $BUNDLE — refusing to publish a bundle that calls the wrong host"
   fi
-  echo "  confirmed $API_ORIGIN is in $BUNDLE"
+  echo "  confirmed same-origin API base is in $BUNDLE"
 fi
 
 # ── 5. Deploy the Worker ───────────────────────────────────────────────────
@@ -195,10 +195,35 @@ if [ "$SKIP_FRONTEND" = 0 ]; then
   code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' "$origin/app")"
   [ "$code" = "200" ] || fail "$origin/app returned $code"
   echo "  frontend /app 200 ✓"
+  custom_code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' "$APP_ORIGIN/privacy")"
+  [ "$custom_code" = "200" ] || fail "$APP_ORIGIN/privacy returned $custom_code"
+  echo "  custom-domain privacy page 200 ✓"
+
+  oauth_headers="$(mktemp /tmp/tmm-oauth-check.XXXXXX)"
+  oauth_code="$(curl -sS -m 30 -D "$oauth_headers" -o /dev/null -w '%{http_code}' \
+    "$APP_ORIGIN/v1/auth/google")" || { rm -f "$oauth_headers"; fail "OAuth start route is unreachable"; }
+  oauth_location="$(tr -d '\r' < "$oauth_headers" | grep -i '^location:' | head -1 || true)"
+  if [ "$oauth_code" != "302" ] || ! printf '%s' "$oauth_location" \
+    | grep -qi '^location: https://accounts\.google\.com/o/oauth2/v2/auth?'; then
+    rm -f "$oauth_headers"
+    fail "OAuth start did not return a browser redirect to Google (HTTP $oauth_code)"
+  fi
+  if ! tr -d '\r' < "$oauth_headers" | grep -qi '^set-cookie: tmm_oauth_state='; then
+    rm -f "$oauth_headers"
+    fail "OAuth start did not set the state cookie on the custom domain"
+  fi
+  rm -f "$oauth_headers"
+  echo "  custom-domain OAuth start redirects to Google with state cookie ✓"
+
+  # The redirect-preserving proxy is only useful if /v1/* actually reaches it.
+  # A stale app shell would serve index.html here instead of the API.
+  skills_code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' "$APP_ORIGIN/v1/skills")"
+  [ "$skills_code" = "200" ] || fail "$APP_ORIGIN/v1/skills returned $skills_code (expected 200 from the proxy, not the app shell)"
+  echo "  custom-domain /v1/skills 200 from the proxy ✓"
 fi
 
 printf '\n\033[32mDeployed and verified.\033[0m  %s\n' "$API_ORIGIN"
-echo "App: https://${PAGES_PROJECT}.pages.dev/app"
+echo "App: ${APP_ORIGIN}/app"
 echo
 echo "Note: database migrations are not run by this script."
 echo "      node apps/worker/scripts/db-push.mjs <file.sql> --dry-run   # inspect first"

@@ -1,0 +1,677 @@
+/*
+ * retro.css — ThreadMyMail 90s Nostalgia Design System
+ *
+ * Token layer and animation definitions. This file owns:
+ *   - CSS custom properties (Win95 palette, bevel values, type stacks)
+ *   - @keyframes (rainbow, pulse-glow, blink, win-shimmer)
+ *   - Reusable utility classes (.bevel-out, .bevel-in, .hr-groove, etc.)
+ *   - Background patterns (.bg-tile, .bg-construction)
+ *
+ * Philosophy: Commit fully. Every pixel should feel like 1997.
+ * See design-system spec for the full rationale.
+ */
+
+/* ── Design Tokens ──────────────────────────────────────────────────────── */
+
+:root {
+  /* Win95 palette */
+  --r-bg:          #c0c0c0;
+  --r-fg:          #000000;
+  --r-muted:       #808080;
+  --r-accent:      #0000ff;
+  --r-secondary:   #ff0000;
+  --r-tertiary:    #ffff00;
+  --r-success:     #00ff00;
+  --r-success-dk:  #00aa00;
+  --r-border:      #000000;
+  --r-bevel-light: #ffffff;
+  --r-bevel-dark:  #808080;
+  --r-bevel-deep:  #404040;
+  --r-bevel-hi:    #dfdfdf;
+  --r-title-bar:   #000080;
+  --r-title-end:   #1084d0;
+  --r-panel-yell:  #ffffcc;
+  --r-link:        #0000ff;
+  --r-link-hover:  #ff0000;
+  --r-link-vis:    #800080;
+  --r-white:       #ffffff;
+  --r-silver:      #c0c0c0;
+  --r-ltgray:      #e8e8e8;
+  --r-hitbg:       #000000;
+  --r-hitfg:       #00ff00;
+
+  /* Type stacks */
+  --r-font-body:    "MS Sans Serif", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  --r-font-heading: "Arial Black", Impact, Haettenschweiler, sans-serif;
+  --r-font-mono:    "Courier New", Courier, monospace;
+  --r-font-fun:     "Comic Sans MS", cursive;
+
+  /* Bevel shorthand values — use in border-color */
+  --r-bevel-out: #ffffff #808080 #808080 #ffffff;  /* top right bottom left */
+  --r-bevel-in:  #808080 #ffffff #ffffff #808080;  /* sunken */
+
+  /* Spacing */
+  --r-space-xs: 4px;
+  --r-space-sm: 8px;
+  --r-space-md: 16px;
+  --r-space-lg: 24px;
+  --r-space-xl: 48px;
+
+  /* Layout */
+  --r-max-w:   1024px;
+  --r-rail:    220px;
+  --r-topbar:  36px;
+
+  /* Motion — snappy, digital */
+  --r-t-instant: 0ms;
+  --r-t-snap:    50ms;
+  --r-t-fast:    75ms;
+}
+
+/* ── Keyframes ──────────────────────────────────────────────────────────── */
+
+@keyframes rainbow {
+  0%   { color: #ff0000; }
+  17%  { color: #ff8000; }
+  33%  { color: #ffff00; }
+  50%  { color: #00ff00; }
+  67%  { color: #0080ff; }
+  83%  { color: #8000ff; }
+  100% { color: #ff0000; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 10px 3px rgba(255, 0, 0, 0.5);
+  }
+}
+
+@keyframes blink-hard {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@keyframes win-shimmer {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.85; }
+}
+
+/* ── Base reset (retro-flavoured) ───────────────────────────────────────── */
+
+/* We keep the silk.css box-sizing reset. Here we override body defaults. */
+body {
+  background-color: var(--r-bg);
+  background-image:
+    linear-gradient(45deg, #b8b8b8 25%, transparent 25%),
+    linear-gradient(-45deg, #b8b8b8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #b8b8b8 75%),
+    linear-gradient(-45deg, transparent 75%, #b8b8b8 75%);
+  background-size: 4px 4px;
+  background-position: 0 0, 0 2px, 2px -2px, -2px 0px;
+  color: var(--r-fg);
+  font-family: var(--r-font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--r-font-heading);
+  font-weight: 900;
+  color: var(--r-fg);
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h1 { font-size: 36px; line-height: 1.1; }
+h2 { font-size: 26px; line-height: 1.2; }
+h3 { font-size: 18px; line-height: 1.3; }
+h4 { font-size: 14px; line-height: 1.4; }
+
+p { margin: 0 0 var(--r-space-sm); }
+p:last-child { margin-bottom: 0; }
+
+a {
+  color: var(--r-link);
+  text-decoration: underline;
+  transition: color var(--r-t-instant);
+}
+a:visited { color: var(--r-link-vis); }
+a:hover   { color: var(--r-link-hover); text-decoration: underline; }
+a:active  { color: var(--r-link-hover); }
+
+button {
+  font-family: var(--r-font-body);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+*:focus-visible {
+  outline: 2px dotted #000000;
+  outline-offset: 2px;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+::selection {
+  background: #000080;
+  color: #ffffff;
+}
+
+/* ── Bevel primitives ───────────────────────────────────────────────────── */
+
+/*
+ * .bevel-out — raised, like a button at rest
+ * .bevel-in  — sunken, like a pressed button or an input well
+ * Add these classes instead of manually repeating the border/shadow combo.
+ */
+
+.bevel-out {
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow:
+    inset -1px -1px 0 #404040,
+    inset 1px 1px 0 #dfdfdf;
+}
+
+.bevel-in {
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow:
+    inset 1px 1px 0 #404040,
+    inset -1px -1px 0 #dfdfdf;
+}
+
+.bevel-out-deep {
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow:
+    inset -2px -2px 0 #808080,
+    inset 2px 2px 0 #fff,
+    inset -4px -4px 0 #404040,
+    inset 4px 4px 0 #dfdfdf;
+}
+
+/* ── Win95 Window card ──────────────────────────────────────────────────── */
+
+/*
+ * .win-window — a box that looks like a Win95 application window.
+ * Structure:
+ *   .win-window
+ *     .win-titlebar   ← navy gradient, white text
+ *     .win-body       ← inset bevel, white or #ffffcc content area
+ */
+
+.win-window {
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow:
+    inset -1px -1px 0 #404040,
+    inset 1px 1px 0 #dfdfdf;
+  background: #c0c0c0;
+}
+
+.win-titlebar {
+  background: linear-gradient(to right, #000080, #1084d0);
+  color: #ffffff;
+  font-family: var(--r-font-body);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 3px 6px 3px 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.win-titlebar-icon {
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.win-titlebar-title {
+  flex: 1;
+}
+
+/* Win95 titlebar buttons (close, min, max) — decorative */
+.win-titlebar-btns {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.win-titlebar-btn {
+  width: 16px;
+  height: 14px;
+  background: #c0c0c0;
+  border: 1px solid;
+  border-color: #ffffff #404040 #404040 #ffffff;
+  font-size: 9px;
+  line-height: 12px;
+  text-align: center;
+  color: #000;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  padding: 0;
+}
+
+.win-body {
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow:
+    inset 1px 1px 0 #404040,
+    inset -1px -1px 0 #dfdfdf;
+  background: #ffffff;
+  padding: var(--r-space-md);
+}
+
+.win-body-yellow {
+  background: #ffffcc;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.r-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background: var(--r-silver);
+  color: var(--r-fg);
+  font-family: var(--r-font-body);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow:
+    inset -1px -1px 0 #404040,
+    inset 1px 1px 0 #dfdfdf;
+  cursor: pointer;
+  text-decoration: none;
+  transition: none;
+  border-radius: 0;
+}
+.r-btn:hover {
+  background: #d0d0d0;
+  color: var(--r-fg);
+  text-decoration: none;
+}
+.r-btn:active, .r-btn[data-pressed='true'] {
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow:
+    inset 1px 1px 0 #404040,
+    inset -1px -1px 0 #dfdfdf;
+  transform: translate(1px, 1px);
+}
+.r-btn:focus-visible {
+  outline: 2px dotted #000000;
+  outline-offset: 2px;
+}
+.r-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Primary = blue */
+.r-btn-primary {
+  background: #0000ff;
+  color: #ffffff;
+  border-color: #5555ff #000080 #000080 #5555ff;
+}
+.r-btn-primary:hover { background: #2222ff; color: #fff; }
+.r-btn-primary:active {
+  border-color: #000080 #5555ff #5555ff #000080;
+  transform: translate(1px, 1px);
+}
+
+/* Danger = red */
+.r-btn-danger {
+  background: #ff0000;
+  color: #ffffff;
+  border-color: #ff5555 #800000 #800000 #ff5555;
+}
+.r-btn-danger:hover { background: #ff2222; color: #fff; }
+.r-btn-danger:active {
+  border-color: #800000 #ff5555 #ff5555 #800000;
+  transform: translate(1px, 1px);
+}
+
+/* Success = green */
+.r-btn-success {
+  background: #00aa00;
+  color: #ffffff;
+  border-color: #00ff00 #006600 #006600 #00ff00;
+}
+.r-btn-success:hover { background: #00bb00; color: #fff; }
+.r-btn-success:active {
+  border-color: #006600 #00ff00 #00ff00 #006600;
+  transform: translate(1px, 1px);
+}
+
+/* Ghost = plain silver, for icon buttons */
+.r-btn-ghost {
+  background: transparent;
+  color: var(--r-fg);
+  border-color: transparent;
+  box-shadow: none;
+  padding: 4px 8px;
+  text-transform: none;
+}
+.r-btn-ghost:hover {
+  background: rgba(0,0,0,0.08);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.r-btn-sm {
+  padding: 3px 10px;
+  font-size: 11px;
+  gap: 4px;
+}
+
+.r-btn-block {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ── Inputs ─────────────────────────────────────────────────────────────── */
+
+.r-input {
+  width: 100%;
+  padding: 4px 8px;
+  background: #ffffff;
+  color: #000000;
+  font-family: var(--r-font-body);
+  font-size: 14px;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow:
+    inset 1px 1px 0 #404040,
+    inset -1px -1px 0 #dfdfdf;
+  border-radius: 0;
+  transition: none;
+  line-height: 1.4;
+}
+.r-input::placeholder { color: #808080; }
+.r-input:focus {
+  outline: 2px dotted #000000;
+  outline-offset: 2px;
+  box-shadow:
+    inset 1px 1px 0 #404040,
+    inset -1px -1px 0 #dfdfdf;
+}
+.r-input:disabled { background: #c0c0c0; opacity: 0.6; }
+
+textarea.r-input { resize: vertical; min-height: 80px; }
+
+.r-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #000000;
+  margin-bottom: 3px;
+}
+
+.r-field { margin-bottom: var(--r-space-md); }
+
+/* ── Background patterns ────────────────────────────────────────────────── */
+
+/* Tiled crosshatch — the Win95 desktop texture */
+.bg-tile {
+  background-color: #c0c0c0;
+  background-image:
+    linear-gradient(45deg, #b8b8b8 25%, transparent 25%),
+    linear-gradient(-45deg, #b8b8b8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #b8b8b8 75%),
+    linear-gradient(-45deg, transparent 75%, #b8b8b8 75%);
+  background-size: 4px 4px;
+  background-position: 0 0, 0 2px, 2px -2px, -2px 0px;
+}
+
+/* Construction warning stripes — black/yellow diagonal */
+.bg-construction {
+  background: repeating-linear-gradient(
+    45deg,
+    #ffff00,
+    #ffff00 10px,
+    #000000 10px,
+    #000000 20px
+  );
+}
+
+/* Groove HR — the etched divider */
+.hr-groove {
+  border: none;
+  height: 4px;
+  background: linear-gradient(
+    to bottom,
+    #808080 0%, #808080 50%,
+    #ffffff 50%, #ffffff 100%
+  );
+  margin: var(--r-space-md) 0;
+}
+
+/* ── Hit counter panel ──────────────────────────────────────────────────── */
+
+.hit-counter {
+  background: #000000;
+  color: #00ff00;
+  font-family: var(--r-font-mono);
+  font-size: 16px;
+  padding: 8px 16px;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow:
+    inset 1px 1px 0 #404040,
+    inset -1px -1px 0 #dfdfdf;
+  display: inline-block;
+  letter-spacing: 0.1em;
+}
+
+.hit-counter-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #808080;
+  font-family: var(--r-font-mono);
+}
+
+/* ── Badges ─────────────────────────────────────────────────────────────── */
+
+.r-badge-new {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  background: #ff0000;
+  color: #ffffff;
+  font-family: var(--r-font-body);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border: 1px solid #800000;
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+.r-badge-hot {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  background: #ff8000;
+  color: #ffffff;
+  font-family: var(--r-font-body);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid #804000;
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+.r-badge-free {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  background: #00aa00;
+  color: #ffffff;
+  font-family: var(--r-font-body);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid #006600;
+}
+
+/* ── Rainbow text ───────────────────────────────────────────────────────── */
+
+.text-rainbow {
+  animation: rainbow 4s linear infinite;
+  font-style: normal;
+  font-weight: inherit;
+}
+
+/* ── Marquee announcement bar ───────────────────────────────────────────── */
+
+.r-marquee-bar {
+  background: #000080;
+  color: #ffffff;
+  font-family: var(--r-font-body);
+  font-size: 13px;
+  font-weight: 700;
+  border-bottom: 2px solid #000000;
+  padding: 4px 0;
+}
+
+.r-marquee-bar .marquee-item {
+  padding: 0 32px;
+  white-space: nowrap;
+}
+
+.r-marquee-bar .marquee-sep {
+  color: #ffff00;
+  padding: 0 8px;
+  font-weight: 900;
+}
+
+/* ── Table / grid utilities ─────────────────────────────────────────────── */
+
+.r-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  border: 2px solid #808080;
+}
+.r-table th {
+  background: #c0c0c0;
+  font-family: var(--r-font-body);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: left;
+  padding: 5px 8px;
+  border-bottom: 2px solid #808080;
+  border-right: 1px solid #808080;
+  color: #000000;
+}
+.r-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #c0c0c0;
+  border-right: 1px solid #c0c0c0;
+  color: #000000;
+  vertical-align: middle;
+}
+.r-table tr:nth-child(even) td { background: #e8e8e8; }
+.r-table tr:nth-child(odd)  td { background: #ffffff; }
+.r-table tr:last-child td { border-bottom: none; }
+
+/* ── Decorative color square grid ───────────────────────────────────────── */
+
+.r-color-grid {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.r-color-sq {
+  width: 20px;
+  height: 20px;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: inset -1px -1px 0 #404040, inset 1px 1px 0 #dfdfdf;
+}
+
+/* ── Section title with 3D emboss ───────────────────────────────────────── */
+
+.r-section-title {
+  font-family: var(--r-font-heading);
+  font-size: 22px;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #000000;
+  text-shadow: 2px 2px 0 #808080;
+  letter-spacing: 0.02em;
+  margin-bottom: var(--r-space-sm);
+}
+
+/* ── Eyebrow / label ────────────────────────────────────────────────────── */
+
+.r-eyebrow {
+  font-family: var(--r-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #808080;
+}
+
+/* ── Layout helpers ─────────────────────────────────────────────────────── */
+
+.r-row { display: flex; align-items: center; gap: var(--r-space-sm); }
+.r-col { display: flex; flex-direction: column; }
+.r-spacer { flex: 1 1 auto; }
+.r-stack { display: flex; flex-direction: column; gap: var(--r-space-md); }
+.r-stack-sm { display: flex; flex-direction: column; gap: var(--r-space-sm); }
+.r-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.r-center { text-align: center; }
+.r-mono { font-family: var(--r-font-mono); }
+.r-small { font-size: 12px; }
+.r-muted { color: #808080; }
+
+/* ── Scrollbars — classic narrow ────────────────────────────────────────── */
+
+.r-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #808080 #c0c0c0;
+  overflow-y: auto;
+}
+.r-scroll::-webkit-scrollbar { width: 12px; height: 12px; }
+.r-scroll::-webkit-scrollbar-track { background: #c0c0c0; border-left: 1px solid #808080; }
+.r-scroll::-webkit-scrollbar-thumb {
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+}
+.r-scroll::-webkit-scrollbar-thumb:hover { background: #d0d0d0; }
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .text-rainbow       { animation: none; color: #ff0000; }
+  .r-badge-new,
+  .r-badge-hot        { animation: none; }
+}

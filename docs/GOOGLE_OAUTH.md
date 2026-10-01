@@ -43,10 +43,8 @@ liability.
 | `openid` | Identity (id token) |
 | `email` | Identity |
 | `profile` | Display name |
-| `https://www.googleapis.com/auth/gmail.readonly` | Read mail |
-| `https://www.googleapis.com/auth/gmail.modify` | Labels, archive, mark read |
-| `https://www.googleapis.com/auth/gmail.send` | Send on your behalf |
-| `https://www.googleapis.com/auth/calendar` | Read, create, and manage events |
+| `https://www.googleapis.com/auth/gmail.readonly` | Future read-only mail features |
+| `https://www.googleapis.com/auth/calendar.readonly` | Future read-only calendar features |
 
 ### 2.2 Phase 2 — only if a feature demands it
 
@@ -68,14 +66,14 @@ consent every time is annoying and unnecessary.
 ```
 Browser                Worker                   Google
    │                     │                        │
-   │ GET /auth/google    │                        │
+   │ GET /v1/auth/google │                        │
    │────────────────────►│                        │
    │◄──── 302 ───────────│                        │
    │                     │                        │
    │◄───────────────────────────────────────────────┤ consent screen
    │   (user reviews granular per-scope descriptions) │
    │                     │                        │
-   │ GET /auth/google/callback?code=…  │           │
+   │ GET /v1/auth/google/callback?code=… │         │
    │────────────────────►│──────────exchange──────►│
    │                     │◄────────tokens──────────│
    │◄──── 302 (session) ─│                        │
@@ -94,12 +92,16 @@ Browser                Worker                   Google
 ### 3.2 Callback URL
 
 ```
-https://threadmymail.workers.dev/auth/google/callback
+https://threadmymail.omixsystems.store/v1/auth/google/callback
 ```
 
-Registered **exactly**, with no trailing slash. If a custom domain is added
-later, register it as a *second* authorized redirect URI — Google allows up to
-100, and both must be listed or one will fail with `redirect_uri_mismatch`.
+The frontend's Pages Function proxies `/v1/*` to the API Worker. This keeps the
+OAuth state and session cookies on the app's own hostname. Register this URI
+exactly, with no trailing slash.
+
+For the Web application OAuth client, the authorized JavaScript origin is
+`https://threadmymail.omixsystems.store` (no path or trailing slash). The
+branding authorized domain is `omixsystems.store`.
 
 ---
 

@@ -1,13 +1,8 @@
 /**
- * Documentation.
+ * Documentation. 90s Nostalgia edition.
  *
- * Written against the code, not the marketing page. Every endpoint listed here
- * exists in `apps/worker/src/http/routes.ts` today, and every "not built" note
- * corresponds to a real gap — an endpoint that is not there, or a table column
- * nothing writes.
- *
- * If this page and the Worker ever disagree, this page is the one that is wrong
- * and should be updated.
+ * Win95 window sections with titlebar headings,
+ * groove HR dividers between sections.
  */
 import { Link } from 'react-router-dom';
 
@@ -64,8 +59,10 @@ export default function Docs() {
   return (
     <div className="doc">
       <header className="doc-head">
-        <span className="eyebrow">Documentation</span>
-        <h1 className="lp-h1" style={{ fontSize: 32 }}>How it works</h1>
+        <span className="r-eyebrow">Documentation</span>
+        <h1 className="lp-h1" style={{ fontSize: '28px', textShadow: '2px 2px 0 #808080' }}>
+          How it works
+        </h1>
         <p className="lp-sub">
           A description of the system that is deployed, written by reading it.
           Where something is missing, it says so.
@@ -74,15 +71,17 @@ export default function Docs() {
 
       {SECTIONS.map((s) => (
         <section className="doc-sec" key={s.id} id={s.id}>
-          <h2 className="lp-h2" style={{ fontSize: 20 }}>{s.title}</h2>
+          <h2 className="lp-h2" style={{ fontSize: '18px' }}>{s.title}</h2>
           {s.body.map((p, i) => (
             <p className="doc-note" key={i}>{p}</p>
           ))}
         </section>
       ))}
 
+      <hr className="hr-groove" aria-hidden="true" />
+
       <section className="doc-sec">
-        <h2 className="lp-h2" style={{ fontSize: 20 }}>Not built</h2>
+        <h2 className="lp-h2" style={{ fontSize: '18px' }}>Not built</h2>
         <ul className="doc-gap">
           {NOT_BUILT.map(([what, why]) => (
             <li key={what}>
