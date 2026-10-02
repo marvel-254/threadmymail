@@ -15,7 +15,7 @@ invariants) and `IMPLEMENTATION_SUMMARY.md` (chronological session log).
 | API origin | `https://threadmymail-worker.twistedoliver211fs.workers.dev` (proxied same-origin at `/v1/*`) |
 | Worker version | `701912be` (deployed this session) |
 | Provider keys stored | **0** — clean slot, nothing to rotate or re-enter |
-| HEAD | `2edd896` — DocNav + mobile fixes on doc pages |
+| HEAD | `d87d293` — DocNav + mobile fixes, handoff updated |
 
 **The frontend and Worker are deployed and verified.** All verification checks
 passed on the custom domain, including the fixed `/v1/skills 401` proxy check.
