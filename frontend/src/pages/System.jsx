@@ -17,18 +17,21 @@ export default function System() {
 
   const load = useCallback(async () => {
     setState('loading');
-    const [h, p, s, u, c] = await Promise.all([
+    const [h, prov, s, u] = await Promise.all([
       api.health().catch(() => null),
-      api.providers().catch(() => []),
+      // Returns { providers, credentials, writable } — not a flat array.
+      api.providers().catch(() => null),
+      // /settings returns { ai_config, persona, prefs, … }
       api.settings().catch(() => null),
       api.usage().catch(() => null),
-      Promise.resolve(null),
     ]);
     setHealth(h);
-    setProviders(Array.isArray(p) ? p : []);
-    setStatus(Array.isArray(s) ? s : []);
+    setProviders(Array.isArray(prov?.providers) ? prov.providers : []);
+    // credentials has { provider, has_key } entries — that is the status list.
+    setStatus(Array.isArray(prov?.credentials) ? prov.credentials : []);
     setUsage(u || null);
-    setConfig(c || null);
+    // ai_config lives on the settings payload.
+    setConfig(s || null);
     setState('ready');
   }, []);
 

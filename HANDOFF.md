@@ -13,94 +13,80 @@ invariants) and `IMPLEMENTATION_SUMMARY.md` (chronological session log).
 | App | **https://threadmymail.omixsystems.store/app** |
 | Pages fallback | `https://threadmymail.pages.dev/app` |
 | API origin | `https://threadmymail-worker.twistedoliver211fs.workers.dev` (proxied same-origin at `/v1/*`) |
-| Worker version | `b622ff20` (current session deploy) |
+| Worker version | `b622ff20` (last session deploy — no Worker changes this session) |
 | Provider keys stored | **0** — clean slot, nothing to rotate or re-enter |
 | HEAD | `c6441fc` — retro design system, committed and pushed |
 
-**The frontend and Worker are deployed.** The retro design system is live
-at the custom domain. The deploy script ran to completion; the one "FAILED"
-line (`/v1/skills` returned 401) is a false positive — 401 proves the proxy is
-routing to the Worker correctly. The check assumes a 200 but that endpoint
-requires a session cookie, so 401 is the right answer.
+**The frontend and Worker are deployed.** The retro Win95 design system is live
+at the custom domain.
 
 ---
 
 ## What was done this session
 
-### The redesign: 90s Nostalgia / Win95
+### Google OAuth — now working ✅
 
-The Silk dark neomorphic design system has been replaced with a full
-1997-era Win95 aesthetic. No logic, routing, or API code was changed.
+The owner completed the first Google consent and the OAuth flow is confirmed
+end-to-end. Sign-in works. `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are
+set as Worker secrets.
 
-**New files:**
+**No code was changed for OAuth** — the implementation from the previous session
+was already correct. The only missing piece was the owner walking through the
+Google consent screen.
 
-| File | What it is |
-|---|---|
-| `frontend/src/styles/retro.css` | Win95 palette tokens, `@keyframes` (rainbow, pulse-glow, blink), bevel primitives, `.win-window` / `.win-titlebar`, `.r-btn*`, `.bg-tile`, `.bg-construction`, `.hr-groove`, `.hit-counter`, `.r-badge-new`, `.text-rainbow`, `.r-table` |
-| `frontend/src/styles/retro-landing.css` | All `.lp-*`, `.doc-*`, `.sys-*` overrides |
-| `frontend/src/styles/retro-auth.css` | All `.si-*`, `.install` overrides |
-| `frontend/src/styles/retro-mail.css` | Full MailShell chrome — topbar, rail, feed, workstation, sheets, stream, copilot, mobile tabs |
+### System.jsx — provider/model endpoints fixed ✅
 
-**Modified files:**
+`api.providers()` returns `{ providers, credentials, writable }`, not a flat
+array. The component was treating the whole response as the provider list
+(always empty) and hardcoding `config` to `null`.
 
-| File | What changed |
-|---|---|
-| `frontend/src/styles/silk.css` | Stripped dark glow/blur/shadow token values; all CSS custom properties now point at Win95 silver/black/navy; Material Symbols `@import` preserved |
-| `frontend/src/main.jsx` | Import order: silk → retro → retro-landing → retro-auth → retro-mail; old landing/auth/mail CSS removed |
-| `frontend/src/pages/Landing.jsx` | Marquee bar, rainbow `<em>`, NEW! badge, colour squares, hit-counter stats bar, groove HR dividers, construction-stripe closing CTA, Win95 product surface preview |
-| `frontend/src/pages/SignIn.jsx` | Win95 dialog card (`::before` title bar), beveled Google button, alternating trust rows, bottom marquee strip |
-| `frontend/src/pages/System.jsx` | Hit-counter black/green stat boxes, Win95 section cards |
-| `frontend/src/pages/Docs.jsx` | Win95 window sections with navy titlebar headings, groove HR |
-| `frontend/src/pages/Legal.jsx` | Same as Docs |
-| `frontend/src/components/MilloMark.jsx` | Gradient updated to Win95 navy→blue |
-| `frontend/package.json` / `package-lock.json` | Added `react-fast-marquee@1.6.5` (exact pin) |
+**Fixed:**
+- `providers` is now read from `prov.providers`
+- `credentials` (the `has_key` status list) is read from `prov.credentials`
+- `config` now comes from `api.settings()` which returns `{ ai_config, … }`
+- `primary` is read from `config?.ai_config?.primary` (correct path)
 
-**Dependency:** `react-fast-marquee@1.6.5` — used for the announcement
-marquee bar on the landing page and the strip on the sign-in page.
+File: `frontend/src/pages/System.jsx`
 
-**Visual checklist satisfied:**
-- Marquee scrolling text ✓
-- Rainbow animated hero heading ✓
-- All buttons: 3D outset bevel with correct 4-value `border-color` ✓
-- Win95 titlebar gradient cards on every section ✓
-- Tiled `#c0c0c0` background on body ✓
-- Links: blue, visited purple, hover red, always underlined ✓
-- Alternating row backgrounds on tables and lists ✓
-- Groove HR dividers between sections ✓
-- Hit-counter stats (black bg, green mono text) ✓
-- NEW! badge with pulse-glow animation ✓
-- Construction stripe background on closing CTA ✓
-- Dotted focus outlines everywhere ✓
-- Active buttons: inset bevel + `translate(1px, 1px)` ✓
-- Icons: 2px stroke via Material Symbols ✓
-- Zero `border-radius` anywhere ✓
+### Deploy script — false positive fixed ✅
 
-### Also committed this session
+The `/v1/skills` proxy check was failing with "FAILED" because it required HTTP
+200, but the endpoint correctly returns 401 (unauthenticated). Updated to accept
+200 **or** 401 as valid — both prove the proxy is routing to the Worker.
 
-The following pre-existing working-tree changes from the previous session
-had been deployed but not committed. They are included in `c6441fc`:
+File: `scripts/deploy.sh`
 
-- `apps/worker/src/http/auth.ts` — Google OAuth fixes
-- `apps/worker/wrangler.jsonc` — config updates
-- `docs/GOOGLE_OAUTH.md` — OAuth documentation
-- `frontend/vite.config.ts` — vite config tweaks
-- `scripts/deploy.sh` — deploy script improvements
+### `oauth_tokens` UNIQUE constraint — applied to Neon ✅
+
+Added `UNIQUE(user_id, provider)` to `oauth_tokens` so that re-auth upserts
+cannot create duplicate rows and the callback can safely use `ON CONFLICT`.
+
+Migration: `apps/worker/drizzle/0002_oauth_tokens_unique.sql`
+Applied: 1/1 statements, `Schema applied.`
+
+### Logo and favicon — replaced with desired-logo.jpeg ✅
+
+All browser and PWA icon slots now show the desired logo. Assets generated from
+`desired-logo.jpeg` (1280×1280 JPEG at the project root) using ImageMagick:
+
+| File | Size | Purpose |
+|---|---|---|
+| `frontend/public/favicon.ico` | 48×48 | Browser tab icon |
+| `frontend/public/logo.svg` | SVG wrapper | `<link rel="icon" type="image/svg+xml">` |
+| `frontend/public/pwa-192x192.png` | 192×192 | PWA manifest icon |
+| `frontend/public/pwa-192x192-maskable.png` | 192×192 | PWA maskable icon |
+| `frontend/public/pwa-512x512.png` | 512×512 | PWA splash / install |
+| `frontend/public/pwa-512x512-maskable.png` | 512×512 | PWA maskable splash |
+| `frontend/public/apple-touch-icon.png` | 180×180 | iOS home screen |
+| `frontend/src/logo.svg` | SVG wrapper | React component usage |
 
 ---
 
-## ⚠️ Known risks, unchanged from previous session
-
-### 🟡 Complete the first Google consent
-
-OAuth is still the first thing to complete. See the previous handoff for
-the full flow — nothing has changed on that front. The OAuth start endpoint
-is live and returning a Google redirect; what is missing is the owner's
-consent and a successful callback.
+## ⚠️ Outstanding items
 
 ### 🟡 Cloudflare OAuth expires roughly daily
 
-This bit during this session — both tokens were stale and `wrangler login`
-had to be re-run from `apps/worker`. The recovery is always the same:
+If `wrangler deploy` fails with auth errors:
 
 ```bash
 cd apps/worker && ./node_modules/.bin/wrangler login
@@ -108,38 +94,24 @@ cd apps/worker && ./node_modules/.bin/wrangler login
 
 Then re-run `bash scripts/deploy.sh --allow-dirty`.
 
-### 🟡 Deploy script `/v1/skills` check is a false positive
-
-The final verification step checks `$APP_ORIGIN/v1/skills` for HTTP 200.
-That endpoint requires a session cookie and returns 401 when unauthenticated,
-which is correct behaviour. The script marks this as FAILED. Everything else
-in the verification block passed. This check should be updated to accept 401
-as a valid "proxy is working" response.
-
-### 🟡 `oauth_tokens` UNIQUE constraint still missing
-
-See previous handoff. One SQL statement on Neon, not run unilaterally.
-
-### 🟡 `System.jsx` reads the wrong endpoints
-
-`api.providers()` hits `/settings/providers` which returns the provider
-catalogue with no `has_key` field, so the configured list is always empty.
-`config` is hard-coded to `Promise.resolve(null)`. Described in detail in
-the previous handoff — not changed this session.
-
 ### 🟡 A real provider key is still needed
 
-Paste one in Settings. User action, not engineering.
+Paste one in Settings to enable actual agent runs. User action, not
+engineering. Until a key is set, `run` will fail with `NO_API_KEY` /
+`NO_MODEL` — that is expected, not a bug.
+
+### 🟡 CI is a Python pipeline
+
+Needs replacing with TypeScript. Not urgent but will cause confusion.
 
 ---
 
 ## What to build next
 
-1. **Google OAuth** — still the blocker for any real mail processing.
+1. **Phase 4** — Workflows, real undo, activity feed. This is the next
+   engineering phase now that OAuth and BYOK are both working.
 2. **A real provider key** (user action) — last thing blocking a live model turn.
-3. **Fix `System.jsx` provider/model endpoints** — straightforward wiring fix.
-4. **Fix the deploy script's `/v1/skills` check** — accept 401 as valid proxy response.
-5. **Phase 4** — workflows, real undo, activity feed.
+3. **CI** — replace the Python pipeline with a TypeScript equivalent.
 
 ---
 

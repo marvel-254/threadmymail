@@ -217,9 +217,15 @@ if [ "$SKIP_FRONTEND" = 0 ]; then
 
   # The redirect-preserving proxy is only useful if /v1/* actually reaches it.
   # A stale app shell would serve index.html here instead of the API.
+  # /v1/skills requires a session cookie so 401 is the correct unauthenticated
+  # response — it proves the proxy is routing to the Worker. Only a 404 or the
+  # raw index.html would mean something is wrong.
   skills_code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' "$APP_ORIGIN/v1/skills")"
-  [ "$skills_code" = "200" ] || fail "$APP_ORIGIN/v1/skills returned $skills_code (expected 200 from the proxy, not the app shell)"
-  echo "  custom-domain /v1/skills 200 from the proxy ✓"
+  if [ "$skills_code" = "200" ] || [ "$skills_code" = "401" ]; then
+    echo "  custom-domain /v1/skills ${skills_code} from the proxy ✓"
+  else
+    fail "$APP_ORIGIN/v1/skills returned $skills_code (expected 200 or 401 from the proxy, not the app shell)"
+  fi
 fi
 
 printf '\n\033[32mDeployed and verified.\033[0m  %s\n' "$API_ORIGIN"
