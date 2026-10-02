@@ -13,9 +13,9 @@ invariants) and `IMPLEMENTATION_SUMMARY.md` (chronological session log).
 | App | **https://threadmymail.omixsystems.store/app** |
 | Pages fallback | `https://threadmymail.pages.dev/app` |
 | API origin | `https://threadmymail-worker.twistedoliver211fs.workers.dev` (proxied same-origin at `/v1/*`) |
-| Worker version | `a251b63f` (deployed this session) |
+| Worker version | `7fc12e76` (deployed this session) |
 | Provider keys stored | **0** — clean slot, nothing to rotate or re-enter |
-| HEAD | `bc703fe` — System.jsx fix, logo, oauth constraint |
+| HEAD | `5656d20` — MilloMark replaced with desired-logo image |
 
 **The frontend and Worker are deployed and verified.** All verification checks
 passed on the custom domain, including the fixed `/v1/skills 401` proxy check.
@@ -79,6 +79,21 @@ All browser and PWA icon slots now show the desired logo. Assets generated from
 | `frontend/public/pwa-512x512-maskable.png` | 512×512 | PWA maskable splash |
 | `frontend/public/apple-touch-icon.png` | 180×180 | iOS home screen |
 | `frontend/src/logo.svg` | SVG wrapper | React component usage |
+
+### In-app logo (MilloMark) — replaced with desired-logo image ✅
+
+`MilloMark` was a hand-drawn SVG (envelope + pulse motif). It is now an
+`<img src="/logo.svg">` that renders the actual desired logo at whatever `size`
+prop is passed. Every in-app placement now shows the correct logo:
+
+| Location | Size | Context |
+|---|---|---|
+| `pages/SignIn.jsx` | 64px | Sign-in avatar card |
+| `mail/ShellStates.jsx` | 44px | Full-shell loading spinner |
+| `pages/Landing.jsx` navbar | 22px | Top nav brand mark |
+| `pages/Landing.jsx` footer | 18px | Footer brand mark |
+
+File: `frontend/src/components/MilloMark.jsx`
 
 ---
 
