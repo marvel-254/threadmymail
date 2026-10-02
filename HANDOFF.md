@@ -13,12 +13,12 @@ invariants) and `IMPLEMENTATION_SUMMARY.md` (chronological session log).
 | App | **https://threadmymail.omixsystems.store/app** |
 | Pages fallback | `https://threadmymail.pages.dev/app` |
 | API origin | `https://threadmymail-worker.twistedoliver211fs.workers.dev` (proxied same-origin at `/v1/*`) |
-| Worker version | `b622ff20` (last session deploy — no Worker changes this session) |
+| Worker version | `a251b63f` (deployed this session) |
 | Provider keys stored | **0** — clean slot, nothing to rotate or re-enter |
-| HEAD | `c6441fc` — retro design system, committed and pushed |
+| HEAD | `bc703fe` — System.jsx fix, logo, oauth constraint |
 
-**The frontend and Worker are deployed.** The retro Win95 design system is live
-at the custom domain.
+**The frontend and Worker are deployed and verified.** All verification checks
+passed on the custom domain, including the fixed `/v1/skills 401` proxy check.
 
 ---
 
