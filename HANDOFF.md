@@ -13,9 +13,9 @@ invariants) and `IMPLEMENTATION_SUMMARY.md` (chronological session log).
 | App | **https://threadmymail.omixsystems.store/app** |
 | Pages fallback | `https://threadmymail.pages.dev/app` |
 | API origin | `https://threadmymail-worker.twistedoliver211fs.workers.dev` (proxied same-origin at `/v1/*`) |
-| Worker version | `7fc12e76` (deployed this session) |
+| Worker version | `701912be` (deployed this session) |
 | Provider keys stored | **0** — clean slot, nothing to rotate or re-enter |
-| HEAD | `5656d20` — MilloMark replaced with desired-logo image |
+| HEAD | `2edd896` — DocNav + mobile fixes on doc pages |
 
 **The frontend and Worker are deployed and verified.** All verification checks
 passed on the custom domain, including the fixed `/v1/skills 401` proxy check.
@@ -79,6 +79,21 @@ All browser and PWA icon slots now show the desired logo. Assets generated from
 | `frontend/public/pwa-512x512-maskable.png` | 512×512 | PWA maskable splash |
 | `frontend/public/apple-touch-icon.png` | 180×180 | iOS home screen |
 | `frontend/src/logo.svg` | SVG wrapper | React component usage |
+
+### DocNav — back-to-home bar on all doc pages ✅
+
+Added `DocNav` component: a sticky Win95 toolbar at the top of `Docs`, `Legal`
+(terms + privacy), and `System`. Provides:
+- **Back** button (`useNavigate(-1)`) — returns to wherever the user came from
+- **Home** button (`Link to="/"`) — always goes to the landing page
+- Secondary cross-links between doc pages (hidden on mobile)
+- Mobile: title and secondary links hidden at ≤767px, only Back + Home shown
+
+Also fixed mobile layout across doc pages: reduced padding, `.sys-grid` 2-col,
+`.sys-providers` single-col, `doc-note`/`doc-clause` unrestricted width.
+
+Files: `frontend/src/components/DocNav.jsx`, `frontend/src/styles/retro-landing.css`,
+`frontend/src/pages/{Docs,Legal,System}.jsx`
 
 ### In-app logo (MilloMark) — replaced with desired-logo image ✅
 
