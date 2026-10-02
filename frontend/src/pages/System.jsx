@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
+import DocNav from '../components/DocNav.jsx';
 
 export default function System() {
   const [health, setHealth] = useState(null);
@@ -42,6 +43,13 @@ export default function System() {
 
   return (
     <div className="doc">
+      <DocNav
+        title="System"
+        links={[
+          { to: '/docs', label: 'Docs' },
+          { to: '/terms', label: 'Terms' },
+        ]}
+      />
       <header className="doc-head">
         <span className="r-eyebrow">System</span>
         <h1 className="lp-h1" style={{ fontSize: '28px', textShadow: '2px 2px 0 #808080' }}>

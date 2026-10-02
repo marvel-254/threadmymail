@@ -5,6 +5,7 @@
  * groove HR dividers between sections.
  */
 import { Link } from 'react-router-dom';
+import DocNav from '../components/DocNav.jsx';
 
 const SECTIONS = [
   {
@@ -58,6 +59,14 @@ const NOT_BUILT = [
 export default function Docs() {
   return (
     <div className="doc">
+      <DocNav
+        title="Documentation"
+        links={[
+          { to: '/system', label: 'System' },
+          { to: '/terms', label: 'Terms' },
+          { to: '/privacy', label: 'Privacy' },
+        ]}
+      />
       <header className="doc-head">
         <span className="r-eyebrow">Documentation</span>
         <h1 className="lp-h1" style={{ fontSize: '28px', textShadow: '2px 2px 0 #808080' }}>

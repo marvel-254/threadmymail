@@ -3,6 +3,7 @@
  * Win95 window sections, groove HR, yellow info panel.
  */
 import { Link } from 'react-router-dom';
+import DocNav from '../components/DocNav.jsx';
 
 const TERMS = [
   ['Your account', 'ThreadMyMail is currently intended for the account owner\'s personal use. Sign in with your own Google account and keep your sign-in and model-provider credentials secure. You are responsible for activity performed through your account.'],
@@ -29,6 +30,15 @@ export default function Legal({ kind = 'terms' }) {
 
   return (
     <div className="doc">
+      <DocNav
+        title={isTerms ? 'Terms of Service' : 'Privacy Policy'}
+        links={[
+          { to: '/docs', label: 'Docs' },
+          isTerms
+            ? { to: '/privacy', label: 'Privacy' }
+            : { to: '/terms', label: 'Terms' },
+        ]}
+      />
       <header className="doc-head">
         <span className="r-eyebrow">{isTerms ? 'Terms' : 'Privacy'}</span>
         <h1 className="lp-h1" style={{ fontSize: '28px', textShadow: '2px 2px 0 #808080' }}>
