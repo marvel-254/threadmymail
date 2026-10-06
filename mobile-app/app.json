@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "ThreadMyMail",
+    "slug": "threadmymail",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0B1326",
+    "splash": {
+      "backgroundColor": "#0B1326",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.threadmymail.app"
+    },
+    "android": {
+      "package": "com.threadmymail.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B1326",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
