@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const target = path.join(
+const SHARED = path.join(
   __dirname,
   '..',
   'node_modules',
@@ -26,31 +26,74 @@ const target = path.join(
   'MailOutgoingAttachment.hpp',
 );
 
-try {
-  let src = fs.readFileSync(target, 'utf8');
-  if (src.includes('std::optional<bool> isInline')) {
-    console.log('[patch] mail-engine inline field already patched');
-    process.exit(0);
+const JNI = path.join(
+  __dirname,
+  '..',
+  'node_modules',
+  'react-native-mail-engine',
+  'nitrogen',
+  'generated',
+  'android',
+  'c++',
+  'JMailOutgoingAttachment.hpp',
+);
+
+function patchFile(target, replacements, label) {
+  try {
+    let src = fs.readFileSync(target, 'utf8');
+    let patched = src;
+    for (const [from, to] of replacements) {
+      patched = patched.split(from).join(to);
+    }
+    if (patched === src) {
+      console.log(`[patch] ${label}: already patched or no changes`);
+      return true;
+    }
+    fs.writeFileSync(target, patched);
+    console.log(`[patch] ${label}: patched`);
+    return true;
+  } catch (err) {
+    console.error(`[patch] failed to patch ${label}:`, err.message);
+    return false;
   }
-  // Rename the C++ identifier `inline` -> `isInline` only where it is used as
-  // a field/parameter identifier, never inside the "inline" string literals.
-  const patched = src
-    .replace('std::optional<bool> inline     SWIFT_PRIVATE;', 'std::optional<bool> isInline     SWIFT_PRIVATE;')
-    .replace(
+}
+
+// Shared header: rename the C++ field `inline` -> `isInline`.
+const sharedOk = patchFile(
+  SHARED,
+  [
+    ['std::optional<bool> inline     SWIFT_PRIVATE;', 'std::optional<bool> isInline     SWIFT_PRIVATE;'],
+    [
       'std::optional<bool> inline): filename(filename), mimeType(mimeType), path(path), data(data), contentId(contentId), inline(inline) {}',
       'std::optional<bool> isInline): filename(filename), mimeType(mimeType), path(path), data(data), contentId(contentId), isInline(isInline) {}',
-    )
-    .replace(
+    ],
+    [
       'JSIConverter<std::optional<bool>>::toJSI(runtime, arg.inline));',
       'JSIConverter<std::optional<bool>>::toJSI(runtime, arg.isInline));',
-    );
-  if (patched === src) {
-    console.warn('[patch] mail-engine inline field: no expected patterns found — manual check needed');
-    process.exit(1);
-  }
-  fs.writeFileSync(target, patched);
-  console.log('[patch] mail-engine inline field renamed to isInline');
-} catch (err) {
-  console.error('[patch] failed to patch mail-engine:', err.message);
+    ],
+  ],
+  'MailOutgoingAttachment.hpp',
+);
+
+// JNI bridge: rename the C++ local var `inline` -> `inlineValue`.
+// The Java field name string "inline" is untouched.
+const jniOk = patchFile(
+  JNI,
+  [
+    ['jni::local_ref<jni::JBoolean> inline = this->getFieldValue(fieldInline);', 'jni::local_ref<jni::JBoolean> inlineValue = this->getFieldValue(fieldInline);'],
+    [
+      'inline != nullptr ? std::make_optional(static_cast<bool>(inline->value())) : std::nullopt',
+      'inlineValue != nullptr ? std::make_optional(static_cast<bool>(inlineValue->value())) : std::nullopt',
+    ],
+    [
+      'value.inline.has_value() ? jni::JBoolean::valueOf(value.inline.value()) : nullptr',
+      'value.isInline.has_value() ? jni::JBoolean::valueOf(value.isInline.value()) : nullptr',
+    ],
+  ],
+  'JMailOutgoingAttachment.hpp',
+);
+
+if (!sharedOk || !jniOk) {
   process.exit(1);
 }
+
