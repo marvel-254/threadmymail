@@ -11,16 +11,32 @@
  * is compiled into the app. The module's own `android/build.gradle` declares
  * its dependency on `:react-native-nitro-modules`, which autolinks normally.
  */
-const { withSettingsGradle } = require('@expo/config-plugins');
+const { withSettingsGradle, withAppBuildGradle } = require('@expo/config-plugins');
 
 const MAIL_ENGINE_INCLUDE = `\n// react-native-mail-engine (pure Nitro module — no Package class, so\n// autolinking skips it; included explicitly by plugins/withMailEngineLink.js)\ninclude ':react-native-mail-engine'\nproject(':react-native-mail-engine').projectDir = new File(rootDir, '../node_modules/react-native-mail-engine/android')\n`;
 
+const MAIL_ENGINE_DEP = `\n    // react-native-mail-engine (pure Nitro module — linked explicitly; see plugins/withMailEngineLink.js)\n    implementation project(':react-native-mail-engine')\n`;
+
 module.exports = function withMailEngineLink(config) {
-  return withSettingsGradle(config, (cfg) => {
+  config = withSettingsGradle(config, (cfg) => {
     const contents = cfg.modResults.contents;
     if (!contents.includes("':react-native-mail-engine'")) {
       cfg.modResults.contents = contents + MAIL_ENGINE_INCLUDE;
     }
     return cfg;
   });
+  config = withAppBuildGradle(config, (cfg) => {
+    const contents = cfg.modResults.contents;
+    if (!contents.includes("project(':react-native-mail-engine')")) {
+      // Insert inside the `dependencies { ... }` block, before its closing brace.
+      const depsClose = contents.lastIndexOf('\n}');
+      if (depsClose === -1) {
+        throw new Error('withMailEngineLink: could not find dependencies block in app/build.gradle');
+      }
+      cfg.modResults.contents =
+        contents.slice(0, depsClose) + MAIL_ENGINE_DEP + contents.slice(depsClose);
+    }
+    return cfg;
+  });
+  return config;
 };
