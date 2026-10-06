@@ -1,5 +1,5 @@
 /**
- * Agent — the live conversation stream (the heart of the product).
+* Millo — the live conversation stream (the heart of the product).
  * MVP-UI §4.3 · DB: Streaming (token-by-token), Disclaimer (AI label),
  * Feedback Loop (thumbs), Typing indicators, Empty States.
  *
@@ -16,7 +16,6 @@ import {
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -102,7 +101,7 @@ export function AgentScreen({ onBack }: AgentScreenProps) {
   return (
     <KeyboardAvoidingView
       style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       keyboardVerticalOffset={0}
     >
       <View style={styles.header}>
@@ -113,7 +112,7 @@ export function AgentScreen({ onBack }: AgentScreenProps) {
         ) : (
           <View style={styles.headerBtn} />
         )}
-        <Text style={styles.headerTitle}>Agent</Text>
+        <Text style={styles.headerTitle}>Millo</Text>
         <Pressable
           accessibilityLabel="Kill switch"
           onLongPress={() => setKillEngaged((k) => !k)}
@@ -142,7 +141,7 @@ export function AgentScreen({ onBack }: AgentScreenProps) {
       />
 
       <View style={styles.composerBar}>
-        <Composer onSend={send} disabled={busy} disabledReason={busy ? 'Agent is working…' : undefined} />
+        <Composer onSend={send} disabled={busy} disabledReason={busy ? 'Millo is working…' : undefined} />
       </View>
     </KeyboardAvoidingView>
   );

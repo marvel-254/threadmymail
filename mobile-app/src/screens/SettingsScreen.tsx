@@ -3,11 +3,13 @@
  * MVP-UI §4.5 · DB: Confirmation Dialogs (clear/remove/disconnect),
  * Submit Feedback (test connection), Empty States.
  */
-import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, Card, ConfirmDialog, EmptyState, SectionLabel } from '../components/ui';
 import { Field } from '../components/settings';
 import { CUSTOM_PROVIDER_ID, PROVIDER_PRESETS } from '../lib/providers';
+import { EMAIL_PROVIDERS, clearAccount, loadAccount, saveAccount, type AccountConfig } from '../lib/accountStore';
+import { getMailSync } from '../lib/mailSyncSingleton';
 import { IconPlus } from '../components/Icons';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
@@ -22,7 +24,73 @@ export function SettingsScreen() {
   const [skillName, setSkillName] = useState('');
   const [skillInstruction, setSkillInstruction] = useState('');
 
+  // Email account state.
+  const [account, setAccount] = useState<AccountConfig | null>(null);
+  const [showConnect, setShowConnect] = useState(false);
+  const [emailProviderId, setEmailProviderId] = useState(EMAIL_PROVIDERS[0].id);
+  const [emailAddress, setEmailAddress] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [customImapHost, setCustomImapHost] = useState('');
+  const [customImapPort, setCustomImapPort] = useState('993');
+  const [customSmtpHost, setCustomSmtpHost] = useState('');
+  const [customSmtpPort, setCustomSmtpPort] = useState('587');
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    loadAccount().then((acc) => {
+      if (mounted) setAccount(acc);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const providerPreset = PROVIDER_PRESETS.find((p) => p.id === providerPresetId);
+
+  const connectAccount = async () => {
+    if (!emailAddress.trim() || !emailPassword) {
+      setConnectError('Enter your email address and app password.');
+      return;
+    }
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const config = await saveAccount({
+        providerId: emailProviderId,
+        email: emailAddress,
+        password: emailPassword,
+        customImapHost,
+        customImapPort: customImapPort ? Number(customImapPort) : undefined,
+        customSmtpHost,
+        customSmtpPort: customSmtpPort ? Number(customSmtpPort) : undefined,
+      });
+      setAccount(config);
+      setShowConnect(false);
+      // Kick off the 180-day import + IDLE.
+      void getMailSync().start({
+        imap: config.imap,
+        auth: { user: config.email, password: config.password },
+      });
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : 'Could not save account.');
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const disconnectAccount = () =>
+    setConfirm({
+      title: 'Disconnect email?',
+      body: 'This removes the account from this device. Cached messages stay in the inbox.',
+      action: async () => {
+        await clearAccount();
+        await getMailSync().stop();
+        setAccount(null);
+        setConfirm(null);
+      },
+    });
 
   /** Prefill the endpoint and model for a preset; Custom clears both. */
   const selectPreset = (id: string) => {
@@ -49,13 +117,29 @@ export function SettingsScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         <SectionLabel>Email account</SectionLabel>
-        <Card>
-          <Text style={styles.cardTitle}>No account connected</Text>
-          <Text style={styles.cardStatus}>Millo needs an email account to work.</Text>
-          <View style={styles.cardActions}>
-            <Button label="Connect" variant="secondary" onPress={() => {}} />
-          </View>
-        </Card>
+        {account ? (
+          <Card>
+            <Text style={styles.cardTitle}>{account.email}</Text>
+            <Text style={styles.cardStatus}>
+              {account.providerId === 'custom' ? 'Custom server' : account.providerId} · IMAP{' '}
+              {account.imap.host}:{account.imap.port} · 180-day history · realtime sync
+            </Text>
+            <View style={styles.cardActions}>
+              <Button label="Disconnect" variant="danger" onPress={disconnectAccount} />
+            </View>
+          </Card>
+        ) : (
+          <Card>
+            <Text style={styles.cardTitle}>No account connected</Text>
+            <Text style={styles.cardStatus}>
+              Connect an email account and Millo will import the last 180 days in the
+              background, then watch for new mail in realtime.
+            </Text>
+            <View style={styles.cardActions}>
+              <Button label="Connect" variant="secondary" onPress={() => setShowConnect(true)} />
+            </View>
+          </Card>
+        )}
 
         <SectionLabel>AI providers</SectionLabel>
         <EmptyState
@@ -177,6 +261,87 @@ export function SettingsScreen() {
         </View>
       )}
 
+      {showConnect && (
+        <View style={styles.sheet}>
+          <Text style={styles.sheetTitle}>Connect email</Text>
+          <Text style={styles.sheetHint}>
+            Use an app password, not your normal password. Millo imports the last
+            180 days in the background, then watches for new mail in realtime.
+          </Text>
+          <View style={styles.sheetPicker}>
+            {EMAIL_PROVIDERS.map((p) => (
+              <Pressable
+                key={p.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: p.id === emailProviderId }}
+                onPress={() => setEmailProviderId(p.id)}
+                style={({ pressed }) => [
+                  styles.sheetPickerItem,
+                  p.id === emailProviderId && styles.sheetPickerItemActive,
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.sheetPickerText,
+                    p.id === emailProviderId && styles.sheetPickerTextActive,
+                  ]}
+                >
+                  {p.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Field
+            label="Email address"
+            value={emailAddress}
+            onChangeText={setEmailAddress}
+            placeholder="you@gmail.com"
+            keyboardType="email-address"
+          />
+          <Field
+            label="App password"
+            value={emailPassword}
+            onChangeText={setEmailPassword}
+            secure
+            placeholder="16-character app password"
+          />
+          {emailProviderId === 'custom' && (
+            <>
+              <Field
+                label="IMAP host"
+                value={customImapHost}
+                onChangeText={setCustomImapHost}
+                placeholder="imap.example.com"
+              />
+              <Field
+                label="IMAP port"
+                value={customImapPort}
+                onChangeText={setCustomImapPort}
+                keyboardType="numeric"
+              />
+              <Field
+                label="SMTP host"
+                value={customSmtpHost}
+                onChangeText={setCustomSmtpHost}
+                placeholder="smtp.example.com"
+              />
+              <Field
+                label="SMTP port"
+                value={customSmtpPort}
+                onChangeText={setCustomSmtpPort}
+                keyboardType="numeric"
+              />
+            </>
+          )}
+          {connectError && <Text style={styles.connectError}>{connectError}</Text>}
+          <View style={styles.sheetActions}>
+            <Button label="Cancel" variant="ghost" onPress={() => setShowConnect(false)} />
+            <Button label="Connect" onPress={connectAccount} disabled={connecting} />
+          </View>
+        </View>
+      )}
+
       <ConfirmDialog
         visible={!!confirm}
         title={confirm?.title ?? ''}
@@ -204,7 +369,7 @@ const styles = StyleSheet.create({
   headerTitle: { ...typography.h3, color: colors.text },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl },
   cardTitle: { ...typography.body, color: colors.text, fontWeight: '600' },
-  cardStatus: { ...typography.bodySmall, color: colors.success, marginTop: 2 },
+  cardStatus: { ...typography.bodySmall, color: colors.textMuted, marginTop: 2 },
   cardActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
   cardRow: { ...typography.bodySmall, color: colors.textMuted, paddingVertical: spacing.xs },
   sheet: {
@@ -221,6 +386,8 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   sheetTitle: { ...typography.h3, color: colors.text },
+  sheetHint: { ...typography.bodySmall, color: colors.textMuted },
+  connectError: { ...typography.bodySmall, color: colors.danger },
   sheetPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   sheetPickerItem: {
     paddingHorizontal: spacing.md,

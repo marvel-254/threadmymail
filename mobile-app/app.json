@@ -17,6 +17,7 @@
     },
     "android": {
       "package": "com.threadmymail.app",
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "backgroundColor": "#0B1326",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -27,6 +28,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-secure-store",
+      "react-native-mail-engine",
+      "./plugins/withMailEngineLink"
+    ]
   }
 }

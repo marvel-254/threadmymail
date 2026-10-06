@@ -31,6 +31,7 @@ export const colors = {
   secondary: '#A78BFA',     // secondary actions, highlights
   accent: '#0891B2',        // CTA, links, "needs your eye" items
   accentDark: '#0E7490',    // pressed state
+  accentBg: 'rgba(8,145,178,0.14)',
 
   // ── Semantic states ─────────────────────────────────────────────────────
   danger: '#DC2626',        // kill switch, destructive, errors

@@ -154,6 +154,24 @@ export const IconTrash = ({ size = 18, color = colors.danger, strokeWidth = 2 }:
   </Svg>
 );
 
+export const IconStar = ({
+  size = 18,
+  color = colors.textSubtle,
+  filled = false,
+  strokeWidth = 2,
+}: IconProps & { filled?: boolean }) => (
+  <Svg {...base(size, color, strokeWidth)} fill={filled ? color : 'none'}>
+    <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-.91L12 2z" />
+  </Svg>
+);
+
+export const IconSearch = ({ size = 18, color = colors.textSubtle, strokeWidth = 2 }: IconProps) => (
+  <Svg {...base(size, color, strokeWidth)}>
+    <Circle cx="11" cy="11" r="8" />
+    <Line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </Svg>
+);
+
 export const IconTest = ({ size = 18, color = colors.accent, strokeWidth = 2 }: IconProps) => (
   <Svg {...base(size, color, strokeWidth)}>
     <Path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
