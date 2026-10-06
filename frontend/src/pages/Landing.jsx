@@ -30,8 +30,8 @@ const CAPABILITIES = [
   },
   {
     icon: 'account_tree',
-    title: 'Thirty-six tools, one agent',
-    body: 'Mail, calendar, tasks, memory. Millo chooses what to call and shows you the call before it counts. There is no public endpoint that invokes a tool directly.',
+    title: 'Mail, chat, and the agent',
+    body: 'Inbox, thread view, and the agent conversation side by side. Millo reads what arrives, drafts what needs an answer, and shows you every call it makes.',
   },
   {
     icon: 'history',
@@ -41,7 +41,7 @@ const CAPABILITIES = [
   {
     icon: 'tune',
     title: 'Your model, your key',
-    body: 'Bring a key from any of fourteen providers, or point it at your own endpoint. Keys are encrypted with AES-GCM at rest and never leave the server in readable form.',
+    body: 'Bring a key from any OpenAI-compatible provider, or point it at your own endpoint. Keys live in the phone\'s encrypted secure store and never leave the device.',
   },
 ];
 
@@ -84,12 +84,12 @@ const GUARDRAILS = [
 
 const MARQUEE_ITEMS = [
   { text: '★ AUTONOMOUS EMAIL INTELLIGENCE', color: '#ffff00' },
-  { text: '● 36 TOOLS, ONE AGENT', color: '#00ff00' },
+  { text: '● ON-DEVICE, NO SERVER', color: '#00ff00' },
   { text: '★ BRING YOUR OWN MODEL KEY', color: '#ff8000' },
-  { text: '● AES-GCM ENCRYPTED AT REST', color: '#00ffff' },
+  { text: '● IMAP + SMTP APP PASSWORD', color: '#00ffff' },
   { text: '★ KILL SWITCH ALWAYS VISIBLE', color: '#ff0000' },
   { text: '● ACTIVITY LOG FOR EVERY ACTION', color: '#ff80ff' },
-  { text: '★ FREE CLOUDFLARE INFRASTRUCTURE', color: '#ffff00' },
+  { text: '★ CREDENTIALS NEVER LEAVE YOUR PHONE', color: '#ffff00' },
 ];
 
 const COLOR_SQUARES = [
@@ -126,10 +126,14 @@ export default function Landing() {
             <a key={n.href} href={n.href}>{n.label}</a>
           ))}
         </nav>
-        <Link to="/app" className="btn btn-primary lp-cta">
-          Open the app
-          <span className="ms" aria-hidden="true">arrow_forward</span>
-        </Link>
+        <a
+          href="https://github.com/marvel-254/threadmymail/releases/latest/download/app-release.apk"
+          className="btn btn-primary lp-cta"
+          download
+        >
+          Download for Android
+          <span className="ms" aria-hidden="true">download</span>
+        </a>
       </header>
 
       <main>
@@ -145,20 +149,24 @@ export default function Landing() {
             </h1>
             <p className="lp-lede">
               Millo triages what arrives, drafts what needs an answer and runs the
-              follow-ups you keep forgetting — on a schedule, inside limits you
-              set, with every action written down.
+              follow-ups you keep forgetting — on your phone, inside limits you
+              set, with every action written down. No server, no account, no cloud.
             </p>
             <div className="row lp-hero-actions">
-              <Link to="/app" className="btn btn-primary">
-                Open ThreadMyMail
-                <span className="ms" aria-hidden="true">arrow_forward</span>
-              </Link>
+              <a
+                href="https://github.com/marvel-254/threadmymail/releases/latest/download/app-release.apk"
+                className="btn btn-primary"
+                download
+              >
+                Download for Android
+                <span className="ms" aria-hidden="true">download</span>
+              </a>
               <a href="#capabilities" className="btn btn-secondary">
                 See what it does
               </a>
             </div>
             <p className="lp-fine">
-              Bring your own model key. No account required to look around.
+              Bring your own model key. Your credentials never leave your phone.
             </p>
 
             {/* Decorative color squares */}
@@ -178,11 +186,11 @@ export default function Landing() {
         {/* ── Hit counter stats bar ────────────────────────────────────── */}
         <div className="lp-stats-bar" aria-label="Product stats">
           <div className="lp-stat-item">
-            <span className="lp-stat-value">0036</span>
-            <span className="lp-stat-label">Tools available</span>
+            <span className="lp-stat-value">0000</span>
+            <span className="lp-stat-label">Servers to run</span>
           </div>
           <div className="lp-stat-item">
-            <span className="lp-stat-value">0014</span>
+            <span className="lp-stat-value">0006</span>
             <span className="lp-stat-label">AI providers</span>
           </div>
           <div className="lp-stat-item">
@@ -286,19 +294,19 @@ export default function Landing() {
               <dl className="lp-facts">
                 <div>
                   <dt>Where it runs</dt>
-                  <dd>Cloudflare Workers and a Durable Object, with Postgres for state and D1 for message bodies.</dd>
+                  <dd>On your phone. The Android app is a self-contained harness — no server, no account, no cloud dependency.</dd>
+                </div>
+                <div>
+                  <dt>Your credentials</dt>
+                  <dd>Email app-password and AI key live in the phone's encrypted secure store (Android Keystore-backed). They never leave the device.</dd>
+                </div>
+                <div>
+                  <dt>Your email</dt>
+                  <dd>Connects directly via IMAP/SMTP with an app password. Works with Gmail, Outlook, Yahoo, iCloud, or any self-hosted server.</dd>
                 </div>
                 <div>
                   <dt>Your model key</dt>
-                  <dd>AES-GCM encrypted at rest under a key that never leaves the server. The API can decrypt it — this is not zero-knowledge, and it does not pretend to be.</dd>
-                </div>
-                <div>
-                  <dt>Model providers</dt>
-                  <dd>Your key goes to the provider you chose. Nothing is proxied through us.</dd>
-                </div>
-                <div>
-                  <dt>Not built yet</dt>
-                  <dd>Google account linking, so there is no mail to read. Everything else works against its own APIs today.</dd>
+                  <dd>Bring your own key from any OpenAI-compatible provider — OpenRouter, OpenAI, Anthropic, Gemini, DeepSeek, or a custom endpoint. Nothing is proxied through us.</dd>
                 </div>
               </dl>
             </div>
@@ -309,10 +317,14 @@ export default function Landing() {
         <section className="lp-section lp-close">
           <h2 className="lp-h2">Stop reading it. Start orchestrating it.</h2>
           <p className="lp-sub">Built for people who already have too much mail.</p>
-          <Link to="/app" className="btn btn-primary lp-cta-lg">
-            Open ThreadMyMail
-            <span className="ms" aria-hidden="true">arrow_forward</span>
-          </Link>
+          <a
+            href="https://github.com/marvel-254/threadmymail/releases/latest/download/app-release.apk"
+            className="btn btn-primary lp-cta-lg"
+            download
+          >
+            Download for Android
+            <span className="ms" aria-hidden="true">download</span>
+          </a>
         </section>
       </main>
 
@@ -321,7 +333,7 @@ export default function Landing() {
           <MilloMark size={18} />
           <span style={{ fontWeight: 700 }}>ThreadMyMail</span>
           <div className="spacer" />
-          <Link to="/app">App</Link>
+          <a href="https://github.com/marvel-254/threadmymail/releases/latest/download/app-release.apk" download>Download</a>
           <Link to="/system">System</Link>
           <Link to="/docs">Docs</Link>
           <Link to="/privacy">Privacy</Link>
