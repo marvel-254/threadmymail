@@ -10,36 +10,22 @@ import { EscalationCard } from '../components/agent';
 import { IconBack, IconMail, IconPower, IconSparkle } from '../components/Icons';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
-const MOCK_MAIL: MailSummary[] = [
-  { id: '1', sender: 'Acme Corp', subject: 'Contract — Acme', preview: 'Attached the signed contract for…', time: '09:41', unread: true },
-  { id: '2', sender: 'Vendor Inc', subject: 'Invoice #4821', preview: 'Please remit payment for the…', time: '08:15', unread: true },
-  { id: '3', sender: 'GitHub', subject: '[ThreadMyMail] CI', preview: 'Build #1234 failed on main…', time: '07:02', unread: false },
-  { id: '4', sender: 'Mom', subject: 'Re: Dinner', preview: 'Sounds great, see you at 7!', time: '06:30', unread: false },
-];
-
-const MOCK_THREAD: ThreadMsg[] = [
-  {
-    id: '1',
-    sender: 'Acme Corp',
-    email: 'legal@acme.com',
-    time: '09:41',
-    body: 'Attached the signed contract for the Q3 renewal. Please review and return.',
-  },
-];
-
 type MailScreenProps = {
   onOpenAgent: () => void;
+  onOpenSettings: () => void;
 };
 
-export function MailScreen({ onOpenAgent }: MailScreenProps) {
+export function MailScreen({ onOpenAgent, onOpenSettings }: MailScreenProps) {
   const [view, setView] = useState<'list' | 'thread' | 'compose'>('list');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [thread, setThread] = useState<ThreadMsg[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [killEngaged, setKillEngaged] = useState(false);
 
   const openThread = (id: string) => {
     setSelectedId(id);
+    setThread(null);
     setView('thread');
   };
 
@@ -81,15 +67,18 @@ export function MailScreen({ onOpenAgent }: MailScreenProps) {
       <View style={styles.screen}>
         {header}
         <FlatList
-          data={MOCK_MAIL}
+          data={[] as MailSummary[]}
           keyExtractor={(m) => m.id}
           renderItem={({ item }) => <MailRow mail={item} onPress={openThread} />}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           ListEmptyComponent={
             <EmptyState
               icon={<IconMail size={48} color={colors.textSubtle} />}
-              title="Nothing in your inbox"
-              body="The agent will surface what needs you."
+              title="No mail yet"
+              body="Connect an email account in Settings and Millo will start triaging."
+              action={
+                <Button label="Open Settings" variant="secondary" onPress={onOpenSettings} />
+              }
             />
           }
         />
@@ -103,18 +92,28 @@ export function MailScreen({ onOpenAgent }: MailScreenProps) {
       <View style={styles.screen}>
         {header}
         <ScrollView contentContainerStyle={styles.threadContent}>
-          {MOCK_THREAD.map((m) => (
-            <ThreadMessage key={m.id} msg={m} />
-          ))}
-          <EscalationCard
-            question="I can draft a reply. Want me to?"
-            choices={[{ label: 'Yes', primary: true }, { label: 'No' }]}
-            onChoose={(c) => {
-              if (c === 'Yes') {
-                setView('compose');
-              }
-            }}
-          />
+          {thread ? (
+            <>
+              {thread.map((m) => (
+                <ThreadMessage key={m.id} msg={m} />
+              ))}
+              <EscalationCard
+                question="I can draft a reply. Want me to?"
+                choices={[{ label: 'Yes', primary: true }, { label: 'No' }]}
+                onChoose={(c) => {
+                  if (c === 'Yes') {
+                    setView('compose');
+                  }
+                }}
+              />
+            </>
+          ) : (
+            <EmptyState
+              icon={<IconMail size={48} color={colors.textSubtle} />}
+              title="Thread unavailable"
+              body="This thread could not be loaded."
+            />
+          )}
         </ScrollView>
         <View style={styles.composerBar}>
           <Composer placeholder="Reply…" onSend={sendDraft} onAskAgent={onOpenAgent} />
@@ -127,13 +126,6 @@ export function MailScreen({ onOpenAgent }: MailScreenProps) {
     <View style={styles.screen}>
       {header}
       <ScrollView contentContainerStyle={styles.composeContent}>
-        <Text style={styles.composeField}>To: acme@corp.com</Text>
-        <Text style={styles.composeField}>Cc: (optional)</Text>
-        <Text style={styles.composeField}>Subject: Re: Contract — Acme</Text>
-        <View style={styles.composeDivider} />
-        <Text style={styles.composeBody}>
-          Hi Acme team,{'\n\n'}Thanks for sending the contract. I've reviewed it and…
-        </Text>
         <Button label="Draft with agent" variant="accent" onPress={() => {}} icon={<IconSparkle size={18} color={colors.textOnAccent} />} />
       </ScrollView>
       <View style={styles.composerBar}>
@@ -165,7 +157,4 @@ const styles = StyleSheet.create({
   threadContent: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
   composerBar: { padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   composeContent: { padding: spacing.lg, gap: spacing.lg },
-  composeField: { ...typography.body, color: colors.textMuted },
-  composeDivider: { height: 1, backgroundColor: colors.border },
-  composeBody: { ...typography.body, color: colors.text, lineHeight: 24 },
 });

@@ -39,7 +39,12 @@ export function AppShell() {
               onOpenAgent={() => setTab('agent')}
             />
           )}
-          {tab === 'mail' && <MailScreen onOpenAgent={() => setTab('agent')} />}
+          {tab === 'mail' && (
+            <MailScreen
+              onOpenAgent={() => setTab('agent')}
+              onOpenSettings={() => setTab('settings')}
+            />
+          )}
           {tab === 'agent' && <AgentScreen />}
           {tab === 'activity' && <ActivityScreen />}
           {tab === 'settings' && <SettingsScreen />}

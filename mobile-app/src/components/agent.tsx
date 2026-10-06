@@ -1,7 +1,7 @@
 /**
  * Agent-specific components — AgentBubble, ToolChip, EscalationCard, StatusStrip.
- * DB: Streaming (token-by-token), Disclaimer (AI label), Feedback Loop (thumbs),
- * Typing indicators, Contextual Live Badge.
+ * DB: Streaming (token-by-token), Disclaimer (the agent is named, not anonymous),
+ * Feedback Loop (thumbs), Typing indicators, Contextual Live Badge.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -47,7 +47,7 @@ export function AgentBubble({ text, streaming = false, showFeedback = false }: A
 
   return (
     <View style={styles.bubbleWrap}>
-      <Text style={styles.aiLabel}>AI</Text>
+      <Text style={styles.agentLabel}>Millo</Text>
       <View style={styles.bubble}>
         <Text style={styles.bubbleText}>{text}</Text>
         {streaming && <TypingIndicator />}
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   typingRow: { flexDirection: 'row', gap: 4, marginTop: 6 },
   typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textMuted },
   bubbleWrap: { alignSelf: 'flex-start', maxWidth: '85%', gap: 4 },
-  aiLabel: { ...typography.label, color: colors.textSubtle, fontSize: 10, marginLeft: 4 },
+  agentLabel: { ...typography.label, color: colors.textSubtle, fontSize: 10, marginLeft: 4 },
   bubble: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,

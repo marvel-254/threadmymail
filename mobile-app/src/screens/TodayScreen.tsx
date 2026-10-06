@@ -7,21 +7,8 @@ import React, { useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, EmptyState, SectionLabel } from '../components/ui';
 import { StatusStrip } from '../components/agent';
-import { IconMail, IconMenu, IconPower, IconSparkle, IconToday } from '../components/Icons';
+import { IconMenu, IconPower, IconSparkle, IconToday } from '../components/Icons';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
-
-type AttentionItem = {
-  id: string;
-  kind: 'mail' | 'followup';
-  title: string;
-  meta: string;
-};
-
-const MOCK_ATTENTION: AttentionItem[] = [
-  { id: '1', kind: 'mail', title: 'Contract — Acme', meta: 'reply by 5pm' },
-  { id: '2', kind: 'mail', title: 'Invoice — vendor', meta: 'needs review' },
-  { id: '3', kind: 'followup', title: 'Follow-up: proposal sent 3d ago', meta: 'waiting on you' },
-];
 
 type TodayScreenProps = {
   onOpenSettings: () => void;
@@ -55,8 +42,7 @@ export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodaySc
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.greeting}>Good morning, Langat.</Text>
-        <Text style={styles.counts}>12 unread · 3 need a reply · 2 follow-ups</Text>
+        <Text style={styles.greeting}>Good day.</Text>
 
         <Button
           label={running ? 'Running triage…' : 'Run morning triage'}
@@ -67,30 +53,14 @@ export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodaySc
         />
 
         <SectionLabel>Needs your eye</SectionLabel>
-        {MOCK_ATTENTION.map((item) => (
-          <Pressable
-            key={item.id}
-            accessibilityRole="button"
-            accessibilityLabel={`${item.title}, ${item.meta}`}
-            onPress={onOpenMail}
-            style={({ pressed }) => [styles.attentionCard, pressed && { opacity: 0.85 }]}
-          >
-            <View style={styles.attentionIcon}>
-              {item.kind === 'mail' ? (
-                <IconMail size={18} color={colors.primary} />
-              ) : (
-                <IconSparkle size={18} color={colors.accent} />
-              )}
-            </View>
-            <View style={styles.attentionMain}>
-              <Text style={styles.attentionTitle}>{item.title}</Text>
-              <Text style={styles.attentionMeta}>{item.meta}</Text>
-            </View>
-          </Pressable>
-        ))}
+        <EmptyState
+          icon={<IconToday size={48} color={colors.textSubtle} />}
+          title="Nothing needs you"
+          body="Millo will surface anything that needs a decision."
+        />
 
         <SectionLabel>Agent status</SectionLabel>
-        <StatusStrip status={killEngaged ? 'quiet' : 'idle'} budgetPct={62} quietHours="22:00" />
+        <StatusStrip status={killEngaged ? 'quiet' : 'idle'} />
       </ScrollView>
     </View>
   );
@@ -117,27 +87,4 @@ const styles = StyleSheet.create({
   headerTitle: { ...typography.h3, color: colors.text },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
   greeting: { ...typography.h1, color: colors.text },
-  counts: { ...typography.bodySmall, color: colors.textMuted },
-  attentionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    minHeight: touch.minTarget,
-  },
-  attentionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surfaceStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  attentionMain: { flex: 1, gap: 2 },
-  attentionTitle: { ...typography.bodySmall, color: colors.text, fontWeight: '600' },
-  attentionMeta: { ...typography.caption, color: colors.textMuted },
 });

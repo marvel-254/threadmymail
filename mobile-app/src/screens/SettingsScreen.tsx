@@ -6,42 +6,36 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, ConfirmDialog, EmptyState, SectionLabel } from '../components/ui';
-import { Field, ProviderCard, SkillRow, type Provider, type Skill } from '../components/settings';
-import { IconBack, IconPlus, IconSettings } from '../components/Icons';
+import { Field } from '../components/settings';
+import { CUSTOM_PROVIDER_ID, PROVIDER_PRESETS } from '../lib/providers';
+import { IconPlus } from '../components/Icons';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
-
-const MOCK_PROVIDERS: Provider[] = [
-  { id: 'p1', name: 'OpenRouter', model: 'gpt-4o-mini', primary: true, connected: true, keyMasked: '•••• 4f2a' },
-];
-
-const MOCK_SKILLS: Skill[] = [
-  { id: 's1', name: 'Triage', trigger: 'Schedule 08:00', enabled: true },
-  { id: 's2', name: 'Draft replies', trigger: 'On new mail', enabled: false },
-  { id: 's3', name: 'Follow-ups', trigger: 'Manual', enabled: false, shadow: true },
-];
 
 export function SettingsScreen() {
   const [confirm, setConfirm] = useState<{ title: string; body: string; action: () => void } | null>(null);
   const [showAddProvider, setShowAddProvider] = useState(false);
   const [showAddSkill, setShowAddSkill] = useState(false);
-  const [providerName, setProviderName] = useState('');
-  const [providerUrl, setProviderUrl] = useState('');
+  const [providerPresetId, setProviderPresetId] = useState(PROVIDER_PRESETS[0].id);
+  const [providerUrl, setProviderUrl] = useState(PROVIDER_PRESETS[0].baseUrl);
   const [providerKey, setProviderKey] = useState('');
-  const [providerModel, setProviderModel] = useState('');
+  const [providerModel, setProviderModel] = useState(PROVIDER_PRESETS[0].defaultModel);
   const [skillName, setSkillName] = useState('');
   const [skillInstruction, setSkillInstruction] = useState('');
+
+  const providerPreset = PROVIDER_PRESETS.find((p) => p.id === providerPresetId);
+
+  /** Prefill the endpoint and model for a preset; Custom clears both. */
+  const selectPreset = (id: string) => {
+    setProviderPresetId(id);
+    const preset = PROVIDER_PRESETS.find((p) => p.id === id);
+    setProviderUrl(preset?.baseUrl ?? '');
+    setProviderModel(preset?.defaultModel ?? '');
+  };
 
   const clearMemory = () =>
     setConfirm({
       title: 'Clear memory?',
       body: 'This deletes all stored threads, facts, and preferences. This cannot be undone.',
-      action: () => setConfirm(null),
-    });
-
-  const removeProvider = (id: string) =>
-    setConfirm({
-      title: 'Remove provider?',
-      body: 'The API key will be deleted from this device.',
       action: () => setConfirm(null),
     });
 
@@ -56,18 +50,18 @@ export function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <SectionLabel>Email account</SectionLabel>
         <Card>
-          <Text style={styles.cardTitle}>Gmail · langat@gmail.com</Text>
-          <Text style={styles.cardStatus}>● Connected</Text>
+          <Text style={styles.cardTitle}>No account connected</Text>
+          <Text style={styles.cardStatus}>Millo needs an email account to work.</Text>
           <View style={styles.cardActions}>
-            <Button label="Test" variant="secondary" onPress={() => {}} />
-            <Button label="Edit" variant="secondary" onPress={() => {}} />
+            <Button label="Connect" variant="secondary" onPress={() => {}} />
           </View>
         </Card>
 
         <SectionLabel>AI providers</SectionLabel>
-        {MOCK_PROVIDERS.map((p) => (
-          <ProviderCard key={p.id} provider={p} onTest={() => {}} onRemove={removeProvider} />
-        ))}
+        <EmptyState
+          title="No AI providers yet"
+          body="Add a provider so Millo can think. Your key stays on this device."
+        />
         <Button
           label="Add provider"
           variant="secondary"
@@ -76,9 +70,10 @@ export function SettingsScreen() {
         />
 
         <SectionLabel>Skills</SectionLabel>
-        {MOCK_SKILLS.map((s) => (
-          <SkillRow key={s.id} skill={s} onToggle={() => {}} onEdit={() => {}} />
-        ))}
+        <EmptyState
+          title="No skills yet"
+          body="A skill is a standing instruction Millo runs on a schedule."
+        />
         <Button
           label="Add skill"
           variant="secondary"
@@ -88,15 +83,18 @@ export function SettingsScreen() {
 
         <SectionLabel>Memory</SectionLabel>
         <Card>
-          <Text style={styles.cardTitle}>128 entries · 2.4 MB</Text>
-          <Button label="Clear" variant="danger" onPress={clearMemory} />
+          <Text style={styles.cardTitle}>No memory yet</Text>
+          <Text style={styles.cardStatus}>0 entries</Text>
+          <View style={styles.cardActions}>
+            <Button label="Clear" variant="danger" disabled onPress={clearMemory} />
+          </View>
         </Card>
 
         <SectionLabel>Guardrails</SectionLabel>
         <Card>
-          <Text style={styles.cardRow}>Kill switch · engaged</Text>
-          <Text style={styles.cardRow}>Daily budget · $0.50 / day</Text>
-          <Text style={styles.cardRow}>Quiet hours · 22:00 – 07:00</Text>
+          <Text style={styles.cardRow}>Kill switch · off</Text>
+          <Text style={styles.cardRow}>Daily budget · not set</Text>
+          <Text style={styles.cardRow}>Quiet hours · not set</Text>
           <Text style={styles.cardRow}>Shadow mode · off</Text>
         </Card>
 
@@ -110,10 +108,54 @@ export function SettingsScreen() {
       {showAddProvider && (
         <View style={styles.sheet}>
           <Text style={styles.sheetTitle}>Add provider</Text>
-          <Field label="Name" value={providerName} onChangeText={setProviderName} placeholder="OpenRouter" />
-          <Field label="Base URL" value={providerUrl} onChangeText={setProviderUrl} placeholder="https://openrouter.ai/api/v1" />
-          <Field label="API key" value={providerKey} onChangeText={setProviderKey} secure placeholder="sk-…" />
-          <Field label="Default model" value={providerModel} onChangeText={setProviderModel} placeholder="gpt-4o-mini" />
+          <View style={styles.sheetPicker}>
+            {PROVIDER_PRESETS.map((p) => (
+              <Pressable
+                key={p.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: p.id === providerPresetId }}
+                onPress={() => selectPreset(p.id)}
+                style={({ pressed }) => [
+                  styles.sheetPickerItem,
+                  p.id === providerPresetId && styles.sheetPickerItemActive,
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.sheetPickerText,
+                    p.id === providerPresetId && styles.sheetPickerTextActive,
+                  ]}
+                >
+                  {p.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Field
+            label="API key"
+            value={providerKey}
+            onChangeText={setProviderKey}
+            secure
+            placeholder={providerPreset?.keyHint ?? 'sk-…'}
+          />
+          <Field
+            label="Base URL"
+            value={providerUrl}
+            onChangeText={setProviderUrl}
+            placeholder={providerPreset?.baseUrl || 'https://your-endpoint.example/v1'}
+            helper={
+              providerPresetId === CUSTOM_PROVIDER_ID
+                ? 'Required — where the requests go.'
+                : 'Prefilled. Change it if you use a proxy.'
+            }
+          />
+          <Field
+            label="Default model"
+            value={providerModel}
+            onChangeText={setProviderModel}
+            placeholder={providerPreset?.defaultModel || 'model-id'}
+          />
           <Button label="Test connection" variant="secondary" onPress={() => {}} />
           <View style={styles.sheetActions}>
             <Button label="Cancel" variant="ghost" onPress={() => setShowAddProvider(false)} />
@@ -179,5 +221,19 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   sheetTitle: { ...typography.h3, color: colors.text },
+  sheetPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  sheetPickerItem: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  sheetPickerItemActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  sheetPickerText: { ...typography.bodySmall, color: colors.textMuted },
+  sheetPickerTextActive: { color: colors.textOnPrimary, fontWeight: '600' },
   sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.sm },
 });

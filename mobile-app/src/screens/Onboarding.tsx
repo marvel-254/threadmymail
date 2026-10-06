@@ -7,10 +7,10 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-nat
 import { Button, SectionLabel } from '../components/ui';
 import { Field } from '../components/settings';
 import { IconBack, IconSparkle } from '../components/Icons';
+import { CUSTOM_PROVIDER_ID, PROVIDER_PRESETS } from '../lib/providers';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
 const PROVIDERS = ['Gmail', 'Outlook', 'Yahoo', 'iCloud', 'Custom'];
-const AI_PROVIDERS = ['OpenRouter', 'OpenAI', 'Anthropic', 'Gemini', 'DeepSeek', 'Custom'];
 const SKILLS = ['Triage', 'Draft replies', 'Follow-ups'];
 
 type OnboardingProps = {
@@ -22,10 +22,25 @@ export function Onboarding({ onDone }: OnboardingProps) {
   const [emailProvider, setEmailProvider] = useState('Gmail');
   const [email, setEmail] = useState('');
   const [appPassword, setAppPassword] = useState('');
-  const [aiProvider, setAiProvider] = useState('OpenRouter');
+  const [aiPresetId, setAiPresetId] = useState('openrouter');
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('');
+  const [baseUrl, setBaseUrl] = useState(PROVIDER_PRESETS[0].baseUrl);
+  const [model, setModel] = useState(PROVIDER_PRESETS[0].defaultModel);
   const [skills, setSkills] = useState<Record<string, boolean>>({ Triage: true, 'Draft replies': false, 'Follow-ups': false });
+
+  const aiPreset = PROVIDER_PRESETS.find((p) => p.id === aiPresetId);
+
+  /**
+   * Selecting a preset prefills its endpoint and model. Custom has neither, so
+   * both fields are cleared and the user must supply the base URL themselves —
+   * that is the whole reason Custom exists.
+   */
+  const selectAiPreset = (id: string) => {
+    setAiPresetId(id);
+    const preset = PROVIDER_PRESETS.find((p) => p.id === id);
+    setBaseUrl(preset?.baseUrl ?? '');
+    setModel(preset?.defaultModel ?? '');
+  };
 
   const next = () => (step < 4 ? setStep(step + 1) : onDone());
   const back = () => (step > 0 ? setStep(step - 1) : undefined);
@@ -94,9 +109,46 @@ export function Onboarding({ onDone }: OnboardingProps) {
         {step === 2 && (
           <>
             <Text style={styles.stepTitle}>Add AI key</Text>
-            {picker(AI_PROVIDERS, aiProvider, setAiProvider)}
-            <Field label="API key" value={apiKey} onChangeText={setApiKey} secure placeholder="sk-…" />
-            <Field label="Default model" value={model} onChangeText={setModel} placeholder="gpt-4o-mini" />
+            {picker(
+              PROVIDER_PRESETS.map((p) => p.label),
+              aiPreset?.label ?? '',
+              (label) => {
+                const preset = PROVIDER_PRESETS.find((p) => p.label === label);
+                if (preset) selectAiPreset(preset.id);
+              },
+            )}
+            <Field
+              label="API key"
+              value={apiKey}
+              onChangeText={setApiKey}
+              secure
+              placeholder={aiPreset?.keyHint ?? 'sk-…'}
+              helper={
+                aiPresetId === CUSTOM_PROVIDER_ID
+                  ? 'Any OpenAI-compatible endpoint works.'
+                  : aiPreset?.keyHint
+                    ? `Expected a key starting with ${aiPreset.keyHint}`
+                    : undefined
+              }
+            />
+            <Field
+              label="Base URL"
+              value={baseUrl}
+              onChangeText={setBaseUrl}
+              placeholder={aiPreset?.baseUrl || 'https://your-endpoint.example/v1'}
+              helper={
+                aiPresetId === CUSTOM_PROVIDER_ID
+                  ? 'Required for a custom provider — where the requests go.'
+                  : 'Prefilled for this provider. Change it if you use a proxy.'
+              }
+            />
+            <Field
+              label="Default model"
+              value={model}
+              onChangeText={setModel}
+              placeholder={aiPreset?.defaultModel || 'model-id'}
+              helper="Which model the agent uses unless a skill overrides it."
+            />
             <Button label="Test connection" variant="secondary" onPress={() => {}} />
           </>
         )}

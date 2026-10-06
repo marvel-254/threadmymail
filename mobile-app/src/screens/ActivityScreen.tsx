@@ -18,25 +18,6 @@ type ActivityItem = {
   undoable?: boolean;
 };
 
-const MOCK_ACTIVITY: { day: string; items: ActivityItem[] }[] = [
-  {
-    day: 'TODAY',
-    items: [
-      { id: '1', time: '08:12', runId: 'run_9c2', action: 'triage', outcome: 'ok', detail: '3 drafts' },
-      { id: '2', time: '08:12', runId: 'run_9c2', action: 'sent reply', outcome: 'ok', detail: '"Re: Acme"', undoable: true },
-      { id: '3', time: '07:00', runId: 'run_7aa', action: 'follow-up', outcome: 'skipped', detail: 'skipped (quiet)' },
-    ],
-  },
-  {
-    day: 'YESTERDAY',
-    items: [
-      { id: '4', time: '18:02', runId: 'run_5f1', action: 'triage', outcome: 'ok', detail: '2 drafts' },
-      { id: '5', time: '17:45', runId: 'run_5f1', action: 'sent reply', outcome: 'ok', detail: '"Re: Vendor"', undoable: true },
-      { id: '6', time: '17:45', runId: 'run_5f1', action: 'draft', outcome: 'ok', detail: 'saved' },
-    ],
-  },
-];
-
 export function ActivityScreen() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [undone, setUndone] = useState<Set<string>>(new Set());
@@ -56,41 +37,11 @@ export function ActivityScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {MOCK_ACTIVITY.map((group) => (
-          <View key={group.day}>
-            <SectionLabel>{group.day}</SectionLabel>
-            {group.items.map((item) => {
-              const isExpanded = expanded === item.id;
-              const isUndone = undone.has(item.id);
-              return (
-                <Pressable
-                  key={item.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${item.time} ${item.action} ${item.detail}`}
-                  onPress={() => setExpanded(isExpanded ? null : item.id)}
-                  style={({ pressed }) => [styles.row, pressed && { opacity: 0.85 }]}
-                >
-                  <Text style={styles.time}>{item.time}</Text>
-                  <Text style={styles.runId}>{item.runId}</Text>
-                  <Text style={[styles.action, isUndone && styles.actionUndone]}>{item.action}</Text>
-                  <Text style={styles.detail} numberOfLines={1}>
-                    {item.detail}
-                  </Text>
-                  {outcomeIcon(item.outcome)}
-                  {isExpanded && item.undoable && !isUndone && (
-                    <Pressable
-                      accessibilityLabel="Undo"
-                      onPress={() => setUndone((s) => new Set(s).add(item.id))}
-                      style={styles.undoBtn}
-                    >
-                      <Text style={styles.undoText}>Undo</Text>
-                    </Pressable>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
+        <EmptyState
+          icon={<IconActivity size={48} color={colors.textSubtle} />}
+          title="Nothing yet"
+          body="Millo has not acted yet. Everything it does will appear here with the run that caused it."
+        />
       </ScrollView>
     </View>
   );
