@@ -54,25 +54,26 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
-      # Build the debug APK. Gradle is invoked from the generated android/
-      # directory. Debug APK is unsigned and installable via adb.
+      # Build the release APK. Release bundles the JS into the APK (debug
+      # builds expect Metro and fail with "Unable to load script" on-device).
+      # Gradle is invoked from the generated android/ directory.
       - name: Generate APK
         working-directory: mobile-app/android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleRelease
         timeout-minutes: 30
 
       - name: Verify APK exists
         run: |
-          if [ ! -f android/app/build/outputs/apk/debug/app-debug.apk ]; then
+          if [ ! -f android/app/build/outputs/apk/release/app-release.apk ]; then
             echo "APK not found at expected path"
             find android -name "*.apk" -type f 2>/dev/null
             exit 1
           fi
-          echo "APK verified: $(ls -lh android/app/build/outputs/apk/debug/app-debug.apk)"
+          echo "APK verified: $(ls -lh android/app/build/outputs/apk/release/app-release.apk)"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ThreadMyMail-debug
-          path: mobile-app/android/app/build/outputs/apk/debug/app-debug.apk
+          name: ThreadMyMail-release
+          path: mobile-app/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 7
