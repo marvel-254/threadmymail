@@ -12,7 +12,7 @@
  *     without having to visit Settings again.
  */
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, ImageBackground, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { BottomTabBar, type TabId } from './components/BottomTabBar';
 import { TopBar } from './components/TopBar';
@@ -85,26 +85,28 @@ export function AppShell() {
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <TopBar />
-        <View style={styles.screen}>
-          {tab === 'today' && (
-            <TodayScreen
-              onOpenSettings={() => setTab('settings')}
-              onOpenMail={() => setTab('mail')}
-              onOpenAgent={() => setTab('agent')}
-            />
-          )}
-          {tab === 'mail' && (
-            <MailScreen
-              onOpenAgent={() => setTab('agent')}
-              onOpenSettings={() => setTab('settings')}
-            />
-          )}
-          {tab === 'agent' && <AgentScreen />}
-          {tab === 'activity' && <ActivityScreen />}
-          {tab === 'settings' && <SettingsScreen />}
-          <BottomTabBar active={tab} onSelect={setTab} />
-        </View>
+        <ImageBackground source={require('./assets/app-background.png')} style={styles.background} resizeMode="cover">
+          <TopBar />
+          <View style={styles.screen}>
+            {tab === 'today' && (
+              <TodayScreen
+                onOpenSettings={() => setTab('settings')}
+                onOpenMail={() => setTab('mail')}
+                onOpenAgent={() => setTab('agent')}
+              />
+            )}
+            {tab === 'mail' && (
+              <MailScreen
+                onOpenAgent={() => setTab('agent')}
+                onOpenSettings={() => setTab('settings')}
+              />
+            )}
+            {tab === 'agent' && <AgentScreen />}
+            {tab === 'activity' && <ActivityScreen />}
+            {tab === 'settings' && <SettingsScreen />}
+            <BottomTabBar active={tab} onSelect={setTab} />
+          </View>
+        </ImageBackground>
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -115,4 +117,5 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   boot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   screen: { flex: 1 },
+  background: { flex: 1 },
 });

@@ -7,6 +7,7 @@
  */
 import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ImageBackground } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Button } from '../components/ui';
 import { Field } from '../components/settings';
@@ -209,7 +210,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
   );
 
   return (
-    <View style={styles.screen}>
+    <ImageBackground source={require('../assets/app-background.png')} style={styles.screen} resizeMode="cover">
       {/* ── Header bar ─────────────────────────────────────────────── */}
       <View style={styles.header}>
         <View style={styles.headerBtn}>
@@ -235,7 +236,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
                 player={videoPlayer}
                 style={styles.video}
                 nativeControls={false}
-                contentFit="contain"
+                contentFit="cover"
               />
               <IconSparkle size={36} color={colors.primary} />
             </View>
@@ -413,7 +414,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
           <Button label={step === 3 ? 'Done' : 'Continue'} onPress={next} fullWidth />
         )}
       </View>
-    </View>
+    </ImageBackground>
   );
 }
 
@@ -437,10 +438,10 @@ const styles = StyleSheet.create({
   stepCount: { ...typography.caption, color: colors.textSubtle },
   skipText: { ...typography.bodySmall, color: colors.accent, fontWeight: '600' },
   content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxl * 2 },
-  welcome: { alignItems: 'center', gap: spacing.md, paddingTop: spacing.xxl * 2 },
+  welcome: { alignItems: 'center', gap: spacing.md, paddingTop: spacing.xl * 1.5 },
   videoContainer: {
-    width: 240,
-    height: 420,
+    width: 200,
+    height: 280,
     borderRadius: radii.xl,
     overflow: 'hidden',
     backgroundColor: colors.surface,
