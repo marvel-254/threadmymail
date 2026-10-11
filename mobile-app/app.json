@@ -35,7 +35,8 @@
       "react-native-mail-engine",
       "./plugins/withMailEngineLink",
       "./plugins/withAndroidReleaseSigning",
-      "expo-video"
+      "expo-video",
+      "./plugins/withAndroidPackagingPickFirsts"
     ]
   }
 }
