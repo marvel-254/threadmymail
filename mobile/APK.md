@@ -1,5 +1,12 @@
 # ThreadMyMail - Android APK Build Guide
 
+> ⚠️ **SUPERSEDED (2026-10-06).** The product direction changed: the APK is now
+> a **self-contained harness** (BYOK AI + SMTP/IMAP app-password email, **no
+> OAuth**, no backend), built with **Expo**, and the website becomes a landing +
+> download page. The OAuth/magic-link and EAS-specific content below is **stale
+> and must not be copied**. Read **[MOBILE-STRATEGY.md](./MOBILE-STRATEGY.md)**
+> instead. This file is kept for history only.
+
 > React Native + Expo for Android APK with push notifications.
 >
 > **Still valid.** EAS builds are unaffected by the move from Render/FastAPI to

@@ -23,6 +23,7 @@ import { routes } from './http/routes.js';
 import { withCors } from './http/cors.js';
 
 export { AgentObject };
+export { SkillRunWorkflow } from './workflows/skill-run.js';
 
 export interface Env {
   ENVIRONMENT: string;

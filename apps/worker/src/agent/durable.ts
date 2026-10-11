@@ -56,6 +56,11 @@ export interface AgentEnv {
    */
   ENCRYPTION_KEY?: string;
   ENVIRONMENT: string;
+  /**
+   * Durable wrapper for skill runs. Optional so the DO boots without it in
+   * local dev when the workflow binding is not registered.
+   */
+  SKILL_RUN_WORKFLOW?: Workflow;
 }
 
 /** One live chat connection — or one in-flight REST run. */

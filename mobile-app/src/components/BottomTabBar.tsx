@@ -114,7 +114,11 @@ export function BottomTabBar({ active, onSelect }: BottomTabBarProps) {
 
 const styles = StyleSheet.create({
   wrapper: {
+    // Increase height for better touch targets
+    minHeight: 72,
+    paddingVertical: 8,
     backgroundColor: colors.bgDeep,
+    justifyContent: 'center',
   },
   topRule: {
     height: 1,

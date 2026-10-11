@@ -2,7 +2,7 @@
 
 > Conventions, architecture rules, and current state for any AI agent or engineer
 > working in this repository.
-> **Last updated:** 2026-09-29**
+> **Last updated:** 2026-10-06
 >
 > **The app is live** at <https://threadmymail.pages.dev/app>. Start with
 > [HANDOFF.md](HANDOFF.md) for where things stand, what is deployed, and what
@@ -100,7 +100,7 @@ schema and description must not change.
 | Database | **Neon** (Postgres + pgvector) via **Hyperdrive** |
 | Blobs | **D1** (`BODIES`) |
 | Frontend | React + Vite + Tailwind → **Cloudflare Pages** |
-| Mobile | Expo → EAS APK |
+| Mobile | 🆕 **The product.** Expo harness (BYOK AI + SMTP/IMAP email, no OAuth). Plan: `mobile/MOBILE-STRATEGY.md` + `mobile/MVP-UI.md` (2026-10-06) |
 | Model | Multi-provider BYOK (OpenAI + Anthropic dialects), keys encrypted at rest |
 | Language | **TypeScript** (the earlier Python/FastAPI plan is retired) |
 

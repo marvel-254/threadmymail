@@ -115,7 +115,11 @@ export const memoryTools: ToolDefinition<never, unknown>[] = [
       );
       if (!row) return fail(ERROR.INTERNAL, 'Memory insert returned no row.');
 
-      await ctx.describe({ summary: `Remembered (${row.kind}): ${cap(row.content, 80)}`, reversible: true });
+      await ctx.describe({
+        summary: `Remembered (${row.kind}): ${cap(row.content, 80)}`,
+        reversible: true,
+        undoRef: JSON.stringify({ kind: 'memory.remember', id: row.id }),
+      });
       return ok({ memory: shape(row) }, `Remembered: ${cap(row.content, 80)}`);
     },
   },

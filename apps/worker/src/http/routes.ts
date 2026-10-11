@@ -527,6 +527,55 @@ routes.delete('/todos/:id', handler(async (c) => {
 
 const ACTIVITY_COLUMNS = 'id, user_id, run_id, kind, summary, reversible, undo_ref, undone_at, created_at';
 
+/**
+ * Daily digest of activity for a given date.
+ *
+ * Must be registered BEFORE /activity/:id so the literal segment wins the
+ * router match over the param handler.
+ */
+routes.get('/activity/digest', handler(async (c) => {
+  const userId = getUserId(c);
+
+  // Accept ?date=YYYY-MM-DD; default to today in UTC.
+  const rawDate = c.req.query('date');
+  let dateStr: string;
+  if (rawDate) {
+    // Validate: must be a bare date, no time component.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+      throw new HttpError(ERROR.INVALID_ARGS, 'date must be YYYY-MM-DD.', 400);
+    }
+    dateStr = rawDate;
+  } else {
+    dateStr = new Date().toISOString().slice(0, 10);
+  }
+
+  const rows = await db(c).queryFresh<Row>(
+    `SELECT ${ACTIVITY_COLUMNS} FROM activity
+     WHERE user_id = $1
+       AND created_at >= $2::date
+       AND created_at < ($2::date + INTERVAL '1 day')
+     ORDER BY created_at DESC`,
+    [userId, dateStr],
+  );
+
+  const total = rows.length;
+  const byKind: Record<string, number> = {};
+  let reversible = 0;
+  let undone = 0;
+  for (const row of rows) {
+    const kind = String(row['kind'] ?? 'unknown');
+    byKind[kind] = (byKind[kind] ?? 0) + 1;
+    if (row['reversible']) reversible++;
+    if (row['undone_at'] !== null) undone++;
+  }
+
+  return ok({
+    date: dateStr,
+    counts: { total, by_kind: byKind, reversible, undone },
+    items: rows,
+  });
+}));
+
 routes.get('/activity', handler(async (c) => {
   const userId = getUserId(c);
   const params: unknown[] = [userId];
@@ -574,22 +623,126 @@ routes.post('/activity/:id/undo', handler(async (c) => {
   const userId = getUserId(c);
   const id = uuidParam(c, 'id');
 
-  // Reversal only: the undo engine (actually retracting the action) lands in
-  // Phase 4. Repeating the call is a no-op, so the endpoint is idempotent.
+  // Stamp undone_at atomically. Repeating the call is a no-op (idempotent).
   const row = await db(c).oneFresh<Row>(
     `UPDATE activity SET undone_at = NOW()
      WHERE id = $1 AND user_id = $2 AND reversible = TRUE AND undone_at IS NULL
      RETURNING ${ACTIVITY_COLUMNS}`,
     [id, userId],
   );
-  if (row) return ok(row);
 
-  const existing = await db(c).oneFresh<Row>(
-    `SELECT ${ACTIVITY_COLUMNS} FROM activity WHERE id = $1 AND user_id = $2`,
-    [id, userId],
-  );
-  if (!existing) throw notFound('Activity');
-  return ok(existing);
+  // If nothing was stamped, the row either doesn't exist, is not reversible,
+  // or was already undone. Return the existing row (or 404) without error.
+  if (!row) {
+    const existing = await db(c).oneFresh<Row>(
+      `SELECT ${ACTIVITY_COLUMNS} FROM activity WHERE id = $1 AND user_id = $2`,
+      [id, userId],
+    );
+    if (!existing) throw notFound('Activity');
+    return ok(existing);
+  }
+
+  // Attempt the real reversal from undo_ref. A missing or unrecognised kind
+  // is not an error — the stamp already happened, so the activity feed shows
+  // the item as undone even if we cannot physically reverse it yet.
+  const undoRefRaw = row['undo_ref'];
+  if (typeof undoRefRaw === 'string' && undoRefRaw.trim() !== '') {
+    let ref: Record<string, unknown> | null = null;
+    try {
+      const parsed = JSON.parse(undoRefRaw);
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        ref = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Malformed JSON — stamp already done, just return.
+    }
+
+    if (ref !== null) {
+      const kind = ref['kind'];
+
+      try {
+        if (kind === 'todo.create') {
+          // Delete the created todo.
+          const todoId = ref['id'];
+          if (typeof todoId === 'string') {
+            await db(c).oneFresh<Row>(
+              `DELETE FROM todos WHERE id = $1 AND user_id = $2 RETURNING id`,
+              [todoId, userId],
+            );
+          }
+        } else if (kind === 'todo.complete' || kind === 'todo.drop') {
+          // Restore the previous status.
+          const todoId = ref['id'];
+          const prevStatus = ref['prev_status'];
+          if (
+            typeof todoId === 'string' &&
+            typeof prevStatus === 'string' &&
+            ['open', 'done', 'dropped'].includes(prevStatus)
+          ) {
+            await db(c).oneFresh<Row>(
+              `UPDATE todos
+               SET status = $3,
+                   completed_at = CASE WHEN $3 = 'done' THEN NOW() ELSE NULL END,
+                   updated_at = NOW()
+               WHERE id = $1 AND user_id = $2`,
+              [todoId, userId, prevStatus],
+            );
+          }
+        } else if (kind === 'todo.update') {
+          // Restore all previous field values captured in prev.
+          const todoId = ref['id'];
+          const prev = ref['prev'];
+          if (
+            typeof todoId === 'string' &&
+            prev !== null &&
+            typeof prev === 'object' &&
+            !Array.isArray(prev)
+          ) {
+            const p = prev as Record<string, unknown>;
+            // Build a safe SET list from the known prev fields only.
+            const sets: string[] = [];
+            const params: unknown[] = [todoId, userId];
+            const push = (col: string, val: unknown) => {
+              params.push(val);
+              sets.push(`${col} = $${params.length}`);
+            };
+            if ('title' in p) push('title', p['title']);
+            if ('notes' in p) push('notes', p['notes']);
+            if ('priority' in p) push('priority', p['priority']);
+            if ('due_at' in p) push('due_at', p['due_at']);
+            if ('status' in p) {
+              push('status', p['status']);
+              push('completed_at', p['status'] === 'done' ? new Date().toISOString() : null);
+            }
+            if (sets.length > 0) {
+              await db(c).oneFresh<Row>(
+                `UPDATE todos SET ${sets.join(', ')}, updated_at = NOW()
+                 WHERE id = $1 AND user_id = $2`,
+                params,
+              );
+            }
+          }
+        } else if (kind === 'memory.remember') {
+          // Delete the created memory.
+          const memId = ref['id'];
+          if (typeof memId === 'string') {
+            await db(c).oneFresh<Row>(
+              `DELETE FROM memories WHERE id = $1 AND user_id = $2 RETURNING id`,
+              [memId, userId],
+            );
+          }
+        }
+        // Any unrecognised kind: stamp is already done, just return.
+      } catch (reverseError) {
+        // Reversal failure must not un-stamp the activity row — the record of
+        // the undo is important even if the physical reversal had a transient
+        // error. Log it and return the stamped row.
+        console.error('[undo] reversal failed', { id, kind, error: reverseError });
+      }
+    }
+  }
+
+  return ok(row);
 }));
 
 // ── Settings ───────────────────────────────────────────────────────────────

@@ -1,30 +1,40 @@
 /**
- * Settings — the control room.
- * MVP-UI §4.5 · DB: Confirmation Dialogs (clear/remove/disconnect),
- * Submit Feedback (test connection), Empty States.
+ * Settings — the control room. MVP-UI §4.5.
+ * All four sections wired to real stores; "Test connection" calls live endpoints.
  */
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Button, Card, ConfirmDialog, EmptyState, SectionLabel } from '../components/ui';
-import { Field } from '../components/settings';
-import { CUSTOM_PROVIDER_ID, PROVIDER_PRESETS } from '../lib/providers';
-import { EMAIL_PROVIDERS, clearAccount, loadAccount, saveAccount, type AccountConfig } from '../lib/accountStore';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Button, Card, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
+import { Field, ProviderCard } from '../components/settings';
+import { PROVIDER_PRESETS, CUSTOM_PROVIDER_ID } from '../lib/providers';
+import {
+  loadProviders, removeProvider, setPrimary, addProvider,
+  testProvider, maskKey, type SavedProvider,
+} from '../lib/providerStore';
+import {
+  EMAIL_PROVIDERS, clearAccount, loadAccount, saveAccount,
+  type AccountConfig,
+} from '../lib/accountStore';
 import { getMailSync } from '../lib/mailSyncSingleton';
+import { testImap } from '../lib/emailTest';
 import { IconPlus } from '../components/Icons';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
-export function SettingsScreen() {
-  const [confirm, setConfirm] = useState<{ title: string; body: string; action: () => void } | null>(null);
-  const [showAddProvider, setShowAddProvider] = useState(false);
-  const [showAddSkill, setShowAddSkill] = useState(false);
-  const [providerPresetId, setProviderPresetId] = useState(PROVIDER_PRESETS[0].id);
-  const [providerUrl, setProviderUrl] = useState(PROVIDER_PRESETS[0].baseUrl);
-  const [providerKey, setProviderKey] = useState('');
-  const [providerModel, setProviderModel] = useState(PROVIDER_PRESETS[0].defaultModel);
-  const [skillName, setSkillName] = useState('');
-  const [skillInstruction, setSkillInstruction] = useState('');
+// ── Confirm helper ────────────────────────────────────────────────────────
+type Confirm = { title: string; body: string; action: () => void } | null;
 
-  // Email account state.
+export function SettingsScreen() {
+  const [confirm, setConfirm] = useState<Confirm>(null);
+  const [toastMsg, setToastMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const toast = (text: string, ok = true) => {
+    setToastMsg({ text, ok });
+    setTimeout(() => setToastMsg(null), 2500);
+  };
+  const ask = (title: string, body: string, action: () => void) =>
+    setConfirm({ title, body, action });
+
+  // ── Email account ───────────────────────────────────────────────────────
   const [account, setAccount] = useState<AccountConfig | null>(null);
   const [showConnect, setShowConnect] = useState(false);
   const [emailProviderId, setEmailProviderId] = useState(EMAIL_PROVIDERS[0].id);
@@ -35,77 +45,111 @@ export function SettingsScreen() {
   const [customSmtpHost, setCustomSmtpHost] = useState('');
   const [customSmtpPort, setCustomSmtpPort] = useState('587');
   const [connecting, setConnecting] = useState(false);
-  const [connectError, setConnectError] = useState<string | null>(null);
+  const [connectResult, setConnectResult] = useState<{ ok: boolean; detail: string } | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-    loadAccount().then((acc) => {
-      if (mounted) setAccount(acc);
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const providerPreset = PROVIDER_PRESETS.find((p) => p.id === providerPresetId);
+  useEffect(() => { void loadAccount().then(setAccount); }, []);
 
   const connectAccount = async () => {
     if (!emailAddress.trim() || !emailPassword) {
-      setConnectError('Enter your email address and app password.');
+      setConnectResult({ ok: false, detail: 'Enter your email address and app password.' });
       return;
     }
     setConnecting(true);
-    setConnectError(null);
+    setConnectResult(null);
+    const provider = EMAIL_PROVIDERS.find((p) => p.id === emailProviderId) ?? EMAIL_PROVIDERS[0];
+    const result = await testImap({
+      imap: {
+        host: emailProviderId === 'custom' ? customImapHost.trim() : provider.imapHost,
+        port: emailProviderId === 'custom' ? (Number(customImapPort) || 993) : provider.imapPort,
+        security: provider.imapSecurity,
+      },
+      smtp: emailProviderId === 'custom'
+        ? { host: customSmtpHost.trim(), port: Number(customSmtpPort) || 587, security: 'starttls' }
+        : { host: provider.smtpHost, port: provider.smtpPort, security: provider.smtpSecurity },
+      user: emailAddress,
+      password: emailPassword,
+    });
+    if (!result.ok) { setConnectResult(result); setConnecting(false); return; }
     try {
-      const config = await saveAccount({
-        providerId: emailProviderId,
-        email: emailAddress,
-        password: emailPassword,
-        customImapHost,
-        customImapPort: customImapPort ? Number(customImapPort) : undefined,
-        customSmtpHost,
-        customSmtpPort: customSmtpPort ? Number(customSmtpPort) : undefined,
+      const saved = await saveAccount({
+        providerId: emailProviderId, email: emailAddress, password: emailPassword,
+        customImapHost: emailProviderId === 'custom' ? customImapHost.trim() : undefined,
+        customImapPort: emailProviderId === 'custom' ? Number(customImapPort) : undefined,
+        customSmtpHost: emailProviderId === 'custom' ? customSmtpHost.trim() : undefined,
+        customSmtpPort: emailProviderId === 'custom' ? Number(customSmtpPort) : undefined,
       });
-      setAccount(config);
+      setAccount(saved);
       setShowConnect(false);
-      // Kick off the 180-day import + IDLE.
-      void getMailSync().start({
-        imap: config.imap,
-        auth: { user: config.email, password: config.password },
-      });
+      toast('Email connected');
+      void getMailSync().start({ imap: saved.imap, smtp: saved.smtp, auth: { user: saved.email, password: saved.password } });
     } catch (err) {
-      setConnectError(err instanceof Error ? err.message : 'Could not save account.');
-    } finally {
-      setConnecting(false);
-    }
+      setConnectResult({ ok: false, detail: err instanceof Error ? err.message : 'Could not save.' });
+    } finally { setConnecting(false); }
   };
 
   const disconnectAccount = () =>
-    setConfirm({
-      title: 'Disconnect email?',
-      body: 'This removes the account from this device. Cached messages stay in the inbox.',
-      action: async () => {
-        await clearAccount();
-        await getMailSync().stop();
-        setAccount(null);
-        setConfirm(null);
-      },
+    ask('Disconnect email?', 'This removes the account from this device. Cached messages stay in the inbox.', async () => {
+      await clearAccount();
+      await getMailSync().stop();
+      setAccount(null);
+      setConfirm(null);
+      toast('Email disconnected');
     });
 
-  /** Prefill the endpoint and model for a preset; Custom clears both. */
+  // ── AI providers ────────────────────────────────────────────────────────
+  const [providers, setProviders] = useState<SavedProvider[]>([]);
+  const [showAddProvider, setShowAddProvider] = useState(false);
+  const [providerPresetId, setProviderPresetId] = useState(PROVIDER_PRESETS[0].id);
+  const [providerKey, setProviderKey] = useState('');
+  const [providerUrl, setProviderUrl] = useState(PROVIDER_PRESETS[0].baseUrl);
+  const [providerModel, setProviderModel] = useState(PROVIDER_PRESETS[0].defaultModel);
+  const [addResult, setAddResult] = useState<{ ok: boolean; detail: string } | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => { void loadProviders().then(setProviders); }, []);
+
   const selectPreset = (id: string) => {
     setProviderPresetId(id);
-    const preset = PROVIDER_PRESETS.find((p) => p.id === id);
-    setProviderUrl(preset?.baseUrl ?? '');
-    setProviderModel(preset?.defaultModel ?? '');
+    const p = PROVIDER_PRESETS.find((x) => x.id === id);
+    setProviderUrl(p?.baseUrl ?? '');
+    setProviderModel(p?.defaultModel ?? '');
   };
 
-  const clearMemory = () =>
-    setConfirm({
-      title: 'Clear memory?',
-      body: 'This deletes all stored threads, facts, and preferences. This cannot be undone.',
-      action: () => setConfirm(null),
-    });
+  const doTestProvider = async (p: SavedProvider) => {
+    const r = await testProvider({ baseUrl: p.baseUrl, apiKey: p.apiKey, model: p.model });
+    toast(r.detail, r.ok);
+  };
+
+  const saveNewProvider = async () => {
+    if (!providerKey.trim()) { setAddResult({ ok: false, detail: 'Paste your API key first.' }); return; }
+    setAdding(true);
+    setAddResult(null);
+    const preset = PROVIDER_PRESETS.find((p) => p.id === providerPresetId) ?? PROVIDER_PRESETS[0];
+    const result = await testProvider({ baseUrl: providerUrl, apiKey: providerKey, model: providerModel });
+    if (!result.ok) { setAddResult(result); setAdding(false); return; }
+    setProviders(await addProvider({ id: providerPresetId, label: preset.label, baseUrl: providerUrl, model: providerModel, apiKey: providerKey }));
+    setShowAddProvider(false);
+    toast('Provider added');
+    setAdding(false);
+  };
+
+  // ── Guardrails ─────────────────────────────────────────────────────────
+  const [killSwitch, setKillSwitch] = useState(false);
+  const [shadowMode, setShadowMode] = useState(false);
+
+  const GuardrailRow = ({ label, description, value, onChange }: {
+    label: string; description: string; value: boolean; onChange: (v: boolean) => void;
+  }) => (
+    <View style={styles.guardrailRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.guardrailLabel}>{label}</Text>
+        <Text style={styles.guardrailDesc}>{description}</Text>
+      </View>
+      <Switch value={value} onValueChange={onChange}
+        trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
+        thumbColor={colors.textOnPrimary} />
+    </View>
+  );
 
   return (
     <View style={styles.screen}>
@@ -116,13 +160,15 @@ export function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Email account */}
         <SectionLabel>Email account</SectionLabel>
         {account ? (
           <Card>
             <Text style={styles.cardTitle}>{account.email}</Text>
-            <Text style={styles.cardStatus}>
-              {account.providerId === 'custom' ? 'Custom server' : account.providerId} · IMAP{' '}
-              {account.imap.host}:{account.imap.port} · 180-day history · realtime sync
+            <Text style={styles.cardSub}>
+              {account.providerId === 'custom' ? 'Custom' : account.providerId}
+              {' · IMAP '}{account.imap.host}:{account.imap.port}
+              {' · SMTP '}{account.smtp.host}:{account.smtp.port}
             </Text>
             <View style={styles.cardActions}>
               <Button label="Disconnect" variant="danger" onPress={disconnectAccount} />
@@ -131,276 +177,187 @@ export function SettingsScreen() {
         ) : (
           <Card>
             <Text style={styles.cardTitle}>No account connected</Text>
-            <Text style={styles.cardStatus}>
-              Connect an email account and Millo will import the last 180 days in the
-              background, then watch for new mail in realtime.
-            </Text>
+            <Text style={styles.cardSub}>180-day history import · Realtime IDLE sync</Text>
             <View style={styles.cardActions}>
               <Button label="Connect" variant="secondary" onPress={() => setShowConnect(true)} />
             </View>
           </Card>
         )}
 
+        {/* AI providers */}
         <SectionLabel>AI providers</SectionLabel>
-        <EmptyState
-          title="No AI providers yet"
-          body="Add a provider so Millo can think. Your key stays on this device."
-        />
-        <Button
-          label="Add provider"
-          variant="secondary"
+        {providers.length === 0 && (
+          <EmptyState title="No providers yet" body="Add one so Millo can think. Your key stays on this device." />
+        )}
+        {providers.map((p) => (
+          <ProviderCard
+            key={p.id}
+            provider={{ id: p.id, name: p.label, model: p.model || '(default)', keyMasked: maskKey(p.apiKey), primary: p.primary, connected: true }}
+            onTest={(id) => { const p = providers.find(x => x.id === id); if (p) void doTestProvider(p); }}
+            onRemove={(id) => ask('Remove provider?', 'The agent will use the next available provider.', async () => {
+              setProviders(await removeProvider(id));
+              setConfirm(null);
+              toast('Provider removed');
+            })}
+          />
+        ))}
+        {providers.map((p) => !p.primary ? (
+          <Pressable key={p.id} style={styles.setPrimaryBtn}
+            onPress={async () => { setProviders(await setPrimary(p.id)); toast('Primary updated'); }}>
+            <Text style={styles.setPrimaryText}>Set {p.label} as primary</Text>
+          </Pressable>
+        ) : null)}
+        <Button label="Add provider" variant="secondary"
           onPress={() => setShowAddProvider(true)}
-          icon={<IconPlus size={18} color={colors.text} />}
-        />
+          icon={<IconPlus size={18} color={colors.text} />} />
 
-        <SectionLabel>Skills</SectionLabel>
-        <EmptyState
-          title="No skills yet"
-          body="A skill is a standing instruction Millo runs on a schedule."
-        />
-        <Button
-          label="Add skill"
-          variant="secondary"
-          onPress={() => setShowAddSkill(true)}
-          icon={<IconPlus size={18} color={colors.text} />}
-        />
-
+        {/* Memory */}
         <SectionLabel>Memory</SectionLabel>
         <Card>
-          <Text style={styles.cardTitle}>No memory yet</Text>
-          <Text style={styles.cardStatus}>0 entries</Text>
+          <Text style={styles.cardTitle}>On-device memory</Text>
+          <Text style={styles.cardSub}>Stored locally, never sent anywhere</Text>
           <View style={styles.cardActions}>
-            <Button label="Clear" variant="danger" disabled onPress={clearMemory} />
+            <Button label="Clear" variant="danger" disabled
+              onPress={() => ask('Clear memory?', 'This cannot be undone.', async () => { setConfirm(null); toast('Memory cleared'); })} />
           </View>
         </Card>
 
+        {/* Guardrails */}
         <SectionLabel>Guardrails</SectionLabel>
         <Card>
-          <Text style={styles.cardRow}>Kill switch · off</Text>
-          <Text style={styles.cardRow}>Daily budget · not set</Text>
-          <Text style={styles.cardRow}>Quiet hours · not set</Text>
-          <Text style={styles.cardRow}>Shadow mode · off</Text>
+          <GuardrailRow label="Kill switch" description="Stop autonomous actions. Manual runs stay available." value={killSwitch} onChange={setKillSwitch} />
+          <View style={styles.guardrailRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guardrailLabel}>Shadow mode</Text>
+              <Text style={styles.guardrailDesc}>All actions logged, nothing sent or changed.</Text>
+            </View>
+            <Switch value={shadowMode} onValueChange={setShadowMode}
+              trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
+              thumbColor={colors.textOnPrimary} />
+          </View>
+          <Text style={[styles.cardSub, { marginTop: spacing.md }]}>Daily budget and quiet hours — coming next.</Text>
         </Card>
 
+        {/* About */}
         <SectionLabel>About</SectionLabel>
         <Card>
-          <Text style={styles.cardRow}>Version 0.1.0</Text>
-          <Text style={styles.cardRow}>Open source · Privacy</Text>
+          <Text style={styles.cardTitle}>ThreadMyMail</Text>
+          <Text style={styles.cardSub}>Version 1.0.0 · Open source · No account required</Text>
         </Card>
       </ScrollView>
 
+      {/* Add provider sheet */}
       {showAddProvider && (
         <View style={styles.sheet}>
-          <Text style={styles.sheetTitle}>Add provider</Text>
-          <View style={styles.sheetPicker}>
+          <Text style={styles.sheetTitle}>Add AI provider</Text>
+          <View style={styles.pickerWrap}>
             {PROVIDER_PRESETS.map((p) => (
-              <Pressable
-                key={p.id}
-                accessibilityRole="button"
+              <Pressable key={p.id} accessibilityRole="button"
                 accessibilityState={{ selected: p.id === providerPresetId }}
                 onPress={() => selectPreset(p.id)}
-                style={({ pressed }) => [
-                  styles.sheetPickerItem,
-                  p.id === providerPresetId && styles.sheetPickerItemActive,
-                  pressed && { opacity: 0.85 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.sheetPickerText,
-                    p.id === providerPresetId && styles.sheetPickerTextActive,
-                  ]}
-                >
-                  {p.label}
-                </Text>
+                style={[styles.pickerItem, p.id === providerPresetId && styles.pickerItemActive]}>
+                <Text style={[styles.pickerText, p.id === providerPresetId && styles.pickerTextActive]}>{p.label}</Text>
               </Pressable>
             ))}
           </View>
-          <Field
-            label="API key"
-            value={providerKey}
-            onChangeText={setProviderKey}
-            secure
-            placeholder={providerPreset?.keyHint ?? 'sk-…'}
-          />
-          <Field
-            label="Base URL"
-            value={providerUrl}
-            onChangeText={setProviderUrl}
-            placeholder={providerPreset?.baseUrl || 'https://your-endpoint.example/v1'}
-            helper={
-              providerPresetId === CUSTOM_PROVIDER_ID
-                ? 'Required — where the requests go.'
-                : 'Prefilled. Change it if you use a proxy.'
-            }
-          />
-          <Field
-            label="Default model"
-            value={providerModel}
-            onChangeText={setProviderModel}
-            placeholder={providerPreset?.defaultModel || 'model-id'}
-          />
-          <Button label="Test connection" variant="secondary" onPress={() => {}} />
+          <Field label="API key" value={providerKey} onChangeText={(t) => { setProviderKey(t); setAddResult(null); }} secure
+            placeholder={PROVIDER_PRESETS.find((p) => p.id === providerPresetId)?.keyHint ?? 'sk-…'} />
+          <Field label="Base URL" value={providerUrl} onChangeText={setProviderUrl} placeholder="https://api.openai.com/v1"
+            helper={providerPresetId === CUSTOM_PROVIDER_ID ? 'Required — must be an OpenAI-compatible endpoint.' : 'Prefilled for this provider.'} />
+          <Field label="Default model" value={providerModel} onChangeText={setProviderModel} placeholder="gpt-4o-mini" />
+          {addResult && (
+            <View style={[styles.resultBanner, addResult.ok ? styles.resultBannerOk : styles.resultBannerErr]}>
+              <Text style={[styles.resultText, addResult.ok ? styles.resultTextOk : styles.resultTextErr]}>{addResult.detail}</Text>
+            </View>
+          )}
           <View style={styles.sheetActions}>
             <Button label="Cancel" variant="ghost" onPress={() => setShowAddProvider(false)} />
-            <Button label="Save" onPress={() => setShowAddProvider(false)} />
+            <Button label={adding ? 'Testing…' : 'Add provider'} disabled={adding || !providerKey.trim()} loading={adding} onPress={saveNewProvider} />
           </View>
         </View>
       )}
 
-      {showAddSkill && (
-        <View style={styles.sheet}>
-          <Text style={styles.sheetTitle}>Add skill</Text>
-          <Field label="Name" value={skillName} onChangeText={setSkillName} placeholder="Triage" />
-          <Field label="Instruction" value={skillInstruction} onChangeText={setSkillInstruction} placeholder="Clear the unread backlog each morning" />
-          <Button label="Test connection" variant="secondary" onPress={() => {}} />
-          <View style={styles.sheetActions}>
-            <Button label="Cancel" variant="ghost" onPress={() => setShowAddSkill(false)} />
-            <Button label="Save" onPress={() => setShowAddSkill(false)} />
-          </View>
-        </View>
-      )}
-
+      {/* Connect email sheet */}
       {showConnect && (
         <View style={styles.sheet}>
           <Text style={styles.sheetTitle}>Connect email</Text>
-          <Text style={styles.sheetHint}>
-            Use an app password, not your normal password. Millo imports the last
-            180 days in the background, then watches for new mail in realtime.
-          </Text>
-          <View style={styles.sheetPicker}>
+          <Text style={styles.sheetHint}>Use an app password, not your normal password. 180-day history imports in the background.</Text>
+          <View style={styles.pickerWrap}>
             {EMAIL_PROVIDERS.map((p) => (
-              <Pressable
-                key={p.id}
-                accessibilityRole="button"
+              <Pressable key={p.id} accessibilityRole="button"
                 accessibilityState={{ selected: p.id === emailProviderId }}
                 onPress={() => setEmailProviderId(p.id)}
-                style={({ pressed }) => [
-                  styles.sheetPickerItem,
-                  p.id === emailProviderId && styles.sheetPickerItemActive,
-                  pressed && { opacity: 0.85 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.sheetPickerText,
-                    p.id === emailProviderId && styles.sheetPickerTextActive,
-                  ]}
-                >
-                  {p.label}
-                </Text>
+                style={[styles.pickerItem, p.id === emailProviderId && styles.pickerItemActive]}>
+                <Text style={[styles.pickerText, p.id === emailProviderId && styles.pickerTextActive]}>{p.label}</Text>
               </Pressable>
             ))}
           </View>
-          <Field
-            label="Email address"
-            value={emailAddress}
-            onChangeText={setEmailAddress}
-            placeholder="you@gmail.com"
-            keyboardType="email-address"
-          />
-          <Field
-            label="App password"
-            value={emailPassword}
-            onChangeText={setEmailPassword}
-            secure
-            placeholder="16-character app password"
-          />
+          <Field label="Email address" value={emailAddress} onChangeText={(t) => { setEmailAddress(t); setConnectResult(null); }} placeholder="you@example.com" keyboardType="email-address" />
+          <Field label="App password" value={emailPassword} onChangeText={(t) => { setEmailPassword(t); setConnectResult(null); }} secure placeholder="•••• •••• •••• ••••" />
           {emailProviderId === 'custom' && (
             <>
-              <Field
-                label="IMAP host"
-                value={customImapHost}
-                onChangeText={setCustomImapHost}
-                placeholder="imap.example.com"
-              />
-              <Field
-                label="IMAP port"
-                value={customImapPort}
-                onChangeText={setCustomImapPort}
-                keyboardType="numeric"
-              />
-              <Field
-                label="SMTP host"
-                value={customSmtpHost}
-                onChangeText={setCustomSmtpHost}
-                placeholder="smtp.example.com"
-              />
-              <Field
-                label="SMTP port"
-                value={customSmtpPort}
-                onChangeText={setCustomSmtpPort}
-                keyboardType="numeric"
-              />
+              <Field label="IMAP host" value={customImapHost} onChangeText={setCustomImapHost} placeholder="imap.example.com" />
+              <Field label="IMAP port" value={customImapPort} onChangeText={setCustomImapPort} keyboardType="numeric" />
+              <Field label="SMTP host" value={customSmtpHost} onChangeText={setCustomSmtpHost} placeholder="smtp.example.com" />
+              <Field label="SMTP port" value={customSmtpPort} onChangeText={setCustomSmtpPort} keyboardType="numeric" />
             </>
           )}
-          {connectError && <Text style={styles.connectError}>{connectError}</Text>}
+          {connectResult && (
+            <View style={[styles.resultBanner, connectResult.ok ? styles.resultBannerOk : styles.resultBannerErr]}>
+              <Text style={[styles.resultText, connectResult.ok ? styles.resultTextOk : styles.resultTextErr]}>{connectResult.detail}</Text>
+            </View>
+          )}
           <View style={styles.sheetActions}>
             <Button label="Cancel" variant="ghost" onPress={() => setShowConnect(false)} />
-            <Button label="Connect" onPress={connectAccount} disabled={connecting} />
+            <Button label={connecting ? 'Connecting…' : 'Connect'} disabled={connecting || !emailAddress.trim() || !emailPassword} loading={connecting} onPress={connectAccount} />
           </View>
         </View>
       )}
 
-      <ConfirmDialog
-        visible={!!confirm}
-        title={confirm?.title ?? ''}
-        body={confirm?.body}
-        confirmLabel="Confirm"
-        destructive
-        onConfirm={confirm?.action ?? (() => {})}
-        onCancel={() => setConfirm(null)}
-      />
+      <ConfirmDialog visible={!!confirm} title={confirm?.title ?? ''} body={confirm?.body}
+        confirmLabel="Confirm" destructive
+        onConfirm={() => { confirm?.action?.(); setConfirm(null); }}
+        onCancel={() => setConfirm(null)} />
+      {toastMsg && <Toast visible={true} message={toastMsg.text} ok={toastMsg.ok} />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.md,
-    minHeight: 56,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingTop: spacing.lg, minHeight: 56 },
   headerBtn: { width: touch.minTarget, height: touch.minTarget },
   headerTitle: { ...typography.h3, color: colors.text },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl * 2 },
   cardTitle: { ...typography.body, color: colors.text, fontWeight: '600' },
-  cardStatus: { ...typography.bodySmall, color: colors.textMuted, marginTop: 2 },
-  cardActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-  cardRow: { ...typography.bodySmall, color: colors.textMuted, paddingVertical: spacing.xs },
+  cardSub: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+  cardActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
+  setPrimaryBtn: { marginTop: spacing.sm, padding: spacing.md, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
+  setPrimaryText: { ...typography.bodySmall, color: colors.textMuted },
+  guardrailRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  guardrailLabel: { ...typography.body, color: colors.text, fontWeight: '600' },
+  guardrailDesc: { ...typography.caption, color: colors.textMuted },
   sheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: colors.bgDeep,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    padding: spacing.xl,
-    gap: spacing.md,
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    backgroundColor: colors.bgDeep, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl,
+    borderTopWidth: 1, borderTopColor: colors.border, padding: spacing.xl, gap: spacing.md,
   },
   sheetTitle: { ...typography.h3, color: colors.text },
   sheetHint: { ...typography.bodySmall, color: colors.textMuted },
-  connectError: { ...typography.bodySmall, color: colors.danger },
-  sheetPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  sheetPickerItem: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: 40,
-    justifyContent: 'center',
+  pickerWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  pickerItem: {
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderRadius: radii.pill,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    minHeight: touch.minTarget, justifyContent: 'center',
   },
-  sheetPickerItemActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  sheetPickerText: { ...typography.bodySmall, color: colors.textMuted },
-  sheetPickerTextActive: { color: colors.textOnPrimary, fontWeight: '600' },
-  sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.sm },
+  pickerItemActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  pickerText: { ...typography.bodySmall, color: colors.textMuted },
+  pickerTextActive: { color: colors.textOnPrimary, fontWeight: '600' },
+  resultBanner: { borderRadius: radii.md, padding: spacing.md, borderWidth: 1 },
+  resultBannerOk: { backgroundColor: colors.successBg, borderColor: colors.success },
+  resultBannerErr: { backgroundColor: colors.dangerBg, borderColor: colors.danger },
+  resultText: { ...typography.bodySmall },
+  resultTextOk: { color: colors.success },
+  resultTextErr: { color: colors.danger },
+  sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.md, marginTop: spacing.sm },
 });

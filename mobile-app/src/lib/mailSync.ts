@@ -74,13 +74,20 @@ export class MailSync {
    * Connect, import the last HISTORY_DAYS days in batches, then start IDLE.
    * Safe to call repeatedly; a running sync is not restarted.
    */
-  async start(config: { imap: { host: string; port: number; security?: string }; auth: { user: string; password: string } }): Promise<void> {
+  async start(config: {
+    imap: { host: string; port: number; security?: 'tls' | 'starttls' | 'plain' };
+    smtp?: { host: string; port: number; security?: 'tls' | 'starttls' | 'plain' };
+    auth: { user: string; password: string };
+  }): Promise<void> {
     if (this.running) return;
     this.running = true;
     try {
       this.setState({ phase: 'importing', progress: 0, imported: 0, error: null });
+      // SMTP is optional in the bridge type but required for the harness to be able
+      // to send at all — pass it whenever the account has one, so send() works.
       this.account = await this.bridge.connect({
-        imap: { host: config.imap.host, port: config.imap.port, security: config.imap.security as 'tls' | 'starttls' | 'plain' },
+        imap: config.imap,
+        smtp: config.smtp,
         auth: { type: 'password', user: config.auth.user, password: config.auth.password },
       });
       this.mailbox = await this.account.openInbox();

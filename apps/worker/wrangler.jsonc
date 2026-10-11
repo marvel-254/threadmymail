@@ -50,6 +50,14 @@
     ]
   },
 
+  "workflows": [
+    {
+      "name": "skill-run",
+      "binding": "SKILL_RUN_WORKFLOW",
+      "class_name": "SkillRunWorkflow"
+    }
+  ],
+
   // Required: a DO class cannot be bound until it is registered as new.
   // SQLite backend only — that is what the Free plan allows.
   "migrations": [

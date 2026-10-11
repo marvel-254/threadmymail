@@ -144,7 +144,11 @@ export const todoTools: ToolDefinition<never, unknown>[] = [
       );
       if (!row) return fail(ERROR.INTERNAL, 'Todo insert returned no row.');
 
-      await ctx.describe({ summary: `Added todo "${row.title}"`, reversible: true });
+      await ctx.describe({
+        summary: `Added todo "${row.title}"`,
+        reversible: true,
+        undoRef: JSON.stringify({ kind: 'todo.create', id: row.id }),
+      });
       return ok({ todo: shape(row) }, `Added todo "${row.title}"`);
     },
   },
@@ -341,6 +345,13 @@ export const todoTools: ToolDefinition<never, unknown>[] = [
         return fail(ERROR.INVALID_ARGS, 'Nothing to update — pass at least one of title, notes, priority, due_at, status.');
       }
 
+      // Read the previous state before updating so we can encode a full undo ref.
+      const prev = await db.oneFresh<TodoRow>(
+        `SELECT ${TODO_COLUMNS} FROM todos WHERE user_id = $1 AND id = $2`,
+        [ctx.userId, id],
+      );
+      if (!prev) return fail(ERROR.NOT_FOUND, `No todo with id ${id}.`);
+
       const row = await db.oneFresh<TodoRow>(
         `UPDATE todos SET ${sets.join(', ')}, updated_at = NOW()
          WHERE user_id = $1 AND id = $2
@@ -349,7 +360,21 @@ export const todoTools: ToolDefinition<never, unknown>[] = [
       );
       if (!row) return fail(ERROR.NOT_FOUND, `No todo with id ${id}.`);
 
-      await ctx.describe({ summary: `Updated todo "${row.title}"`, reversible: true });
+      await ctx.describe({
+        summary: `Updated todo "${row.title}"`,
+        reversible: true,
+        undoRef: JSON.stringify({
+          kind: 'todo.update',
+          id: row.id,
+          prev: {
+            title: prev.title,
+            notes: prev.notes,
+            priority: prev.priority,
+            due_at: prev.due_at,
+            status: prev.status,
+          },
+        }),
+      });
       return ok({ todo: shape(row) }, `Updated todo "${row.title}"`);
     },
   },
@@ -377,6 +402,11 @@ export const todoTools: ToolDefinition<never, unknown>[] = [
       const id = a.id;
       if (typeof id !== 'string' || !UUID_RE.test(id)) return badId();
 
+      // Read current status first so undo can restore the exact prior value.
+      const existing = await fetchOne(db, ctx.userId, id);
+      if (!existing) return fail(ERROR.NOT_FOUND, `No todo with id ${id}.`);
+      const prevStatus = existing.status;
+
       const row = await db.oneFresh<TodoRow>(
         `UPDATE todos
          SET status = 'done', completed_at = NOW(), updated_at = NOW()
@@ -385,14 +415,17 @@ export const todoTools: ToolDefinition<never, unknown>[] = [
         [ctx.userId, id],
       );
       if (row) {
-        await ctx.describe({ summary: `Completed todo "${row.title}"`, reversible: true });
+        await ctx.describe({
+          summary: `Completed todo "${row.title}"`,
+          reversible: true,
+          undoRef: JSON.stringify({ kind: 'todo.complete', id: row.id, prev_status: prevStatus }),
+        });
         return ok({ todo: shape(row) }, `Completed "${row.title}"`);
       }
 
       // Either it does not exist, or it was already done. Idempotent success
       // for the second case keeps a retried call from reporting a false error.
-      const existing = await fetchOne(db, ctx.userId, id);
-      if (!existing) return fail(ERROR.NOT_FOUND, `No todo with id ${id}.`);
+      // `existing` was already fetched above — reuse it rather than re-querying.
       return ok(
         { todo: shape(existing), unchanged: true },
         `"${existing.title}" was already done`,
@@ -461,6 +494,11 @@ export const todoTools: ToolDefinition<never, unknown>[] = [
       const id = a.id;
       if (typeof id !== 'string' || !UUID_RE.test(id)) return badId();
 
+      // Read current status first so undo can restore the exact prior value.
+      const existing = await fetchOne(db, ctx.userId, id);
+      if (!existing) return fail(ERROR.NOT_FOUND, `No todo with id ${id}.`);
+      const prevStatus = existing.status;
+
       const row = await db.oneFresh<TodoRow>(
         `UPDATE todos
          SET status = 'dropped', completed_at = NULL, updated_at = NOW()
@@ -470,7 +508,11 @@ export const todoTools: ToolDefinition<never, unknown>[] = [
       );
       if (!row) return fail(ERROR.NOT_FOUND, `No todo with id ${id}.`);
 
-      await ctx.describe({ summary: `Dropped todo "${row.title}"`, reversible: true });
+      await ctx.describe({
+        summary: `Dropped todo "${row.title}"`,
+        reversible: true,
+        undoRef: JSON.stringify({ kind: 'todo.drop', id: row.id, prev_status: prevStatus }),
+      });
       return ok({ todo: shape(row) }, `Dropped "${row.title}"`);
     },
   },

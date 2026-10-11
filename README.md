@@ -1,102 +1,124 @@
-# ThreadMyMail — Your AI Assistant
+# ThreadMyMail — Your AI Email Agent
 
-> Not an email client with AI features. An assistant that acts on your behalf —
-> then tells you what it did.
+> Not an email client with AI features. An autonomous inbox harness that runs
+> entirely on your phone — your credentials never leave it, and there is no
+> server, no account, and no subscription.
 
 ---
 
 ## What it is
 
-You bring your own model key. It connects to your mail and calendar, keeps your
-to-do list, remembers what matters, and **does things without waiting to be
-asked**.
+ThreadMyMail (Millo) is an Android APK: a self-contained harness that holds your
+email credentials (IMAP/SMTP + app password) and your AI key (BYOK), then runs
+the agent loop **on-device**. No OAuth, no backend, no cloud dependency.
 
-The agent is the product. Email, calendar, and tasks aren't pages you navigate
-to — they're capabilities the agent has, and it surfaces them into a conversation
-when they're relevant.
+**What Millo does on your schedule:**
+- Triage — clear the unread backlog, file, flag, archive
+- Draft replies — in your voice, queued for one click
+- Follow-ups — remind you (and optionally the sender) when threads go cold
 
-**Tone:** warm, quick, a little sassy. Never corporate, never sycophantic.
-
----
-
-## How it works
-
-- **Autonomous by default.** It triages, drafts, books, and reminds on a schedule
-  and reports back afterward. No "approve this action" dialogs.
-- **But bounded.** Kill switch, daily budgets, an undo stack for anything
-  reversible, a plain-language activity feed, and a morning digest of everything
-  it did.
-- **Extensible.** Write skills in plain language ("every Friday, tell me what I
-  promised and whether I did it"). Install plugins from a git URL.
-- **Trusts nothing from the outside.** Email and web content is treated as data,
-  never as instructions — and attempts to redirect the agent get reported, not
-  obeyed.
-
-### The to-do list
-
-The agent writes the UI in HTML; you interact with it. Tick a checkbox → it's a
-real database write *and* the agent immediately knows. Because the email from
-your boss said it was due EOD, it can then offer: *"Want me to reply and confirm
-that's handled?"*
-
-That's the whole design: the to-do list is a channel between you and the agent,
-not a table with a GUI.
+**Every action lands in an activity log.** Reversible actions stay reversible.
+The kill switch is always one tap away.
 
 ---
 
-## Tech
+## Tech stack
 
 | Layer | Choice |
 |---|---|
-| Compute | Cloudflare Workers + **Durable Objects** (hibernating, zero idle cost) |
-| Long jobs | Cloudflare **Workflows** |
-| Scheduler | Cron Triggers, 5-min heartbeat |
-| Database | **Neon** (Postgres + pgvector), pooled by Hyperdrive |
-| Blobs | **Cloudflare D1** (email bodies, attachments, fetch cache) — no card required |
-| Frontend | React + Vite + Tailwind → Cloudflare Pages (PWA) |
-| Mobile | Expo → Android APK |
-| Model | OpenRouter (BYOK) — one primary + a cheap background model for ticks |
+| App | **Expo 57** (React Native, New Architecture) |
+| Email | **react-native-mail-engine** (Nitro) — IMAP + SMTP via JavaMail/MailCore2 |
+| AI | **BYOK** — any OpenAI-compatible endpoint (OpenRouter, OpenAI, Anthropic, Gemini, DeepSeek, self-hosted) |
+| Credentials | **expo-secure-store** — Android Keystore, never leaves the device |
+| Local DB | **expo-sqlite** — cached message headers, no full bodies |
+| Sync | **IMAP IDLE** — realtime push, 180-day history import |
+| Build | **GitHub Actions** — Expo prebuild + Gradle, no EAS account |
 
-**Cost: $0/month** for infrastructure, at personal-use volume. Escape hatch if
-needed: Workers Paid ($5/mo) removes the CPU constraint with no code change.
+---
+
+## Building
+
+### Prerequisites
+- Node 20, Java 17
+- A test email account with an app password (Gmail: myaccount.google.com → Security → App passwords)
+- Optional: a signing keystore (generate with keytool; see below)
+
+### Local development
+```bash
+cd mobile-app
+npm install
+npx expo prebuild --platform android   # generates android/
+npx expo run:android                  # launches on a connected device/emulator
+```
+
+> react-native-mail-engine is a Nitro native module — it cannot run in Expo Go.
+> Use a development build (npx expo run:android) or the CI release build.
+
+### Release build (unsigned — fine for local testing)
+```bash
+cd mobile-app
+npx expo prebuild --platform android --clean
+cd android && ./gradlew assembleRelease
+# APK at: android/app/build/outputs/apk/release/app-release.apk
+```
+
+### Release build (properly signed, CI)
+
+Set the following **GitHub Actions secrets**, then trigger the workflow:
+
+| Secret | Value |
+|---|---|
+| THMMY_KEYSTORE_BASE64 | base64 -w0 threadmymail.keystore |
+| THMMY_KEYSTORE_FILE | Filename, e.g. threadmymail.keystore |
+| THMMY_KEYSTORE_PASSWORD | Keystore password |
+| THMMY_KEY_ALIAS | Key alias |
+| THMMY_KEY_PASSWORD | Key password |
+
+The workflow publishes a GitHub Release with the signed APK automatically.
+
+### Generate a signing keystore (first time)
+```bash
+keytool -genkey -v -keystore threadmymail.keystore \
+  -alias threadmymail -keyalg RSA -keysize 2048 -validity 10000 \
+  -storepass <password> -keypass <password> \
+  -dname "CN=ThreadMyMail, OU=ThreadMyMail, O=ThreadMyMail, L=Earth, C=US"
+```
+
+---
+
+## Architecture
+
+The APK is a harness. It holds your email credentials (IMAP/SMTP + app password)
+and your AI key (BYOK), and runs the agent loop on-device.
+
+- **Credentials** live in the OS keychain — Android Keystore-backed.
+- **Agent loop** runs in the app's JS/TS layer: pull mail, call AI, act.
+- **No backend dependency.** Works offline (except AI, which needs a network key).
 
 ---
 
 ## Docs
 
-| Document | What's in it |
+| Document | Purpose |
 |---|---|
-| **[PLAN.md](docs/PLAN.md)** | Product, locked decisions, roadmap, cost model, decision log |
-| **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** | How it runs on Cloudflare, storage topology, data model |
-| **[AI-SKILLS.md](docs/AI-SKILLS.md)** | Persona, tools, skills, autonomy, memory, artifacts |
-| **[PLUGINS.md](docs/PLUGINS.md)** | Plugin manifest, install flow, permissions, built-ins |
-| **[API.md](docs/API.md)** | REST + WebSocket surface |
-| **[GOOGLE_OAUTH.md](docs/GOOGLE_OAUTH.md)** | Single-consent Google sign-in |
-| [agent.md](agent.md) | Conventions for AI agents working in this repo |
-
-> ⚠️ **Before building anything:** run the Phase 0 spike in
-> [ARCHITECTURE.md §11](docs/ARCHITECTURE.md). It determines whether the whole
-> architecture is viable on the free tier, and Cloudflare's own documentation is
-> ambiguous on the point.
+| mobile/MOBILE-STRATEGY.md | Authoritative product/architecture plan |
+| mobile/MVP-UI.md | MVP UI design — screens, navigation, components |
+| agent.md | Conventions for AI agents working in this repo |
+| HANDOFF.md | Session handoff — current state and priorities |
 
 ---
 
-## Status
+## Status (2026-10-10)
 
-Planning is complete and current. Implementation has not started — the Python
-backend in `backend/` is superseded scaffolding, not part of the build.
+The mobile harness is the product. The website is a landing + download page.
 
-Next: the Phase 0 spike, then the agent runtime.
+- APK builds with Expo + Gradle (CI: .github/workflows/android-build.yml)
+- IMAP/SMTP bridge wired (src/lib/mailBridge.ts, src/lib/mailSync.ts)
+- SMTP passthrough fixed — harness can send
+- BYOK providers wired (src/lib/providerStore.ts, src/lib/emailTest.ts)
+- Onboarding persists account + provider + onboarding flag (src/lib/prefs.ts)
+- Settings: connect/disconnect email, add/remove/test providers, guardrails
+- Signing plugin: plugins/withAndroidReleaseSigning.js (injects keystore config at prebuild)
+- Provider store: src/lib/providerStore.ts (SecureStore-backed, testProvider / GET /models)
 
----
-
-## Layout
-
-```
-apps/worker/       Cloudflare Worker — API, agent, cron, workflows, plugins
-apps/web/          React + Vite + Tailwind → Cloudflare Pages
-apps/mobile/       Expo → EAS APK
-packages/shared/   Tool schemas, types, default persona
-plugins/           User-installed (git-cloned, gitignored)
-docs/
-```
+**Next:** real device test with a test Gmail app-password account.

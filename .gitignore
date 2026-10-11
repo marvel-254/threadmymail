@@ -66,3 +66,6 @@ Thumbs.db
 --output
 *-preview.png
 *-preview2.png
+
+# generated intro video (copy lives in mobile-app/src/assets/)
+/intro.mp4

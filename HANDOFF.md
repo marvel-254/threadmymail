@@ -1,8 +1,52 @@
-# Handoff — 2026-10-02
+# Handoff — 2026-10-06
 
-Where things stand after today's session, written for whoever picks this up
-next. For the reasoning behind decisions, see `agent.md` (current state and
-invariants) and `IMPLEMENTATION_SUMMARY.md` (chronological session log).
+> **Direction change (2026-10-06):** the product pivoted. The APK is now a
+> **self-contained mobile harness** (BYOK AI + SMTP/IMAP app-password email,
+> no OAuth, no backend), built with **Expo**. The website becomes a landing +
+> download page. The Cloudflare Worker agent is **no longer the product**.
+> Read `mobile/MOBILE-STRATEGY.md` and `mobile/MVP-UI.md` first. The 2026-10-02
+> content below is kept for history.
+
+Where things stand, written for whoever picks this up next. For the reasoning
+behind decisions, see `agent.md` (current state and invariants) and
+`IMPLEMENTATION_SUMMARY.md` (chronological session log).
+
+---
+
+## Mobile harness — the new direction (2026-10-06)
+
+The Android app is now the product: a **harness** that holds the user's email
+credentials (SMTP/IMAP + app password) and their AI key (BYOK), and runs the
+agent loop **on-device**. No OAuth, no server, no Cloudflare dependency.
+
+**Docs created this session:**
+- `mobile/MOBILE-STRATEGY.md` — the authoritative plan (architecture, verified
+  IMAP/SMTP library, build checklist, desktop roadmap).
+- `mobile/MVP-UI.md` — MVP UI design (screens, navigation, onboarding,
+  components).
+- `mobile/APK.md` — **superseded** (banner added); kept for history only.
+
+**Key research finding:** raw IMAP/SMTP needs a native module in RN (pure-JS
+clients need Node's `net`/`tls`, which don't exist in Hermes). Verified
+solution: **`react-native-mail-engine`** (Nitro module, New Architecture,
+Android via JavaMail, iOS via MailCore2, app-password auth, IMAP IDLE push).
+Requires a **dev build** (not Expo Go). Fallback: custom JavaMail module.
+
+**Build pattern:** reuse `bro`'s — build the APK in **GitHub Actions**
+(`expo prebuild` + Gradle + Java 17), no EAS account needed. Sign with a
+keystore stored as a GitHub secret.
+
+**Scope agreed (MVP):** skills (triage/drafts/follow-ups, schedules, budgets,
+quiet hours, shadow mode, kill switch), on-device memory (`expo-sqlite`),
+multi-provider BYOK (OpenRouter/OpenAI/Anthropic/Gemini/DeepSeek/custom).
+
+**Next step (the risk gate):** scaffold the Expo app and run the **email
+bridge spike** — integrate `react-native-mail-engine`, connect a Gmail
+app-password account, verify IMAP read + SMTP send on a dev build.
+
+**Needed from the user to start:** repo home (suggested: new repo
+`marvel-254/threadmymail-app`), a test Gmail account + app password, and a
+decision on who holds the signing keystore.
 
 ---
 
@@ -136,12 +180,71 @@ Needs replacing with TypeScript. Not urgent but will cause confusion.
 
 ---
 
-## What to build next
+## What was done today -- 2026-10-10
 
-1. **Phase 4** — Workflows, real undo, activity feed. This is the next
-   engineering phase now that OAuth and BYOK are both working.
-2. **A real provider key** (user action) — last thing blocking a live model turn.
-3. **CI** — replace the Python pipeline with a TypeScript equivalent.
+### Mobile harness -- persistence and wiring
+
+The scaffold from 2026-10-06 is now end-to-end functional.
+
+**New files:**
+- `mobile-app/src/lib/providerStore.ts` -- BYOK AI key persistence in SecureStore.
+  `addProvider / removeProvider / setPrimary / getPrimaryProvider / maskKey`.
+  `testProvider` calls GET /models (12s timeout) to prove key valid, URL right, host reachable.
+- `mobile-app/src/lib/prefs.ts` -- onboarding flag in SecureStore (no new native deps).
+  The old pure-React-state gate in AppShell is gone; onboarding now survives restarts.
+- `mobile-app/src/lib/emailTest.ts` -- live IMAP connection test (opens INBOX, reads one header).
+  Maps common JavaMail errors to human-readable instructions.
+- `mobile-app/plugins/withAndroidReleaseSigning.js` -- injects keystore signingConfig at
+  prebuild time. No hand-editing of android/. No-ops without secrets, warns clearly.
+  Inputs: THMMY_KEYSTORE_FILE / PASSWORD, THMMY_KEY_ALIAS / PASSWORD.
+
+**SMTP fix:**
+- `mobile-app/src/lib/mailSync.ts`: `start()` now passes `smtp:` to `bridge.connect()`.
+  Harness could not send before; this was a silent regression.
+
+**AppShell rewrites:**
+- Reads `isOnboarded()` from storage before rendering; ActivityIndicator during load.
+  Configured users never see the wizard flash.
+- Auto-starts `getMailSync()` if an account is already saved.
+
+**Onboarding rewrites:**
+- Step 1 (email): provider picker + Custom IMAP/SMTP fields + live test + Save to accountStore.
+  Gmail app-password guidance shown in helper text.
+- Step 2 (AI): provider picker + key + base URL + model + live test via testProvider.
+- Step 3: skill toggles (stubs for now).
+
+**SettingsScreen rewrites:**
+- Email: connect/disconnect wired to accountStore + live testImap on save.
+- AI providers: list from providerStore, add sheet (live test), per-card test button,
+  remove with confirm dialog, set-primary button per non-primary provider.
+- Guardrails: Kill switch + Shadow mode toggles (in-memory for now).
+- Memory: placeholder showing 0 entries.
+
+**GitHub Actions (`.github/workflows/android-build.yml`):**
+- Keystore setup from THMMY_KEYSTORE_BASE64 secret.
+- APK signature verification (checks META-INF/CERT.RSA/DSA).
+- Optional GitHub Release via workflow_dispatch + release_tag input.
+
+**README rewritten** to match the mobile-harness product direction.
+
+**Typecheck: clean** (npx tsc --noEmit in mobile-app/)
+
+
+---
+
+ What to build next
+
+1. **Mobile harness (the product now)** — see `mobile/MOBILE-STRATEGY.md`.
+   Start with the **email bridge spike** (risk gate): scaffold the Expo app,
+   integrate `react-native-mail-engine`, verify IMAP read + SMTP send.
+2. **Website → download page** — replace the 4 "Get Started" CTAs in
+   `frontend/src/pages/Landing.jsx` with a "Download for Android" button;
+   disable `/app` and `/signin`; host the APK on a GitHub release.
+3. **Desktop (later)** — Electron + `nodemailer`/`imapflow` reusing the Expo
+   web export (easier than Android; see MOBILE-STRATEGY §5).
+
+The old Cloudflare Worker roadmap (Phase 4 workflows etc.) is **parked** — the
+Worker is no longer the product.
 
 ---
 

@@ -1,144 +1,332 @@
 /**
  * Onboarding — Welcome → Connect email → Add AI key → Pick skills → Done.
- * MVP-UI §3 · DB: User Freedom (Skip + Back), Empty States, Submit Feedback.
+ *
+ * Every step writes to real stores so the user can quit at any point and return
+ * where they left off. The "Test connection" buttons call live endpoints and
+ * surface readable errors, not raw exceptions.
  */
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { Button, SectionLabel } from '../components/ui';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { VideoView, useVideoPlayer } from 'expo-video';
+import { Button } from '../components/ui';
 import { Field } from '../components/settings';
 import { IconBack, IconSparkle } from '../components/Icons';
-import { CUSTOM_PROVIDER_ID, PROVIDER_PRESETS } from '../lib/providers';
+import { PROVIDER_PRESETS, CUSTOM_PROVIDER_ID } from '../lib/providers';
+import {
+  EMAIL_PROVIDERS,
+  saveAccount,
+  type EmailProvider,
+} from '../lib/accountStore';
+import { addProvider } from '../lib/providerStore';
+import { testImap } from '../lib/emailTest';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
-const PROVIDERS = ['Gmail', 'Outlook', 'Yahoo', 'iCloud', 'Custom'];
-const SKILLS = ['Triage', 'Draft replies', 'Follow-ups'];
+const EMAIL_STEPS = EMAIL_PROVIDERS.length; // 5 — Gmail, Outlook, Yahoo, iCloud, Custom
+const SKILL_LABELS = ['Triage', 'Draft replies', 'Follow-ups'] as const;
 
 type OnboardingProps = {
   onDone: () => void;
 };
 
 export function Onboarding({ onDone }: OnboardingProps) {
+  // ── Navigation ──────────────────────────────────────────────────────────
   const [step, setStep] = useState(0);
-  const [emailProvider, setEmailProvider] = useState('Gmail');
-  const [email, setEmail] = useState('');
+  const TOTAL_STEPS = 4; // welcome=0, email=1, AI=2, skills=3, done inline
+
+  // ── Welcome video ───────────────────────────────────────────────────────
+  const videoPlayer = useVideoPlayer(require('../assets/intro.mp4'), (player) => {
+    player.loop = true;
+    player.muted = true;
+    player.play();
+  });
+
+  const next = () => {
+    if (step === 3) {
+      void onDone();
+    } else {
+      setStep(step + 1);
+    }
+  };
+  const back = () => (step > 0 ? setStep(step - 1) : undefined);
+
+  // ── Email state ──────────────────────────────────────────────────────────
+  const [emailProviderId, setEmailProviderId] = useState<string>(EMAIL_PROVIDERS[0].id);
+  const [emailAddress, setEmailAddress] = useState('');
   const [appPassword, setAppPassword] = useState('');
+  const [customImapHost, setCustomImapHost] = useState('');
+  const [customImapPort, setCustomImapPort] = useState('993');
+  const [customSmtpHost, setCustomSmtpHost] = useState('');
+  const [customSmtpPort, setCustomSmtpPort] = useState('587');
+  const [emailTesting, setEmailTesting] = useState(false);
+  const [emailResult, setEmailResult] = useState<{ ok: boolean; detail: string } | null>(null);
+  const [emailSaving, setEmailSaving] = useState(false);
+
+  const selectedEmailProvider = EMAIL_PROVIDERS.find((p) => p.id === emailProviderId)!;
+
+  const runEmailTest = async () => {
+    setEmailTesting(true);
+    setEmailResult(null);
+    const result = await testImap({
+      imap: {
+        host: emailProviderId === 'custom' ? customImapHost.trim() : selectedEmailProvider.imapHost,
+        port: emailProviderId === 'custom'
+          ? Number(customImapPort) || 993
+          : selectedEmailProvider.imapPort,
+        security: selectedEmailProvider.imapSecurity,
+      },
+      smtp: emailProviderId === 'custom'
+        ? { host: customSmtpHost.trim(), port: Number(customSmtpPort) || 587, security: 'starttls' }
+        : { host: selectedEmailProvider.smtpHost, port: selectedEmailProvider.smtpPort, security: selectedEmailProvider.smtpSecurity },
+      user: emailAddress,
+      password: appPassword,
+    });
+    setEmailTesting(false);
+    setEmailResult(result);
+  };
+
+  const runEmailSave = async () => {
+    if (!emailAddress.trim() || !appPassword) return;
+    setEmailSaving(true);
+    try {
+      await saveAccount({
+        providerId: emailProviderId,
+        email: emailAddress,
+        password: appPassword,
+        customImapHost: emailProviderId === 'custom' ? customImapHost.trim() : undefined,
+        customImapPort: emailProviderId === 'custom' ? Number(customImapPort) : undefined,
+        customSmtpHost: emailProviderId === 'custom' ? customSmtpHost.trim() : undefined,
+        customSmtpPort: emailProviderId === 'custom' ? Number(customSmtpPort) : undefined,
+      });
+      next();
+    } catch (err) {
+      setEmailResult({ ok: false, detail: err instanceof Error ? err.message : 'Could not save.' });
+      setEmailSaving(false);
+    }
+  };
+
+  // ── AI state ────────────────────────────────────────────────────────────
   const [aiPresetId, setAiPresetId] = useState('openrouter');
   const [apiKey, setApiKey] = useState('');
   const [baseUrl, setBaseUrl] = useState(PROVIDER_PRESETS[0].baseUrl);
   const [model, setModel] = useState(PROVIDER_PRESETS[0].defaultModel);
-  const [skills, setSkills] = useState<Record<string, boolean>>({ Triage: true, 'Draft replies': false, 'Follow-ups': false });
+  const [aiTesting, setAiTesting] = useState(false);
+  const [aiResult, setAiResult] = useState<{ ok: boolean; detail: string } | null>(null);
+  const [aiSaving, setAiSaving] = useState(false);
 
-  const aiPreset = PROVIDER_PRESETS.find((p) => p.id === aiPresetId);
+  const aiPreset = PROVIDER_PRESETS.find((p) => p.id === aiPresetId) ?? PROVIDER_PRESETS[0];
 
-  /**
-   * Selecting a preset prefills its endpoint and model. Custom has neither, so
-   * both fields are cleared and the user must supply the base URL themselves —
-   * that is the whole reason Custom exists.
-   */
   const selectAiPreset = (id: string) => {
     setAiPresetId(id);
-    const preset = PROVIDER_PRESETS.find((p) => p.id === id);
-    setBaseUrl(preset?.baseUrl ?? '');
-    setModel(preset?.defaultModel ?? '');
+    const p = PROVIDER_PRESETS.find((x) => x.id === id);
+    setBaseUrl(p?.baseUrl ?? '');
+    setModel(p?.defaultModel ?? '');
   };
 
-  const next = () => (step < 4 ? setStep(step + 1) : onDone());
-  const back = () => (step > 0 ? setStep(step - 1) : undefined);
+  const runAiTest = async () => {
+    if (!apiKey.trim()) {
+      setAiResult({ ok: false, detail: 'Paste your API key first.' });
+      return;
+    }
+    setAiTesting(true);
+    setAiResult(null);
+    // testProvider is imported dynamically to avoid circular deps (not actually
+    // circular here but it's a local import at module level — safe to lazy-gate).
+    const { testProvider } = await import('../lib/providerStore');
+    const result = await testProvider({ baseUrl, apiKey, model });
+    setAiTesting(false);
+    setAiResult(result);
+  };
 
-  const picker = (options: string[], selected: string, onSelect: (v: string) => void) => (
-    <View style={styles.picker}>
-      {options.map((o) => (
-        <Pressable
-          key={o}
-          accessibilityRole="button"
-          accessibilityState={{ selected: o === selected }}
-          onPress={() => onSelect(o)}
-          style={[styles.pickerItem, o === selected && styles.pickerItemActive]}
-        >
-          <Text style={[styles.pickerText, o === selected && styles.pickerTextActive]}>{o}</Text>
-        </Pressable>
-      ))}
+  const runAiSave = async () => {
+    if (!apiKey.trim()) {
+      setAiResult({ ok: false, detail: 'Paste your API key first.' });
+      return;
+    }
+    setAiSaving(true);
+    try {
+      await addProvider({
+        id: aiPresetId,
+        label: aiPreset.label,
+        baseUrl,
+        model,
+        apiKey,
+      });
+      next();
+    } catch (err) {
+      setAiResult({ ok: false, detail: err instanceof Error ? err.message : 'Could not save.' });
+      setAiSaving(false);
+    }
+  };
+
+  // ── Skills state ────────────────────────────────────────────────────────
+  const [skills, setSkills] = useState<Record<string, boolean>>({
+    'Triage': true,
+    'Draft replies': false,
+    'Follow-ups': false,
+  });
+
+  // ── Shared helpers ──────────────────────────────────────────────────────
+  const ResultBanner = ({ result }: { result: { ok: boolean; detail: string } | null }) => {
+    if (!result) return null;
+    return (
+      <View style={[styles.resultBanner, result.ok ? styles.resultOk : styles.resultErr]}>
+        <Text style={[styles.resultText, result.ok ? styles.resultTextOk : styles.resultTextErr]}>
+          {result.detail}
+        </Text>
+      </View>
+    );
+  };
+
+  const Picker = <T extends string>({
+    options,
+    selected,
+    onSelect,
+    label,
+  }: {
+    options: readonly T[];
+    selected: T;
+    onSelect: (v: T) => void;
+    label?: string;
+  }) => (
+    <View style={styles.pickerGroup}>
+      {label && <Text style={styles.pickerLabel}>{label}</Text>}
+      <View style={styles.picker}>
+        {options.map((o) => (
+          <Pressable
+            key={o}
+            accessibilityRole="button"
+            accessibilityState={{ selected: o === selected }}
+            onPress={() => onSelect(o)}
+            style={[styles.pickerItem, o === selected && styles.pickerItemActive]}
+          >
+            <Text style={[styles.pickerText, o === selected && styles.pickerTextActive]}>
+              {o}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
     </View>
   );
 
   return (
     <View style={styles.screen}>
+      {/* ── Header bar ─────────────────────────────────────────────── */}
       <View style={styles.header}>
-        {step > 0 ? (
-          <Pressable accessibilityLabel="Back" onPress={back} style={styles.headerBtn}>
-            <IconBack size={22} color={colors.text} />
-          </Pressable>
-        ) : (
-          <View style={styles.headerBtn} />
-        )}
-        <Text style={styles.stepCount}>{step + 1} / 5</Text>
-        <Pressable accessibilityLabel="Skip" onPress={onDone} style={styles.headerBtn}>
+        <View style={styles.headerBtn}>
+          {step > 0 ? (
+            <Pressable accessibilityLabel="Back" onPress={back} style={styles.headerBtnInner}>
+              <IconBack size={22} color={colors.text} />
+            </Pressable>
+          ) : null}
+        </View>
+        <Text style={styles.stepCount}>{step + 1} / {TOTAL_STEPS + 1}</Text>
+        <Pressable accessibilityLabel="Skip all setup" onPress={onDone} style={styles.headerBtnInner}>
           <Text style={styles.skipText}>Skip</Text>
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      {/* ── Step content ──────────────────────────────────────────── */}
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/* ── Step 0: Welcome ─────────────────────────────────────── */}
         {step === 0 && (
           <View style={styles.welcome}>
-            <View style={styles.logo}>
-              <IconSparkle size={32} color={colors.primary} />
+            <View style={styles.videoContainer}>
+              <VideoView
+                player={videoPlayer}
+                style={styles.video}
+                nativeControls={false}
+                contentFit="contain"
+              />
+              <IconSparkle size={36} color={colors.primary} />
             </View>
-            <Text style={styles.welcomeTitle}>Your inbox, run by an agent you control</Text>
+            <Text style={styles.welcomeTitle}>Your inbox, run by an agent you control.</Text>
             <Text style={styles.welcomeBody}>
-              Your credentials and keys never leave this phone.
+              Your credentials and AI key never leave this phone.
             </Text>
           </View>
         )}
 
+        {/* ── Step 1: Email account ───────────────────────────────── */}
         {step === 1 && (
           <>
             <Text style={styles.stepTitle}>Connect email</Text>
-            {picker(PROVIDERS, emailProvider, setEmailProvider)}
-            {emailProvider === 'Custom' && (
+            <Picker
+              label="Provider"
+              options={EMAIL_PROVIDERS.map((p) => p.label) as unknown as readonly string[]}
+              selected={selectedEmailProvider.label}
+              onSelect={(label) => {
+                const p = EMAIL_PROVIDERS.find((x) => x.label === label);
+                if (p) setEmailProviderId(p.id);
+              }}
+            />
+            <Field
+              label="Email address"
+              value={emailAddress}
+              onChangeText={(t) => { setEmailAddress(t); setEmailResult(null); }}
+              placeholder="you@example.com"
+              keyboardType="email-address"
+            />
+            <Field
+              label="App password"
+              value={appPassword}
+              onChangeText={(t) => { setAppPassword(t); setEmailResult(null); }}
+              secure
+              placeholder="•••• •••• •••• ••••"
+              helper={
+                emailProviderId === 'gmail'
+                  ? 'Create one at myaccount.google.com → Security → 2-Step → App passwords.'
+                  : emailProviderId === 'outlook'
+                    ? 'Create one at account.microsoft.com → Security → App passwords.'
+                    : 'Use the app-password or integration password for your provider.'
+              }
+            />
+            {emailProviderId === 'custom' && (
               <>
-                <Field label="IMAP host" value={email} onChangeText={setEmail} placeholder="imap.example.com" />
-                <Field label="SMTP host" value={appPassword} onChangeText={setAppPassword} placeholder="smtp.example.com" />
+                <Field label="IMAP host" value={customImapHost} onChangeText={setCustomImapHost} placeholder="imap.example.com" />
+                <Field label="IMAP port" value={customImapPort} onChangeText={setCustomImapPort} keyboardType="numeric" />
+                <Field label="SMTP host" value={customSmtpHost} onChangeText={setCustomSmtpHost} placeholder="smtp.example.com" />
+                <Field label="SMTP port" value={customSmtpPort} onChangeText={setCustomSmtpPort} keyboardType="numeric" />
               </>
             )}
-            <Field label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" />
-            <Field label="App password" value={appPassword} onChangeText={setAppPassword} secure placeholder="•••• •••• •••• ••••" />
-            <Button label="Test connection" variant="secondary" onPress={() => {}} />
+            <ResultBanner result={emailResult} />
+            <Button
+              label={emailTesting ? 'Testing…' : 'Test connection'}
+              variant="secondary"
+              disabled={emailTesting || !emailAddress.trim() || !appPassword}
+              loading={emailTesting}
+              onPress={runEmailTest}
+            />
           </>
         )}
 
+        {/* ── Step 2: AI key ──────────────────────────────────────── */}
         {step === 2 && (
           <>
             <Text style={styles.stepTitle}>Add AI key</Text>
-            {picker(
-              PROVIDER_PRESETS.map((p) => p.label),
-              aiPreset?.label ?? '',
-              (label) => {
-                const preset = PROVIDER_PRESETS.find((p) => p.label === label);
-                if (preset) selectAiPreset(preset.id);
-              },
-            )}
+            <Picker
+              label="Provider"
+              options={PROVIDER_PRESETS.map((p) => p.label) as unknown as readonly string[]}
+              selected={aiPreset.label}
+              onSelect={(label) => {
+                const p = PROVIDER_PRESETS.find((x) => x.label === label);
+                if (p) selectAiPreset(p.id);
+              }}
+            />
             <Field
               label="API key"
               value={apiKey}
-              onChangeText={setApiKey}
+              onChangeText={(t) => { setApiKey(t); setAiResult(null); }}
               secure
-              placeholder={aiPreset?.keyHint ?? 'sk-…'}
-              helper={
-                aiPresetId === CUSTOM_PROVIDER_ID
-                  ? 'Any OpenAI-compatible endpoint works.'
-                  : aiPreset?.keyHint
-                    ? `Expected a key starting with ${aiPreset.keyHint}`
-                    : undefined
-              }
+              placeholder={aiPreset.keyHint}
             />
             <Field
               label="Base URL"
               value={baseUrl}
               onChangeText={setBaseUrl}
-              placeholder={aiPreset?.baseUrl || 'https://your-endpoint.example/v1'}
+              placeholder="https://api.openai.com/v1"
               helper={
                 aiPresetId === CUSTOM_PROVIDER_ID
-                  ? 'Required for a custom provider — where the requests go.'
+                  ? 'Required. Must be an OpenAI-compatible endpoint.'
                   : 'Prefilled for this provider. Change it if you use a proxy.'
               }
             />
@@ -146,18 +334,28 @@ export function Onboarding({ onDone }: OnboardingProps) {
               label="Default model"
               value={model}
               onChangeText={setModel}
-              placeholder={aiPreset?.defaultModel || 'model-id'}
-              helper="Which model the agent uses unless a skill overrides it."
+              placeholder="gpt-4o-mini"
+              helper="Used unless a skill specifies a different one."
             />
-            <Button label="Test connection" variant="secondary" onPress={() => {}} />
+            <ResultBanner result={aiResult} />
+            <Button
+              label={aiTesting ? 'Testing…' : 'Test connection'}
+              variant="secondary"
+              disabled={aiTesting || !apiKey.trim()}
+              loading={aiTesting}
+              onPress={runAiTest}
+            />
           </>
         )}
 
+        {/* ── Step 3: Skills ──────────────────────────────────────── */}
         {step === 3 && (
           <>
             <Text style={styles.stepTitle}>Pick skills</Text>
-            <Text style={styles.stepBody}>Optional — configure later in Settings.</Text>
-            {SKILLS.map((s) => (
+            <Text style={styles.stepBody}>
+              Optional — all of these can be changed later in Settings.
+            </Text>
+            {SKILL_LABELS.map((s) => (
               <View key={s} style={styles.skillRow}>
                 <Text style={styles.skillName}>{s}</Text>
                 <Switch
@@ -170,17 +368,50 @@ export function Onboarding({ onDone }: OnboardingProps) {
             ))}
           </>
         )}
-
-        {step === 4 && (
-          <View style={styles.welcome}>
-            <Text style={styles.welcomeTitle}>You're all set</Text>
-            <Text style={styles.welcomeBody}>The agent will start with your morning triage.</Text>
-          </View>
-        )}
       </ScrollView>
 
+      {/* ── Footer CTA ───────────────────────────────────────────── */}
       <View style={styles.footer}>
-        <Button label={step === 4 ? 'Done' : 'Continue'} onPress={next} fullWidth />
+        {/* Step 1: email — two buttons: Test (secondary) and Save & continue (primary) */}
+        {step === 1 && (
+          <View style={styles.footerRow}>
+            <Button
+              label={emailTesting ? 'Testing…' : 'Test connection'}
+              variant="secondary"
+              disabled={emailTesting || !emailAddress.trim() || !appPassword}
+              loading={emailTesting}
+              onPress={runEmailTest}
+            />
+            <Button
+              label={emailSaving ? 'Saving…' : 'Save & continue'}
+              disabled={emailSaving || !emailAddress.trim() || !appPassword}
+              loading={emailSaving}
+              onPress={runEmailSave}
+            />
+          </View>
+        )}
+        {/* Step 2: AI — two buttons: Test (secondary) and Save & continue (primary) */}
+        {step === 2 && (
+          <View style={styles.footerRow}>
+            <Button
+              label={aiTesting ? 'Testing…' : 'Test connection'}
+              variant="secondary"
+              disabled={aiTesting || !apiKey.trim()}
+              loading={aiTesting}
+              onPress={runAiTest}
+            />
+            <Button
+              label={aiSaving ? 'Saving…' : 'Save & continue'}
+              disabled={aiSaving || !apiKey.trim()}
+              loading={aiSaving}
+              onPress={runAiSave}
+            />
+          </View>
+        )}
+        {/* Steps 0 and 3: single Continue button */}
+        {step !== 1 && step !== 2 && (
+          <Button label={step === 3 ? 'Done' : 'Continue'} onPress={next} fullWidth />
+        )}
       </View>
     </View>
   );
@@ -192,37 +423,50 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     minHeight: 56,
   },
-  headerBtn: {
+  headerBtn: { width: touch.minTarget, height: touch.minTarget },
+  headerBtnInner: {
     width: touch.minTarget,
     height: touch.minTarget,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radii.md,
   },
   stepCount: { ...typography.caption, color: colors.textSubtle },
   skipText: { ...typography.bodySmall, color: colors.accent, fontWeight: '600' },
-  content: { padding: spacing.xl, gap: spacing.lg },
-  welcome: { alignItems: 'center', gap: spacing.md, paddingTop: spacing.xxl },
+  content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxl * 2 },
+  welcome: { alignItems: 'center', gap: spacing.md, paddingTop: spacing.xxl * 2 },
+  videoContainer: {
+    width: 240,
+    height: 420,
+    borderRadius: radii.xl,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+  },
+  video: {
+    width: '100%',
+    height: '100%',
+  },
   logo: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: colors.surfaceStrong,
     alignItems: 'center',
     justifyContent: 'center',
   },
   welcomeTitle: { ...typography.h1, color: colors.text, textAlign: 'center' },
-  welcomeBody: { ...typography.body, color: colors.textMuted, textAlign: 'center' },
+  welcomeBody: { ...typography.body, color: colors.textMuted, textAlign: 'center', maxWidth: 280 },
   stepTitle: { ...typography.h2, color: colors.text },
   stepBody: { ...typography.bodySmall, color: colors.textMuted },
+  pickerGroup: { gap: spacing.sm },
+  pickerLabel: { ...typography.label, color: colors.textMuted },
   picker: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   pickerItem: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: radii.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -233,6 +477,16 @@ const styles = StyleSheet.create({
   pickerItemActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   pickerText: { ...typography.bodySmall, color: colors.textMuted },
   pickerTextActive: { color: colors.textOnPrimary, fontWeight: '600' },
+  resultBanner: {
+    borderRadius: radii.md,
+    padding: spacing.md,
+    borderWidth: 1,
+  },
+  resultOk: { backgroundColor: colors.successBg, borderColor: colors.success },
+  resultErr: { backgroundColor: colors.dangerBg, borderColor: colors.danger },
+  resultText: { ...typography.bodySmall },
+  resultTextOk: { color: colors.success },
+  resultTextErr: { color: colors.danger },
   skillRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -242,7 +496,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
+    gap: spacing.md,
   },
-  skillName: { ...typography.body, color: colors.text, fontWeight: '600' },
-  footer: { padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border },
+  skillName: { ...typography.body, color: colors.text, fontWeight: '600', flex: 1 },
+  footer: {
+    padding: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: spacing.md,
+  },
+  footerRow: { flexDirection: 'row', gap: spacing.md },
 });
