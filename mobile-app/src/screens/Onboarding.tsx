@@ -440,8 +440,8 @@ const styles = StyleSheet.create({
   content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxl * 2 },
   welcome: { alignItems: 'center', gap: spacing.md, paddingTop: spacing.xl * 1.5 },
   videoContainer: {
-    width: 200,
-    height: 280,
+    width: 180,
+    height: 220,
     borderRadius: radii.xl,
     overflow: 'hidden',
     backgroundColor: colors.surface,

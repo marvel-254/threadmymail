@@ -114,10 +114,9 @@ export function BottomTabBar({ active, onSelect }: BottomTabBarProps) {
 
 const styles = StyleSheet.create({
   wrapper: {
-    // Compact height — just enough for the icon row, hairline label bar and
-    // safe-area inset. Keeps the bar out of the way of content.
-    minHeight: 56,
-    paddingVertical: 4,
+    // Ultra-compact height — icon row + hairline labels + safe-area only.
+    minHeight: 48,
+    paddingVertical: 2,
     backgroundColor: colors.bgDeep,
     justifyContent: 'center',
   },
@@ -145,7 +144,7 @@ const styles = StyleSheet.create({
   },
   iconSlot: {
     width: 40,
-    height: 36,
+    height: 28,
     borderRadius: radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -155,18 +154,18 @@ const styles = StyleSheet.create({
   },
   // Millo breaks the grid: a raised pill that reads as the primary action.
   milloSlot: {
-    width: 52,
-    height: 38,
+    width: 50,
+    height: 34,
     borderRadius: radii.pill,
     backgroundColor: colors.surfaceStrong,
     borderWidth: 1,
     borderColor: colors.borderPrimary,
-    marginTop: -10,
+    marginTop: -8,
   },
   labelBar: {
     flexDirection: 'row',
-    paddingTop: 1,
-    paddingBottom: spacing.xs,
+    paddingTop: 0,
+    paddingBottom: 2,
   },
   labelSlot: {
     flex: 1,
