@@ -12,6 +12,10 @@ on:
         description: 'Release tag to create (e.g. v1.0.0). Leave empty to upload artifact only.'
         required: false
         default: ''
+      abi:
+        description: 'Native ABIs to build (comma separated, e.g. arm64-v8a). Empty = universal (all ABIs).'
+        required: false
+        default: ''
 
 env:
   JAVA_VERSION: '17'
@@ -84,7 +88,13 @@ jobs:
           THMMY_KEYSTORE_PASSWORD: ${{ secrets.THMMY_KEYSTORE_PASSWORD }}
           THMMY_KEY_ALIAS: ${{ secrets.THMMY_KEY_ALIAS }}
           THMMY_KEY_PASSWORD: ${{ secrets.THMMY_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: |
+          if [ -n "${{ github.event.inputs.abi }}" ]; then
+            ABI_ARGS="-PreactNativeArchitectures=${{ github.event.inputs.abi }}"
+          else
+            ABI_ARGS=""
+          fi
+          ./gradlew assembleRelease $ABI_ARGS
         timeout-minutes: 30
 
       - name: Verify APK
