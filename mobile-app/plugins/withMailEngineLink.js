@@ -7,9 +7,15 @@
  * `include` for it — the module would be silently absent from the APK and
  * `MailEngine.connect()` would fail at runtime.
  *
- * This plugin appends the missing `include` to `settings.gradle` so the module
- * is compiled into the app. The module's own `android/build.gradle` declares
- * its dependency on `:react-native-nitro-modules`, which autolinks normally.
+ * This plugin does two things:
+ *   1. Appends `include ':react-native-mail-engine'` (with its projectDir) to
+ *      `settings.gradle` so the module is part of the Gradle build.
+ *   2. Adds `implementation project(':react-native-mail-engine')` to the app's
+ *      `dependencies` block so the module is actually packaged into the APK.
+ *
+ * The module's own `android/build.gradle` declares its dependency on
+ * `:react-native-nitro-modules`, which autolinks normally. JavaMail META-INF
+ * dedup is handled by `withAndroidPackagingPickFirsts`.
  */
 const { withSettingsGradle, withAppBuildGradle } = require('@expo/config-plugins');
 
