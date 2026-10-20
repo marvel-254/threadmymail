@@ -178,3 +178,18 @@ export const IconTest = ({ size = 18, color = colors.accent, strokeWidth = 2 }: 
     <Polyline points="22 4 12 14.01 9 11.01" />
   </Svg>
 );
+
+export const IconMoreVertical = ({ size = 22, color = colors.text, strokeWidth = 2 }: IconProps) => (
+  <Svg {...base(size, color, strokeWidth)}>
+    <Circle cx="12" cy="12" r="1" />
+    <Circle cx="12" cy="5" r="1" />
+    <Circle cx="12" cy="19" r="1" />
+  </Svg>
+);
+
+export const IconCopy = ({ size = 20, color = colors.text, strokeWidth = 2 }: IconProps) => (
+  <Svg {...base(size, color, strokeWidth)}>
+    <Rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <Path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </Svg>
+);
