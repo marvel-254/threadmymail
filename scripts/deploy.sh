@@ -148,7 +148,9 @@ for attempt in 1 2 3 4 5; do
     deployed=1
     break
   fi
-  if ! grep -qiE 'fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up' /tmp/tmm-deploy.log; then
+  # "The request to Cloudflare's API timed out" is wrangler's message for a slow
+  # upload — same class as the other transient failures below, so retry it.
+  if ! grep -qiE 'fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up|timed out' /tmp/tmm-deploy.log; then
     echo "  not a transient network error — failing immediately"
     tail -20 /tmp/tmm-deploy.log
     fail "Worker deploy failed"
@@ -161,10 +163,25 @@ done
 # ── 6. Deploy the frontend ─────────────────────────────────────────────────
 if [ "$SKIP_FRONTEND" = 0 ]; then
   step "Deploying the frontend"
-  (cd "$ROOT" && CLOUDFLARE_API_TOKEN="$OAUTH_TOKEN" "$WRANGLER" pages deploy "$FRONTEND/dist" \
-    --project-name "$PAGES_PROJECT" --branch main) > /tmp/tmm-pages.log 2>&1 \
-    || { tail -20 /tmp/tmm-pages.log; fail "frontend deploy failed"; }
-  grep -oE 'https://[a-z0-9]+\.threadmymail\.pages\.dev' /tmp/tmm-pages.log | tail -1 || true
+  # Same transient-network retry as the Worker step: pages deploy fails with a
+  # bare "fetch failed" on this link and should be retried, not declared broken.
+  frontend_deployed=0
+  for attempt in 1 2 3 4 5; do
+    if (cd "$ROOT" && CLOUDFLARE_API_TOKEN="$OAUTH_TOKEN" "$WRANGLER" pages deploy "$FRONTEND/dist" \
+        --project-name "$PAGES_PROJECT" --branch main) > /tmp/tmm-pages.log 2>&1; then
+      grep -oE 'https://[a-z0-9]+\.threadmymail\.pages\.dev' /tmp/tmm-pages.log | tail -1 || true
+      frontend_deployed=1
+      break
+    fi
+    if ! grep -qiE 'fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up|timed out' /tmp/tmm-pages.log; then
+      echo "  not a transient network error — failing immediately"
+      tail -20 /tmp/tmm-pages.log
+      fail "frontend deploy failed"
+    fi
+    echo "  attempt $attempt hit a transient network error, retrying…"
+    sleep 12
+  done
+  [ "$frontend_deployed" = 1 ] || { tail -20 /tmp/tmm-pages.log; fail "frontend deploy failed after 5 attempts"; }
 fi
 
 # ── 7. Verify what is actually live ─────────────────────────────────────────
