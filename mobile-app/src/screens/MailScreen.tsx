@@ -42,9 +42,10 @@ import { colors, radii, spacing, touch, typography } from '../theme/theme';
 type MailScreenProps = {
   onOpenAgent: () => void;
   onOpenSettings: () => void;
+  threadId?: string;
 };
 
-export function MailScreen({ onOpenAgent, onOpenSettings }: MailScreenProps) {
+export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreenProps) {
   const [view, setView] = useState<'list' | 'thread' | 'compose'>('list');
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -54,6 +55,14 @@ export function MailScreen({ onOpenAgent, onOpenSettings }: MailScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [killEngaged, setKillEngaged] = useState(false);
   const [sync, setSync] = useState<SyncState>(INITIAL_SYNC_STATE);
+
+  // Open specific thread if threadId is provided
+  useEffect(() => {
+    if (threadId) {
+      setSelectedId(threadId);
+      setView('thread');
+    }
+  }, [threadId]);
 
   // Load persisted messages on mount, then subscribe to the sync engine.
   useEffect(() => {

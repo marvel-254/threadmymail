@@ -11,10 +11,12 @@
  *     who configured email yesterday should find their inbox populated today
  *     without having to visit Settings again.
  */
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ImageBackground, StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { BottomTabBar, type TabId } from './components/BottomTabBar';
+import { Drawer } from './components/Drawer';
+import { EdgeSwipe } from './components/EdgeSwipe';
 import { TopBar } from './components/TopBar';
 import { TodayScreen } from './screens/TodayScreen';
 import { MailScreen } from './screens/MailScreen';
@@ -33,6 +35,16 @@ export function AppShell() {
   // would flash the wizard at an already-configured user.
   const [onboarded, setOnboardedState] = useState<boolean | null>(null);
   const [tab, setTab] = useState<TabId>('today');
+
+  // Drawer state
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState<string | undefined>();
+  const threadIdRef = useRef<string | undefined>(undefined);
+
+  const switchTab = (next: TabId) => {
+    if (next !== 'mail') threadIdRef.current = undefined;
+    setTab(next);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -82,31 +94,78 @@ export function AppShell() {
     );
   }
 
+  const handleOpenDrawer = () => setDrawerVisible(true);
+  const handleCloseDrawer = () => setDrawerVisible(false);
+  const handleNewChat = () => {
+    switchTab('agent');
+    handleCloseDrawer();
+  };
+  const handleSelectConversation = (id: string) => {
+    setActiveConversationId(id);
+    switchTab('agent');
+    handleCloseDrawer();
+  };
+  const handleOpenInbox = () => {
+    switchTab('mail');
+    handleCloseDrawer();
+  };
+  const handleOpenActions = () => {
+    switchTab('activity');
+    handleCloseDrawer();
+  };
+  const handleOpenSettings = () => {
+    switchTab('settings');
+    handleCloseDrawer();
+  };
+  const handleOpenMailThread = (threadId: string) => {
+    threadIdRef.current = threadId;
+    switchTab('mail');
+    handleCloseDrawer();
+  };
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <ImageBackground source={require('./assets/app-background.png')} style={styles.background} resizeMode="cover">
+        <View style={styles.background}>
           <TopBar />
           <View style={styles.screen}>
             {tab === 'today' && (
               <TodayScreen
-                onOpenSettings={() => setTab('settings')}
-                onOpenMail={() => setTab('mail')}
-                onOpenAgent={() => setTab('agent')}
+                onOpenSettings={() => switchTab('settings')}
+                onOpenMail={() => switchTab('mail')}
+                onOpenAgent={() => switchTab('agent')}
               />
             )}
             {tab === 'mail' && (
               <MailScreen
-                onOpenAgent={() => setTab('agent')}
-                onOpenSettings={() => setTab('settings')}
+                onOpenAgent={() => switchTab('agent')}
+                onOpenSettings={() => switchTab('settings')}
+                threadId={threadIdRef.current}
               />
             )}
-            {tab === 'agent' && <AgentScreen />}
+            {tab === 'agent' && (
+              <AgentScreen
+                onOpenDrawer={handleOpenDrawer}
+                conversationId={activeConversationId}
+                onOpenMailThread={handleOpenMailThread}
+              />
+            )}
             {tab === 'activity' && <ActivityScreen />}
             {tab === 'settings' && <SettingsScreen />}
-            <BottomTabBar active={tab} onSelect={setTab} />
           </View>
-        </ImageBackground>
+          <BottomTabBar active={tab} onSelect={switchTab} />
+          <EdgeSwipe onOpen={handleOpenDrawer} />
+          <Drawer
+            visible={drawerVisible}
+            onClose={handleCloseDrawer}
+            onNewChat={handleNewChat}
+            onSelectConversation={handleSelectConversation}
+            onOpenInbox={handleOpenInbox}
+            onOpenActions={handleOpenActions}
+            onOpenSettings={handleOpenSettings}
+            activeConversationId={activeConversationId}
+          />
+        </View>
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -117,5 +176,5 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   boot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   screen: { flex: 1 },
-  background: { flex: 1 },
+  background: { flex: 1, backgroundColor: colors.bg },
 });
