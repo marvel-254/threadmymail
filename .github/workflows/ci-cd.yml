@@ -1,4 +1,4 @@
-name: ThreadMyMail CI/CD
+name: ThreadMyMail CI
 
 on:
   push:
@@ -7,67 +7,39 @@ on:
     branches: [main]
 
 env:
-  PYTHON_VERSION: "3.11"
-  NODE_VERSION: "18"
+  NODE_VERSION: '20'
 
 jobs:
-  test-backend:
+  typecheck-worker:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Run linting
-        run: |
-          pip install ruff black mypy
-          ruff check .
-          black --check .
-      - name: Run tests
-        run: |
-          pip install pytest pytest-asyncio
-          pytest tests/ -v --tb=short
-
-  build-frontend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    needs: [test-backend]
+        working-directory: apps/worker
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+          cache-dependency-path: apps/worker/package-lock.json
       - name: Install dependencies
         run: npm ci
-      - name: Build PWA
-        run: npm run build
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./frontend/dist
+      - name: Typecheck
+        run: npx tsc --noEmit
 
-  notify:
+  build-frontend:
     runs-on: ubuntu-latest
-    needs: [test-backend, build-frontend]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    defaults:
+      run:
+        working-directory: frontend
     steps:
-      - name: Send Slack notification
-        uses: slackapi/slack-github-action@v1.27.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          payload: |
-            {
-              "text": "ThreadMyMail CI passed ✅\nCommit: ${{ github.sha }}\nBranch: ${{ github.ref_name }}"
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        continue-on-error: true
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
