@@ -45,18 +45,6 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
-      # ── Keystore for release signing ────────────────────────────────────
-      # When THMMY_KEYSTORE_BASE64 is set (GitHub Actions secrets), the build
-      # is properly signed. Without it the plugin logs a warning and Gradle
-      # falls back to debug signing (fine for local testing, NOT for distribution).
-      - name: Prepare keystore
-        if: env.THMMY_KEYSTORE_BASE64 != ''
-        env:
-          THMMY_KEYSTORE_BASE64: ${{ secrets.THMMY_KEYSTORE_BASE64 }}
-        run: |
-          echo "$THMMY_KEYSTORE_BASE64" | base64 -d > android/app/threadmymail.keystore
-          echo "keystore ready: $(ls -lh android/app/threadmymail.keystore)"
-
       # Cache Gradle artifacts.
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -76,6 +64,19 @@ jobs:
           THMMY_KEY_PASSWORD: ${{ secrets.THMMY_KEY_PASSWORD }}
         run: npx expo prebuild --platform android --clean
         timeout-minutes: 30
+
+      # ── Keystore for release signing ────────────────────────────────────
+      # Runs AFTER prebuild so android/app/ exists. When THMMY_KEYSTORE_BASE64
+      # is set (GitHub Actions secrets), the build is properly signed. Without
+      # it the plugin logs a warning and Gradle falls back to debug signing
+      # (fine for local testing, NOT for distribution).
+      - name: Prepare keystore
+        if: env.THMMY_KEYSTORE_BASE64 != ''
+        env:
+          THMMY_KEYSTORE_BASE64: ${{ secrets.THMMY_KEYSTORE_BASE64 }}
+        run: |
+          echo "$THMMY_KEYSTORE_BASE64" | base64 -d > android/app/threadmymail.keystore
+          echo "keystore ready: $(ls -lh android/app/threadmymail.keystore)"
 
       - name: Typecheck
         run: npx tsc --noEmit
