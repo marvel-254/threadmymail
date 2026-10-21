@@ -75,10 +75,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   setActivePalette(palette);
 
   useEffect(() => {
-    // Match native chrome (keyboard, dialogs) to the in-app choice. `null`
-    // returns control to the OS so follow-system keeps updating live.
+    // Match native chrome (keyboard, dialogs) to the in-app choice.
+    // `unspecified` returns control to the OS so follow-system keeps live.
     Appearance.setColorScheme(mode === 'system' ? 'unspecified' : mode);
   }, [mode]);
+
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(palette.bg).catch(() => {
+      // Cosmetic only; in-app surfaces already use the palette.
+    });
+  }, [palette]);
 
   const setMode = useCallback((next: ThemeMode) => {
     setModeState(next);
