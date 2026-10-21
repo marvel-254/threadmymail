@@ -18,13 +18,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Button, ConfirmDialog, EmptyState, Toast } from '../components/ui';
 import { Composer, ThreadMessage } from '../components/mail';
 import { EscalationCard } from '../components/agent';
 import { FilterChips, SearchBar, SyncBanner, ThreadRow } from '../components/inbox';
-import { IconBack, IconMail, IconPower, IconSparkle } from '../components/Icons';
+import { IconBack, IconMail, IconPower, IconSend } from '../components/Icons';
 import {
   HISTORY_DAYS,
   INITIAL_SYNC_STATE,
@@ -39,7 +40,7 @@ import { loadMessages, markRead as storeMarkRead, setStarred } from '../lib/mail
 import { loadAccount } from '../lib/accountStore';
 import { getMailSync } from '../lib/mailSyncSingleton';
 import { setKillSwitch, useGuardrails } from '../lib/guardrails';
-import { colors, radii, spacing, touch, typography } from '../theme/theme';
+import { colors, radii, shadows, spacing, touch, typography } from '../theme/theme';
 
 type MailScreenProps = {
   onOpenAgent: () => void;
@@ -54,10 +55,15 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
   const [filter, setFilter] = useState<MailFilter>('all');
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
   const [confirmKill, setConfirmKill] = useState(false);
   const { killSwitch: killEngaged } = useGuardrails();
   const [sync, setSync] = useState<SyncState>(INITIAL_SYNC_STATE);
+  const [composeTo, setComposeTo] = useState('');
+  const [composeCc, setComposeCc] = useState('');
+  const [composeSubject, setComposeSubject] = useState('');
+  const [composeBody, setComposeBody] = useState('');
+  const [sending, setSending] = useState(false);
   const [body, setBody] = useState<{ id: string; text: string } | null>(null);
   const [bodyLoading, setBodyLoading] = useState(false);
   const [bodyError, setBodyError] = useState<string | null>(null);
@@ -169,19 +175,84 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
       .finally(() => setRefreshing(false));
   }, []);
 
+  const showToast = (text: string, ok = true) => {
+    setToast({ text, ok });
+    setTimeout(() => setToast(null), ok ? 2500 : 4000);
+  };
+
   const sendDraft = (text: string) => {
+    if (!text.trim()) {
+      showToast('Write a reply before sending.', false);
+      return;
+    }
     const subject = selected?.subject ?? 'New message';
     void getMailSync()
       .send({ to: selected?.fromAddress ?? '', subject, text })
       .then(() => {
-        setToast('Message sent');
-        setTimeout(() => setToast(null), 2500);
+        showToast('Message sent');
         setView('list');
       })
       .catch((err) => {
-        setToast(err instanceof Error ? err.message : 'Send failed');
-        setTimeout(() => setToast(null), 3500);
+        showToast(err instanceof Error ? err.message : 'Send failed', false);
       });
+  };
+
+  const openCompose = () => {
+    setComposeTo('');
+    setComposeCc('');
+    setComposeSubject('');
+    setComposeBody('');
+    setView('compose');
+  };
+
+  const openReplyCompose = () => {
+    setComposeTo(selected?.fromAddress ?? '');
+    setComposeCc('');
+    setComposeSubject(selected?.subject ? `Re: ${selected.subject}` : '');
+    setComposeBody('');
+    setView('compose');
+  };
+
+  const parseAddresses = (value: string) =>
+    value.split(/[,;]/).map((part) => part.trim()).filter(Boolean);
+
+  const sendCompose = async () => {
+    const to = parseAddresses(composeTo);
+    const cc = parseAddresses(composeCc);
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (to.length === 0) {
+      showToast('Add at least one recipient.', false);
+      return;
+    }
+    const invalid = [...to, ...cc].find((address) => !emailPattern.test(address));
+    if (invalid) {
+      showToast(`Check this address: ${invalid}`, false);
+      return;
+    }
+    if (!composeBody.trim()) {
+      showToast('Write a message before sending.', false);
+      return;
+    }
+
+    setSending(true);
+    try {
+      await getMailSync().send({
+        to,
+        cc: cc.length > 0 ? cc : undefined,
+        subject: composeSubject.trim() || '(no subject)',
+        text: composeBody,
+      });
+      showToast('Message sent');
+      setView('list');
+      setComposeTo('');
+      setComposeCc('');
+      setComposeSubject('');
+      setComposeBody('');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Send failed', false);
+    } finally {
+      setSending(false);
+    }
   };
 
   const header = (
@@ -275,7 +346,14 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
             ) : null
           }
         />
-        {toast && <Toast visible message={toast} />}
+        {toast && <Toast visible message={toast.text} ok={toast.ok} />}
+        <Pressable
+          accessibilityLabel="Compose email"
+          onPress={openCompose}
+          style={({ pressed }) => [styles.fab, pressed && { opacity: 0.9 }]}
+        >
+          <IconSend size={24} color={colors.textOnPrimary} />
+        </Pressable>
         {killDialog}
       </View>
     );
@@ -317,7 +395,7 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
                 question="Millo can draft a reply. Want it to?"
                 choices={[{ label: 'Yes', primary: true }, { label: 'No' }]}
                 onChoose={(c) => {
-                  if (c === 'Yes') setView('compose');
+                  if (c === 'Yes') openReplyCompose();
                 }}
               />
             </>
@@ -332,29 +410,75 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
         <View style={styles.composerBar}>
           <Composer placeholder="Reply…" onSend={sendDraft} onAskAgent={onOpenAgent} />
         </View>
+        {toast && <Toast visible message={toast.text} ok={toast.ok} />}
         {killDialog}
       </View>
     );
   }
 
+  const canSend = !sending && composeTo.trim().length > 0 && composeBody.trim().length > 0;
+
   return (
     <View style={styles.screen}>
       {header}
-      <ScrollView contentContainerStyle={styles.composeContent}>
-        <Text style={styles.composeField}>To:</Text>
-        <Text style={styles.composeField}>Cc: (optional)</Text>
-        <Text style={styles.composeField}>Subject:</Text>
+      <ScrollView
+        contentContainerStyle={styles.composeContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.composeLabel}>To</Text>
+        <TextInput
+          value={composeTo}
+          onChangeText={setComposeTo}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="name@example.com, other@example.com"
+          placeholderTextColor={colors.textSubtle}
+          style={styles.composeInput}
+        />
+
+        <Text style={styles.composeLabel}>Cc</Text>
+        <TextInput
+          value={composeCc}
+          onChangeText={setComposeCc}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="Optional"
+          placeholderTextColor={colors.textSubtle}
+          style={styles.composeInput}
+        />
+
+        <Text style={styles.composeLabel}>Subject</Text>
+        <TextInput
+          value={composeSubject}
+          onChangeText={setComposeSubject}
+          placeholder="Subject"
+          placeholderTextColor={colors.textSubtle}
+          style={styles.composeInput}
+        />
+
         <View style={styles.composeDivider} />
-        <Button
-          label="Draft with Millo"
-          variant="accent"
-          onPress={() => {}}
-          icon={<IconSparkle size={18} color={colors.textOnAccent} />}
+        <TextInput
+          value={composeBody}
+          onChangeText={setComposeBody}
+          multiline
+          textAlignVertical="top"
+          placeholder="Write your message…"
+          placeholderTextColor={colors.textSubtle}
+          style={[styles.composeInput, styles.composeBodyInput]}
         />
       </ScrollView>
       <View style={styles.composerBar}>
-        <Button label="Send" onPress={() => sendDraft('')} fullWidth />
+        <Button
+          label={sending ? 'Sending…' : 'Send'}
+          onPress={() => { void sendCompose(); }}
+          disabled={!canSend}
+          loading={sending}
+          fullWidth
+        />
       </View>
+      {toast && <Toast visible message={toast.text} ok={toast.ok} />}
       {killDialog}
     </View>
   );
@@ -406,7 +530,34 @@ const styles = StyleSheet.create({
   },
   bodyErrorText: { ...typography.bodySmall, color: colors.textMuted },
   composerBar: { padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
-  composeContent: { padding: spacing.lg, gap: spacing.lg },
-  composeField: { ...typography.body, color: colors.textMuted },
-  composeDivider: { height: 1, backgroundColor: colors.border },
+  composeContent: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xxl },
+  composeLabel: { ...typography.label, color: colors.textSubtle, marginTop: spacing.sm },
+  composeInput: {
+    minHeight: touch.minTarget,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...typography.body,
+    color: colors.text,
+  },
+  composeBodyInput: {
+    minHeight: 220,
+    paddingTop: spacing.md,
+  },
+  composeDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
+  fab: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    ...shadows.float,
+  },
 });

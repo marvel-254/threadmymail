@@ -280,7 +280,13 @@ export class MailSync {
   }
 
   /** Send a message over SMTP. */
-  async send(message: { to: string | string[]; subject: string; text?: string; html?: string }): Promise<void> {
+  async send(message: {
+    to: string | string[];
+    cc?: string | string[];
+    subject: string;
+    text?: string;
+    html?: string;
+  }): Promise<void> {
     if (!this.account) throw new Error('Not connected');
     await this.account.send(message);
   }

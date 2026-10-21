@@ -25,6 +25,7 @@ export type BridgeAccount = {
   /** Send a message over SMTP. */
   send(message: {
     to: string | string[];
+    cc?: string | string[];
     subject: string;
     text?: string;
     html?: string;
@@ -105,6 +106,7 @@ export function createMailBridge(): MailBridge {
         async send(message) {
           await account.send({
             to: message.to,
+            cc: message.cc,
             subject: message.subject,
             text: message.text,
             html: message.html,
