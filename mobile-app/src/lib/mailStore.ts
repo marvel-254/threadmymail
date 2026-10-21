@@ -240,3 +240,12 @@ export async function countMessages(): Promise<number> {
   const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM messages');
   return row?.n ?? 0;
 }
+
+/** Unread cached count, used by the tab badge and launcher badge. */
+export async function countUnreadMessages(): Promise<number> {
+  const db = await openDb();
+  const row = await db.getFirstAsync<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM messages WHERE unread = 1',
+  );
+  return row?.n ?? 0;
+}

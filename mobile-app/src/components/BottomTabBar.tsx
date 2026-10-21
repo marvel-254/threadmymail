@@ -51,10 +51,13 @@ function TabIcon({ id, active }: { id: TabId; active: boolean }) {
 type BottomTabBarProps = {
   active: TabId;
   onSelect: (tab: TabId) => void;
+  /** Unread mail count shown on the Mail tab; hidden at zero. */
+  unreadCount?: number;
 };
 
-export function BottomTabBar({ active, onSelect }: BottomTabBarProps) {
+export function BottomTabBar({ active, onSelect, unreadCount = 0 }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const badgeLabel = unreadCount > 99 ? '99+' : String(unreadCount);
 
   return (
     <View style={styles.wrapper}>
@@ -72,7 +75,11 @@ export function BottomTabBar({ active, onSelect }: BottomTabBarProps) {
               <Pressable
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isActive }}
-                accessibilityLabel={TAB_LABELS[id]}
+                accessibilityLabel={
+                  id === 'mail' && unreadCount > 0
+                    ? `Mail, ${unreadCount} unread`
+                    : TAB_LABELS[id]
+                }
                 onPress={() => onSelect(id)}
                 style={({ pressed }) => [
                   styles.iconSlot,
@@ -82,6 +89,11 @@ export function BottomTabBar({ active, onSelect }: BottomTabBarProps) {
                 ]}
               >
                 <TabIcon id={id} active={isActive} />
+                {id === 'mail' && unreadCount > 0 && (
+                  <View style={styles.badge} pointerEvents="none">
+                    <Text style={styles.badgeText}>{badgeLabel}</Text>
+                  </View>
+                )}
               </Pressable>
             </View>
           );
@@ -151,6 +163,27 @@ const styles = StyleSheet.create({
   },
   iconSlotActive: {
     backgroundColor: colors.surfaceStrong,
+  },
+  badge: {
+    position: 'absolute',
+    top: -3,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: radii.pill,
+    paddingHorizontal: 4,
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: colors.bgDeep,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    ...typography.caption,
+    color: colors.textOnPrimary,
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '700',
   },
   // Millo breaks the grid: a raised pill that reads as the primary action.
   milloSlot: {

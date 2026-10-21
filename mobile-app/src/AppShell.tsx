@@ -13,6 +13,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { BottomTabBar, type TabId } from './components/BottomTabBar';
 import { Drawer } from './components/Drawer';
@@ -26,6 +27,13 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { Onboarding } from './screens/Onboarding';
 import { loadAccount } from './lib/accountStore';
 import { getMailSync } from './lib/mailSyncSingleton';
+import { countUnreadMessages } from './lib/mailStore';
+import {
+  configureNotifications,
+  getNotificationPrefs,
+  loadNotificationPrefs,
+  setAppBadgeCount,
+} from './lib/notifications';
 import { loadGuardrails } from './lib/guardrails';
 import {
   startTriageScheduler,
@@ -41,6 +49,10 @@ export function AppShell() {
   // would flash the wizard at an already-configured user.
   const [onboarded, setOnboardedState] = useState<boolean | null>(null);
   const [tab, setTab] = useState<TabId>('today');
+  const [unreadCount, setUnreadCount] = useState(0);
+  // Bumped when a notification asks for a specific thread, so MailScreen
+  // remounts even if the Mail tab was already showing.
+  const [mailRequest, setMailRequest] = useState(0);
 
   // Drawer state
   const [drawerVisible, setDrawerVisible] = useState(false);
@@ -86,6 +98,87 @@ export function AppShell() {
     void startTriageScheduler();
     return stopTriageScheduler;
   }, [onboarded]);
+
+  // Keep the tab badge and launcher badge in step with the cached unread count.
+  // MailSync emits after imports, IDLE pushes, and local read/star/delete actions.
+  useEffect(() => {
+    if (!onboarded) return;
+    let cancelled = false;
+    const refresh = async () => {
+      let next = 0;
+      try {
+        next = await countUnreadMessages();
+      } catch {
+        next = 0;
+      }
+      if (cancelled) return;
+      setUnreadCount(next);
+      void setAppBadgeCount(next);
+    };
+    void refresh();
+    const unsubscribe = getMailSync().subscribe(() => {
+      void refresh();
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [onboarded]);
+
+  // Ask for the OS notification permission once the app is configured. The
+  // first-run prompt is the only reliable moment before mail starts arriving.
+  useEffect(() => {
+    if (!onboarded) return;
+    void (async () => {
+      await loadNotificationPrefs();
+      await configureNotifications(getNotificationPrefs().enabled);
+    })();
+  }, [onboarded]);
+
+  // A notification tap deep-links to the conversation. This listener is also
+  // installed before first paint so a cold start from the tray is not lost.
+  useEffect(() => {
+    let cancelled = false;
+    let subscription: Notifications.EventSubscription | undefined;
+
+    const openResponse = (response: Notifications.NotificationResponse) => {
+      const data = response.notification.request.content.data as
+        | Record<string, unknown>
+        | undefined;
+      const target =
+        typeof data?.threadId === 'string'
+          ? data.threadId
+          : typeof data?.messageId === 'string'
+            ? data.messageId
+            : undefined;
+      if (!target) return;
+      threadIdRef.current = target;
+      draftIdRef.current = undefined;
+      filterRef.current = undefined;
+      composeRef.current = false;
+      setMailRequest((value) => value + 1);
+      setTab('mail');
+    };
+
+    void (async () => {
+      try {
+        const last = await Notifications.getLastNotificationResponseAsync();
+        if (!cancelled && last) {
+          openResponse(last);
+          Notifications.clearLastNotificationResponse();
+        }
+      } catch {
+        // No response / unsupported platform — the live listener still works.
+      }
+      if (cancelled) return;
+      subscription = Notifications.addNotificationResponseReceivedListener(openResponse);
+    })();
+
+    return () => {
+      cancelled = true;
+      subscription?.remove();
+    };
+  }, []);
 
   const finishOnboarding = () => {
     void setOnboarded(true);
@@ -195,6 +288,7 @@ export function AppShell() {
             )}
             {tab === 'mail' && (
               <MailScreen
+                key={`mail-${mailRequest}`}
                 onOpenAgent={() => switchTab('agent')}
                 onOpenSettings={() => switchTab('settings')}
                 threadId={threadIdRef.current}
@@ -214,7 +308,7 @@ export function AppShell() {
             {tab === 'activity' && <ActivityScreen />}
             {tab === 'settings' && <SettingsScreen />}
           </View>
-          <BottomTabBar active={tab} onSelect={switchTab} />
+          <BottomTabBar active={tab} onSelect={switchTab} unreadCount={unreadCount} />
           <EdgeSwipe onOpen={handleOpenDrawer} />
           <Drawer
             visible={drawerVisible}

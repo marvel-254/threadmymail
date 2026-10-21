@@ -37,6 +37,7 @@ import {
   upsertMessages,
 } from './mailStore';
 import { logActivity, setMailUndoHandler } from './agent/activityStore';
+import { notifyNewMessages } from './notifications';
 import type { BridgeAccount, BridgeMailbox, MailBridge } from './mailBridge';
 
 export type SyncListener = (state: SyncState, messages: Message[]) => void;
@@ -341,6 +342,7 @@ export class MailSync {
         }),
       );
       await upsertMessages(messages);
+      void notifyNewMessages(messages);
       this.setState({ lastSyncedAt: new Date().toISOString() });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

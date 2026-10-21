@@ -32,6 +32,7 @@
     "plugins": [
       "expo-sqlite",
       "expo-secure-store",
+      "expo-notifications",
       "react-native-mail-engine",
       "./plugins/withMailEngineLink",
       "./plugins/withAndroidReleaseSigning",

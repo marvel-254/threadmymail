@@ -38,6 +38,13 @@ import {
   type Skills,
 } from '../lib/skillsStore';
 import { testImap } from '../lib/emailTest';
+import {
+  configureNotifications,
+  muteSender,
+  setNotificationPrefs,
+  unmuteSender,
+  useNotificationPrefs,
+} from '../lib/notifications';
 import { IconPlus } from '../components/Icons';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
@@ -157,6 +164,32 @@ export function SettingsScreen() {
   // ── Guardrails ─────────────────────────────────────────────────────────
   const guardrails = useGuardrails();
   const { killSwitch, shadowMode } = guardrails;
+
+  // ── Notifications ──────────────────────────────────────────────────────
+  const notifications = useNotificationPrefs();
+  const [muteAddress, setMuteAddress] = useState('');
+
+  const changeNotifications = async (value: boolean) => {
+    if (value) {
+      const granted = await configureNotifications(true);
+      if (!granted) {
+        toast('Notification permission was not granted', false);
+        return;
+      }
+    }
+    await setNotificationPrefs({ enabled: value });
+    toast(value ? 'New-mail notifications on' : 'New-mail notifications off');
+  };
+
+  const addMutedSender = async () => {
+    const added = await muteSender(muteAddress);
+    if (!added) {
+      toast('Enter a sender email address', false);
+      return;
+    }
+    setMuteAddress('');
+    toast('Sender muted');
+  };
 
   const changeKillSwitch = (value: boolean) => {
     if (value) {
@@ -484,6 +517,65 @@ export function SettingsScreen() {
           </Text>
         </Card>
 
+        {/* Notifications */}
+        <SectionLabel>Notifications</SectionLabel>
+        <Card>
+          <GuardrailRow
+            label="New-mail notifications"
+            description="Alert when a new message arrives while the app is running."
+            value={notifications.enabled}
+            onChange={changeNotifications}
+          />
+          <GuardrailRow
+            label="Sound"
+            description="Play the system notification sound."
+            value={notifications.sound}
+            onChange={(value) => void setNotificationPrefs({ sound: value })}
+          />
+          <GuardrailRow
+            label="Vibrate"
+            description="Vibrate when a new-mail alert arrives."
+            value={notifications.vibrate}
+            onChange={(value) => void setNotificationPrefs({ vibrate: value })}
+          />
+          <View style={styles.muteBlock}>
+            <Text style={styles.guardrailDesc}>
+              Muted senders never raise an alert. Their mail still arrives in the inbox.
+            </Text>
+            <View style={styles.muteRow}>
+              <TextInput
+                value={muteAddress}
+                onChangeText={setMuteAddress}
+                placeholder="sender@example.com"
+                placeholderTextColor={colors.textSubtle}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                style={styles.muteInput}
+                accessibilityLabel="Sender email to mute"
+              />
+              <Button label="Mute" variant="secondary" onPress={() => void addMutedSender()} />
+            </View>
+            {notifications.mutedSenders.length === 0 ? (
+              <Text style={styles.cardSub}>No muted senders.</Text>
+            ) : (
+              notifications.mutedSenders.map((address) => (
+                <View key={address} style={styles.mutedRow}>
+                  <Text style={styles.mutedAddress} numberOfLines={1}>{address}</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Unmute ${address}`}
+                    onPress={() => void unmuteSender(address)}
+                    style={styles.unmuteBtn}
+                  >
+                    <Text style={styles.unmuteText}>Unmute</Text>
+                  </Pressable>
+                </View>
+              ))
+            )}
+          </View>
+        </Card>
+
         {/* Skills */}
         <SectionLabel>Skills</SectionLabel>
         <Card>
@@ -616,6 +708,30 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text,
   },
+  muteBlock: { paddingTop: spacing.md, gap: spacing.sm },
+  muteRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  muteInput: {
+    flex: 1,
+    minHeight: touch.minTarget,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    ...typography.body,
+    color: colors.text,
+  },
+  mutedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  mutedAddress: { flex: 1, ...typography.caption, color: colors.text },
+  unmuteBtn: { minHeight: touch.minTarget, justifyContent: 'center', paddingHorizontal: spacing.sm },
+  unmuteText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
   timeRow: { flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md },
   timeField: { flex: 1, gap: spacing.xs },
   timeInput: {
