@@ -8,7 +8,13 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import { Button, Card, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
 import { StatusStrip } from '../components/agent';
 import { IconMenu, IconPower, IconSparkle, IconToday } from '../components/Icons';
-import { mayAct, setKillSwitch, useGuardrails } from '../lib/guardrails';
+import {
+  checkGuardrails,
+  formatQuietHours,
+  isQuietHours,
+  setKillSwitch,
+  useGuardrails,
+} from '../lib/guardrails';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
 type TodayScreenProps = {
@@ -21,11 +27,18 @@ export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodaySc
   const [running, setRunning] = useState(false);
   const [confirmKill, setConfirmKill] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const { killSwitch: killEngaged } = useGuardrails();
+  const guardrails = useGuardrails();
+  const killEngaged = guardrails.killSwitch;
+  const quietNow = isQuietHours();
+  const budgetPct = Math.max(
+    0,
+    Math.round(((guardrails.dailyActionLimit - guardrails.actionsUsed) / guardrails.dailyActionLimit) * 100),
+  );
 
   const runTriage = () => {
-    if (!mayAct()) {
-      setToast(killEngaged ? 'Autonomy is paused — turn the kill switch off first.' : 'Shadow mode is on — Millo will not act.');
+    const decision = checkGuardrails('outward');
+    if (!decision.allowed) {
+      setToast(decision.reason ?? 'Millo cannot act right now.');
       setTimeout(() => setToast(null), 3000);
       return;
     }
@@ -75,7 +88,15 @@ export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodaySc
         />
 
         <SectionLabel>Agent status</SectionLabel>
-        <StatusStrip status={killEngaged ? 'quiet' : running ? 'running' : 'idle'} />
+        <StatusStrip
+          status={killEngaged || quietNow ? 'quiet' : running ? 'running' : 'idle'}
+          actionsUsed={guardrails.actionsUsed}
+          actionsLimit={guardrails.dailyActionLimit}
+          budgetPct={budgetPct}
+          quietHours={guardrails.quietHoursEnabled
+            ? formatQuietHours(guardrails.quietStart, guardrails.quietEnd)
+            : undefined}
+        />
       </ScrollView>
 
       <ConfirmDialog

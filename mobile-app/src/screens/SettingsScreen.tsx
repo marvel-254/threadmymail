@@ -3,7 +3,7 @@
  * All four sections wired to real stores; "Test connection" calls live endpoints.
  */
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Button, Card, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
 import { Field, ProviderCard } from '../components/settings';
 import { PROVIDER_PRESETS, CUSTOM_PROVIDER_ID } from '../lib/providers';
@@ -16,7 +16,18 @@ import {
   type AccountConfig,
 } from '../lib/accountStore';
 import { getMailSync } from '../lib/mailSyncSingleton';
-import { setKillSwitch, setShadowMode, useGuardrails } from '../lib/guardrails';
+import {
+  DEFAULT_DAILY_ACTION_LIMIT,
+  DEFAULT_DAILY_AI_CALL_LIMIT,
+  DEFAULT_QUIET_END,
+  DEFAULT_QUIET_START,
+  formatMinutes,
+  parseTimeLabel,
+  setGuardrailConfig,
+  setKillSwitch,
+  setShadowMode,
+  useGuardrails,
+} from '../lib/guardrails';
 import {
   DEFAULT_SKILLS,
   SKILL_DEFINITIONS,
@@ -143,7 +154,8 @@ export function SettingsScreen() {
   };
 
   // ── Guardrails ─────────────────────────────────────────────────────────
-  const { killSwitch, shadowMode } = useGuardrails();
+  const guardrails = useGuardrails();
+  const { killSwitch, shadowMode } = guardrails;
 
   const changeKillSwitch = (value: boolean) => {
     if (value) {
@@ -165,6 +177,66 @@ export function SettingsScreen() {
   const changeShadowMode = (value: boolean) => {
     void setShadowMode(value);
     toast(value ? 'Shadow mode on — nothing will be sent' : 'Shadow mode off');
+  };
+
+  // Budget/quiet-hour drafts stay as text while typing; commit on blur so a
+  // half-typed number never overwrites the persisted value.
+  const [actionLimitText, setActionLimitText] = useState(String(DEFAULT_DAILY_ACTION_LIMIT));
+  const [aiLimitText, setAiLimitText] = useState(String(DEFAULT_DAILY_AI_CALL_LIMIT));
+  const [quietStartText, setQuietStartText] = useState(formatMinutes(DEFAULT_QUIET_START));
+  const [quietEndText, setQuietEndText] = useState(formatMinutes(DEFAULT_QUIET_END));
+
+  useEffect(() => {
+    setActionLimitText(String(guardrails.dailyActionLimit));
+    setAiLimitText(String(guardrails.dailyAiCallLimit));
+    setQuietStartText(formatMinutes(guardrails.quietStart));
+    setQuietEndText(formatMinutes(guardrails.quietEnd));
+  }, [
+    guardrails.dailyActionLimit,
+    guardrails.dailyAiCallLimit,
+    guardrails.quietStart,
+    guardrails.quietEnd,
+  ]);
+
+  const commitActionLimit = () => {
+    const value = Number(actionLimitText);
+    if (!Number.isFinite(value) || value < 1) {
+      setActionLimitText(String(guardrails.dailyActionLimit));
+      return;
+    }
+    void setGuardrailConfig({ dailyActionLimit: Math.round(value) });
+  };
+
+  const commitAiLimit = () => {
+    const value = Number(aiLimitText);
+    if (!Number.isFinite(value) || value < 1) {
+      setAiLimitText(String(guardrails.dailyAiCallLimit));
+      return;
+    }
+    void setGuardrailConfig({ dailyAiCallLimit: Math.round(value) });
+  };
+
+  const commitQuietStart = () => {
+    const minutes = parseTimeLabel(quietStartText);
+    if (minutes === null) {
+      setQuietStartText(formatMinutes(guardrails.quietStart));
+      return;
+    }
+    void setGuardrailConfig({ quietStart: minutes });
+  };
+
+  const commitQuietEnd = () => {
+    const minutes = parseTimeLabel(quietEndText);
+    if (minutes === null) {
+      setQuietEndText(formatMinutes(guardrails.quietEnd));
+      return;
+    }
+    void setGuardrailConfig({ quietEnd: minutes });
+  };
+
+  const changeQuietHours = (value: boolean) => {
+    void setGuardrailConfig({ quietHoursEnabled: value });
+    toast(value ? 'Quiet hours on' : 'Quiet hours off');
   };
 
   // ── Skills ─────────────────────────────────────────────────────────────
@@ -286,7 +358,83 @@ export function SettingsScreen() {
               trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
               thumbColor={colors.textOnPrimary} />
           </View>
-          <Text style={[styles.cardSub, { marginTop: spacing.md }]}>Daily budget and quiet hours — coming next.</Text>
+          <View style={styles.guardrailRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guardrailLabel}>Daily action budget</Text>
+              <Text style={styles.guardrailDesc}>Autonomous actions per day. Resets at local midnight.</Text>
+            </View>
+            <TextInput
+              value={actionLimitText}
+              onChangeText={setActionLimitText}
+              onEndEditing={commitActionLimit}
+              keyboardType="number-pad"
+              maxLength={4}
+              style={styles.numberInput}
+              accessibilityLabel="Daily action budget"
+            />
+          </View>
+          <View style={styles.guardrailRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guardrailLabel}>Daily AI-call budget</Text>
+              <Text style={styles.guardrailDesc}>Model calls the agent may spend per day.</Text>
+            </View>
+            <TextInput
+              value={aiLimitText}
+              onChangeText={setAiLimitText}
+              onEndEditing={commitAiLimit}
+              keyboardType="number-pad"
+              maxLength={4}
+              style={styles.numberInput}
+              accessibilityLabel="Daily AI-call budget"
+            />
+          </View>
+          <View style={styles.guardrailRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guardrailLabel}>Quiet hours</Text>
+              <Text style={styles.guardrailDesc}>No scheduled runs or notifications in this window.</Text>
+            </View>
+            <Switch
+              value={guardrails.quietHoursEnabled}
+              onValueChange={changeQuietHours}
+              trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
+              thumbColor={colors.textOnPrimary}
+            />
+          </View>
+          {guardrails.quietHoursEnabled && (
+            <View style={styles.timeRow}>
+              <View style={styles.timeField}>
+                <Text style={styles.guardrailDesc}>From</Text>
+                <TextInput
+                  value={quietStartText}
+                  onChangeText={setQuietStartText}
+                  onEndEditing={commitQuietStart}
+                  placeholder="22:00"
+                  placeholderTextColor={colors.textSubtle}
+                  maxLength={5}
+                  style={styles.timeInput}
+                  accessibilityLabel="Quiet hours start"
+                />
+              </View>
+              <View style={styles.timeField}>
+                <Text style={styles.guardrailDesc}>To</Text>
+                <TextInput
+                  value={quietEndText}
+                  onChangeText={setQuietEndText}
+                  onEndEditing={commitQuietEnd}
+                  placeholder="07:00"
+                  placeholderTextColor={colors.textSubtle}
+                  maxLength={5}
+                  style={styles.timeInput}
+                  accessibilityLabel="Quiet hours end"
+                />
+              </View>
+            </View>
+          )}
+          <Text style={[styles.cardSub, { marginTop: spacing.md }]}>
+            {guardrails.actionsUsed}/{guardrails.dailyActionLimit} actions and{' '}
+            {guardrails.aiCallsUsed}/{guardrails.dailyAiCallLimit} AI calls used today.
+            Manual actions stay available during quiet hours.
+          </Text>
         </Card>
 
         {/* Skills */}
@@ -410,6 +558,29 @@ const styles = StyleSheet.create({
   guardrailRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   guardrailLabel: { ...typography.body, color: colors.text, fontWeight: '600' },
   guardrailDesc: { ...typography.caption, color: colors.textMuted },
+  numberInput: {
+    width: 72,
+    minHeight: touch.minTarget,
+    textAlign: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    ...typography.body,
+    color: colors.text,
+  },
+  timeRow: { flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md },
+  timeField: { flex: 1, gap: spacing.xs },
+  timeInput: {
+    minHeight: touch.minTarget,
+    textAlign: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    ...typography.body,
+    color: colors.text,
+  },
   sheet: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
     backgroundColor: colors.bgDeep, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl,

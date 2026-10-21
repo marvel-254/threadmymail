@@ -166,10 +166,18 @@ export function EscalationCard({ question, choices, onChoose }: EscalationCardPr
 type StatusStripProps = {
   status: 'idle' | 'running' | 'quiet';
   budgetPct?: number;
+  actionsUsed?: number;
+  actionsLimit?: number;
   quietHours?: string;
 };
 
-export function StatusStrip({ status, budgetPct, quietHours }: StatusStripProps) {
+export function StatusStrip({
+  status,
+  budgetPct,
+  actionsUsed,
+  actionsLimit,
+  quietHours,
+}: StatusStripProps) {
   const dotColor = { idle: colors.success, running: colors.primary, quiet: colors.warn }[status];
   const label = { idle: 'Idle', running: 'Running', quiet: 'Quiet hours' }[status];
 
@@ -177,6 +185,9 @@ export function StatusStrip({ status, budgetPct, quietHours }: StatusStripProps)
     <View style={styles.statusStrip} accessibilityLabel={`Agent ${label.toLowerCase()}`}>
       <View style={[styles.statusDot, { backgroundColor: dotColor }]} />
       <Text style={styles.statusText}>{label}</Text>
+      {actionsUsed !== undefined && actionsLimit !== undefined && (
+        <Text style={styles.statusMeta}>{actionsUsed}/{actionsLimit} actions today</Text>
+      )}
       {budgetPct !== undefined && <Text style={styles.statusMeta}>budget {budgetPct}% left</Text>}
       {quietHours && <Text style={styles.statusQuiet}>quiet {quietHours}</Text>}
     </View>

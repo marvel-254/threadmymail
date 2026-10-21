@@ -11,7 +11,7 @@ type TopBarProps = {
 };
 
 export function TopBar({ title = 'ThreadMyMail', onBack }: TopBarProps) {
-  const { killSwitch } = useGuardrails();
+  const { killSwitch, shadowMode } = useGuardrails();
 
   return (
     <View style={styles.container}>
@@ -24,12 +24,16 @@ export function TopBar({ title = 'ThreadMyMail', onBack }: TopBarProps) {
       )}
       <Text style={styles.title}>{title}</Text>
       <View style={styles.right}>
-        {killSwitch && (
+        {killSwitch ? (
           <View style={styles.paused} accessibilityLabel="Autonomous actions paused">
             <IconPower size={16} color={colors.danger} />
             <Text style={styles.pausedText}>Paused</Text>
           </View>
-        )}
+        ) : shadowMode ? (
+          <View style={styles.shadow} accessibilityLabel="Shadow mode active">
+            <Text style={styles.shadowText}>Shadow</Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -66,6 +70,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dangerBg,
   },
   pausedText: { ...typography.label, color: colors.danger },
+  shadow: {
+    paddingHorizontal: spacing.sm,
+    borderRadius: 999,
+    backgroundColor: colors.warnBg,
+    justifyContent: 'center',
+  },
+  shadowText: { ...typography.label, color: colors.warn },
   title: {
     ...typography.h2,
     color: colors.text,
