@@ -27,6 +27,10 @@ import { Onboarding } from './screens/Onboarding';
 import { loadAccount } from './lib/accountStore';
 import { getMailSync } from './lib/mailSyncSingleton';
 import { loadGuardrails } from './lib/guardrails';
+import {
+  startTriageScheduler,
+  stopTriageScheduler,
+} from './lib/agent/triageScheduler';
 import { isOnboarded, setOnboarded } from './lib/prefs';
 import { colors } from './theme/theme';
 
@@ -67,6 +71,12 @@ export function AppShell() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!onboarded) return;
+    void startTriageScheduler();
+    return stopTriageScheduler;
+  }, [onboarded]);
 
   const finishOnboarding = () => {
     void setOnboarded(true);
@@ -133,7 +143,10 @@ export function AppShell() {
             {tab === 'today' && (
               <TodayScreen
                 onOpenSettings={() => switchTab('settings')}
-                onOpenMail={() => switchTab('mail')}
+                onOpenMail={(messageId) => {
+                  threadIdRef.current = messageId;
+                  switchTab('mail');
+                }}
                 onOpenAgent={() => switchTab('agent')}
               />
             )}

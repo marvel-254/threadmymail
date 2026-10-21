@@ -27,6 +27,8 @@ export type ChatStreamOptions = {
   /** Abort from the Stop button. Partial text is returned as a success. */
   signal?: AbortSignal;
   maxTokens?: number;
+  /** Replace the default Millo chat prompt (used by structured skill calls). */
+  system?: string;
 };
 
 export type ChatStreamResult =
@@ -248,7 +250,7 @@ export async function streamChat(options: ChatStreamOptions): Promise<ChatStream
 
   const { url, anthropic } = providerEndpoint(provider);
   const messages: ChatMessage[] = [
-    { role: 'system', content: buildSystemPrompt() },
+    { role: 'system', content: options.system ?? buildSystemPrompt() },
     ...options.messages,
   ];
 

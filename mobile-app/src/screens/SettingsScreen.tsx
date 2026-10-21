@@ -21,6 +21,7 @@ import {
   DEFAULT_DAILY_AI_CALL_LIMIT,
   DEFAULT_QUIET_END,
   DEFAULT_QUIET_START,
+  DEFAULT_TRIAGE_TIME,
   formatMinutes,
   parseTimeLabel,
   setGuardrailConfig,
@@ -185,17 +186,20 @@ export function SettingsScreen() {
   const [aiLimitText, setAiLimitText] = useState(String(DEFAULT_DAILY_AI_CALL_LIMIT));
   const [quietStartText, setQuietStartText] = useState(formatMinutes(DEFAULT_QUIET_START));
   const [quietEndText, setQuietEndText] = useState(formatMinutes(DEFAULT_QUIET_END));
+  const [triageTimeText, setTriageTimeText] = useState(formatMinutes(DEFAULT_TRIAGE_TIME));
 
   useEffect(() => {
     setActionLimitText(String(guardrails.dailyActionLimit));
     setAiLimitText(String(guardrails.dailyAiCallLimit));
     setQuietStartText(formatMinutes(guardrails.quietStart));
     setQuietEndText(formatMinutes(guardrails.quietEnd));
+    setTriageTimeText(formatMinutes(guardrails.dailyTriageTime));
   }, [
     guardrails.dailyActionLimit,
     guardrails.dailyAiCallLimit,
     guardrails.quietStart,
     guardrails.quietEnd,
+    guardrails.dailyTriageTime,
   ]);
 
   const commitActionLimit = () => {
@@ -237,6 +241,20 @@ export function SettingsScreen() {
   const changeQuietHours = (value: boolean) => {
     void setGuardrailConfig({ quietHoursEnabled: value });
     toast(value ? 'Quiet hours on' : 'Quiet hours off');
+  };
+
+  const commitTriageTime = () => {
+    const minutes = parseTimeLabel(triageTimeText);
+    if (minutes === null) {
+      setTriageTimeText(formatMinutes(guardrails.dailyTriageTime));
+      return;
+    }
+    void setGuardrailConfig({ dailyTriageTime: minutes });
+  };
+
+  const changeDailyTriage = (value: boolean) => {
+    void setGuardrailConfig({ dailyTriageEnabled: value });
+    toast(value ? 'Daily triage on' : 'Daily triage off');
   };
 
   // ── Skills ─────────────────────────────────────────────────────────────
@@ -426,6 +444,35 @@ export function SettingsScreen() {
                   maxLength={5}
                   style={styles.timeInput}
                   accessibilityLabel="Quiet hours end"
+                />
+              </View>
+            </View>
+          )}
+          <View style={styles.guardrailRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guardrailLabel}>Daily morning triage</Text>
+              <Text style={styles.guardrailDesc}>Runs once a day while the app is open. Quiet hours win.</Text>
+            </View>
+            <Switch
+              value={guardrails.dailyTriageEnabled}
+              onValueChange={changeDailyTriage}
+              trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
+              thumbColor={colors.textOnPrimary}
+            />
+          </View>
+          {guardrails.dailyTriageEnabled && (
+            <View style={styles.timeRow}>
+              <View style={styles.timeField}>
+                <Text style={styles.guardrailDesc}>Run at</Text>
+                <TextInput
+                  value={triageTimeText}
+                  onChangeText={setTriageTimeText}
+                  onEndEditing={commitTriageTime}
+                  placeholder="08:00"
+                  placeholderTextColor={colors.textSubtle}
+                  maxLength={5}
+                  style={styles.timeInput}
+                  accessibilityLabel="Daily triage time"
                 />
               </View>
             </View>

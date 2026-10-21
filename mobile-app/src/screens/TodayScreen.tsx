@@ -3,30 +3,37 @@
  * MVP-UI §4.1 · DB: AI-Native (conversational briefing), Empty States,
  * Contextual Live Badge (status as atomic message).
  */
-import React, { useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button, Card, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
+import React, { useEffect, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Button, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
 import { StatusStrip } from '../components/agent';
 import { IconMenu, IconPower, IconSparkle, IconToday } from '../components/Icons';
 import {
-  checkGuardrails,
   formatQuietHours,
   isQuietHours,
   setKillSwitch,
   useGuardrails,
 } from '../lib/guardrails';
+import { cancelTriage, runTriage, useTriage } from '../lib/agent/triage';
+import { loadNeedsEye, type NeedsEyeItem } from '../lib/agent/triageStore';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
 type TodayScreenProps = {
   onOpenSettings: () => void;
-  onOpenMail: () => void;
+  onOpenMail: (messageId?: string) => void;
   onOpenAgent: () => void;
 };
 
+const VERDICT_LABEL = {
+  'needs-reply': 'Needs reply',
+  'action-required': 'Action required',
+} as const;
+
 export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodayScreenProps) {
-  const [running, setRunning] = useState(false);
+  const [needsEye, setNeedsEye] = useState<NeedsEyeItem[]>([]);
   const [confirmKill, setConfirmKill] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
+  const triage = useTriage();
   const guardrails = useGuardrails();
   const killEngaged = guardrails.killSwitch;
   const quietNow = isQuietHours();
@@ -35,15 +42,37 @@ export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodaySc
     Math.round(((guardrails.dailyActionLimit - guardrails.actionsUsed) / guardrails.dailyActionLimit) * 100),
   );
 
-  const runTriage = () => {
-    const decision = checkGuardrails('outward');
-    if (!decision.allowed) {
-      setToast(decision.reason ?? 'Millo cannot act right now.');
-      setTimeout(() => setToast(null), 3000);
+  useEffect(() => {
+    let cancelled = false;
+    void loadNeedsEye().then((items) => {
+      if (!cancelled) setNeedsEye(items);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [triage.lastRunAt]);
+
+  const lastSeenRun = useRef<number | null>(null);
+  useEffect(() => {
+    if (
+      !triage.lastRunAt
+      || triage.lastRunAt === lastSeenRun.current
+      || !triage.lastSummary
+    ) {
       return;
     }
-    setRunning(true);
-    setTimeout(() => setRunning(false), 1500);
+    lastSeenRun.current = triage.lastRunAt;
+    setToast({ text: triage.lastSummary, ok: triage.lastStatus === 'completed' });
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [triage.lastRunAt, triage.lastStatus, triage.lastSummary]);
+
+  const handleRunTriage = () => {
+    if (triage.running) {
+      cancelTriage();
+      return;
+    }
+    void runTriage({ trigger: 'manual' });
   };
 
   const confirmKillToggle = () => {
@@ -53,7 +82,7 @@ export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodaySc
 
   return (
     <View style={styles.screen}>
-      <Toast visible={!!toast} message={toast ?? ''} ok={false} />
+      <Toast visible={!!toast} message={toast?.text ?? ''} ok={toast?.ok ?? true} />
       <View style={styles.header}>
         <Pressable accessibilityLabel="Menu" onPress={onOpenSettings} style={styles.headerBtn}>
           <IconMenu size={22} color={colors.text} />
@@ -73,23 +102,49 @@ export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodaySc
         <Text style={styles.greeting}>Good day.</Text>
 
         <Button
-          label={running ? 'Running triage…' : 'Run morning triage'}
-          onPress={runTriage}
-          loading={running}
+          label={triage.running ? 'Cancel triage' : 'Run morning triage'}
+          onPress={handleRunTriage}
+          variant={triage.running ? 'danger' : 'primary'}
           fullWidth
           icon={<IconSparkle size={18} color={colors.textOnPrimary} />}
         />
 
         <SectionLabel>Needs your eye</SectionLabel>
-        <EmptyState
-          icon={<IconToday size={48} color={colors.textSubtle} />}
-          title="Nothing needs you"
-          body="Millo will surface anything that needs a decision."
-        />
+        {needsEye.length === 0 ? (
+          <EmptyState
+            icon={<IconToday size={48} color={colors.textSubtle} />}
+            title="Nothing needs you"
+            body="Millo will surface anything that needs a decision."
+          />
+        ) : (
+          needsEye.map((item) => {
+            const dangerous = item.verdict === 'action-required';
+            return (
+              <Pressable
+                key={item.message.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${VERDICT_LABEL[item.verdict]}: ${item.message.subject} from ${item.message.from}`}
+                onPress={() => onOpenMail(item.message.id)}
+                style={({ pressed }) => [styles.eyeCard, pressed && styles.eyeCardPressed]}
+              >
+                <View style={styles.eyeTop}>
+                  <Text style={styles.eyeSender} numberOfLines={1}>{item.message.from}</Text>
+                  <View style={[styles.verdictBadge, dangerous ? styles.verdictDanger : styles.verdictPrimary]}>
+                    <Text style={[styles.verdictText, dangerous && styles.verdictTextDanger]}>
+                      {VERDICT_LABEL[item.verdict]}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.eyeSubject} numberOfLines={1}>{item.message.subject}</Text>
+                <Text style={styles.eyeReason} numberOfLines={2}>{item.reason}</Text>
+              </Pressable>
+            );
+          })
+        )}
 
         <SectionLabel>Agent status</SectionLabel>
         <StatusStrip
-          status={killEngaged || quietNow ? 'quiet' : running ? 'running' : 'idle'}
+          status={killEngaged || quietNow ? 'quiet' : triage.running ? 'running' : 'idle'}
           actionsUsed={guardrails.actionsUsed}
           actionsLimit={guardrails.dailyActionLimit}
           budgetPct={budgetPct}
@@ -135,4 +190,27 @@ const styles = StyleSheet.create({
   headerTitle: { ...typography.h3, color: colors.text },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
   greeting: { ...typography.h1, color: colors.text },
+  eyeCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: spacing.xs,
+    minHeight: touch.minTarget,
+  },
+  eyeCardPressed: { opacity: 0.85 },
+  eyeTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  eyeSender: { ...typography.caption, color: colors.textMuted, flex: 1 },
+  verdictBadge: {
+    borderRadius: 999,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  verdictPrimary: { backgroundColor: colors.accentBg },
+  verdictDanger: { backgroundColor: colors.dangerBg },
+  verdictText: { ...typography.caption, color: colors.accent, fontWeight: '600' },
+  verdictTextDanger: { color: colors.danger },
+  eyeSubject: { ...typography.body, color: colors.text, fontWeight: '600' },
+  eyeReason: { ...typography.caption, color: colors.textMuted },
 });

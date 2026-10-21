@@ -155,6 +155,15 @@ export async function markRead(id: string): Promise<void> {
   await db.runAsync('UPDATE messages SET unread = 0 WHERE id = $id', { $id: id });
 }
 
+/** Persist the classifier's needs-reply flag. */
+export async function setNeedsReply(id: string, needsReply: boolean): Promise<void> {
+  const db = await openDb();
+  await db.runAsync('UPDATE messages SET needs_reply = $needs_reply WHERE id = $id', {
+    $needs_reply: needsReply ? 1 : 0,
+    $id: id,
+  });
+}
+
 /** Total cached count. */
 export async function countMessages(): Promise<number> {
   const db = await openDb();

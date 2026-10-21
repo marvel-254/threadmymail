@@ -52,6 +52,10 @@ export type GuardrailsState = {
   /** Minutes since local midnight. */
   quietStart: number;
   quietEnd: number;
+  /** Run triage once a day at `dailyTriageTime` while the app is open. */
+  dailyTriageEnabled: boolean;
+  /** Minutes since local midnight. */
+  dailyTriageTime: number;
 };
 
 type PersistedConfig = Pick<
@@ -64,12 +68,15 @@ type PersistedConfig = Pick<
   | 'quietHoursEnabled'
   | 'quietStart'
   | 'quietEnd'
+  | 'dailyTriageEnabled'
+  | 'dailyTriageTime'
 >;
 
 export const DEFAULT_DAILY_ACTION_LIMIT = 50;
 export const DEFAULT_DAILY_AI_CALL_LIMIT = 100;
 export const DEFAULT_QUIET_START = 22 * 60;
 export const DEFAULT_QUIET_END = 7 * 60;
+export const DEFAULT_TRIAGE_TIME = 8 * 60;
 
 export function localDayKey(now = new Date()): string {
   const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -109,6 +116,8 @@ let state: GuardrailsState = {
   quietHoursEnabled: false,
   quietStart: DEFAULT_QUIET_START,
   quietEnd: DEFAULT_QUIET_END,
+  dailyTriageEnabled: false,
+  dailyTriageTime: DEFAULT_TRIAGE_TIME,
 };
 
 const listeners = new Set<(next: GuardrailsState) => void>();
@@ -147,6 +156,8 @@ function normalizeConfig(raw: unknown): PersistedConfig {
     quietHoursEnabled: record.quietHoursEnabled === true,
     quietStart: clampInt(record.quietStart, 0, 1439, DEFAULT_QUIET_START),
     quietEnd: clampInt(record.quietEnd, 0, 1439, DEFAULT_QUIET_END),
+    dailyTriageEnabled: record.dailyTriageEnabled === true,
+    dailyTriageTime: clampInt(record.dailyTriageTime, 0, 1439, DEFAULT_TRIAGE_TIME),
   };
 }
 
@@ -160,6 +171,8 @@ function configSnapshot(): PersistedConfig {
     quietHoursEnabled: state.quietHoursEnabled,
     quietStart: state.quietStart,
     quietEnd: state.quietEnd,
+    dailyTriageEnabled: state.dailyTriageEnabled,
+    dailyTriageTime: state.dailyTriageTime,
   };
 }
 
@@ -246,7 +259,13 @@ export async function setShadowMode(value: boolean): Promise<void> {
 export async function setGuardrailConfig(
   patch: Partial<Pick<
     GuardrailsState,
-    'dailyActionLimit' | 'dailyAiCallLimit' | 'quietHoursEnabled' | 'quietStart' | 'quietEnd'
+    | 'dailyActionLimit'
+    | 'dailyAiCallLimit'
+    | 'quietHoursEnabled'
+    | 'quietStart'
+    | 'quietEnd'
+    | 'dailyTriageEnabled'
+    | 'dailyTriageTime'
   >>,
 ): Promise<void> {
   state = {
@@ -258,6 +277,8 @@ export async function setGuardrailConfig(
       patch.dailyAiCallLimit ?? state.dailyAiCallLimit, 1, 1000, state.dailyAiCallLimit),
     quietStart: clampInt(patch.quietStart ?? state.quietStart, 0, 1439, state.quietStart),
     quietEnd: clampInt(patch.quietEnd ?? state.quietEnd, 0, 1439, state.quietEnd),
+    dailyTriageTime: clampInt(
+      patch.dailyTriageTime ?? state.dailyTriageTime, 0, 1439, state.dailyTriageTime),
   };
   emit();
   await persistConfig();
@@ -372,6 +393,41 @@ export async function consumeAutonomousAction(
 
   const gate = checkGuardrails('scheduled');
   if (!gate.allowed) return gate;
+
+  const outward = checkGuardrails('outward');
+  if (!outward.allowed && !outward.shadowed) return outward;
+
+  state = { ...state, actionsUsed: state.actionsUsed + 1 };
+  emit();
+  await persistConfig();
+  return outward;
+}
+
+/**
+ * Reserve one triage run.
+ *
+ * Triage is autonomous work even when the user taps the button, so the kill
+ * switch and the action budget always apply. Only a *scheduled* run is skipped
+ * during quiet hours — a manual tap is an explicit request and stays available.
+ * Shadow mode still performs the (logged) run but reports `shadowed`.
+ */
+export async function consumeTriageRun(
+  trigger: 'manual' | 'scheduled',
+): Promise<GuardrailDecision> {
+  if (resetBudgetIfNewDay()) await persistConfig();
+
+  if (!state.loaded) {
+    return { allowed: false, shadowed: false, reason: 'Guardrails have not loaded yet.' };
+  }
+  if (state.killSwitch) {
+    return { allowed: false, shadowed: false, reason: 'Kill switch is on.' };
+  }
+  if (trigger === 'scheduled' && isQuietHours()) {
+    return { allowed: false, shadowed: false, reason: 'Quiet hours are active.' };
+  }
+  if (state.actionsUsed >= state.dailyActionLimit) {
+    return { allowed: false, shadowed: false, reason: 'Daily action budget is exhausted.' };
+  }
 
   const outward = checkGuardrails('outward');
   if (!outward.allowed && !outward.shadowed) return outward;
