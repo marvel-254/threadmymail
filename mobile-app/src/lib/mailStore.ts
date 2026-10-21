@@ -164,6 +164,30 @@ export async function setNeedsReply(id: string, needsReply: boolean): Promise<vo
   });
 }
 
+/** Restore several cached flags at once (used by Undo). */
+export async function updateFlags(
+  id: string,
+  flags: { unread?: boolean; starred?: boolean; needsReply?: boolean },
+): Promise<void> {
+  const assignments: string[] = [];
+  const params: BindParams = { $id: id };
+  if (flags.unread !== undefined) {
+    assignments.push('unread = $unread');
+    params.$unread = flags.unread ? 1 : 0;
+  }
+  if (flags.starred !== undefined) {
+    assignments.push('starred = $starred');
+    params.$starred = flags.starred ? 1 : 0;
+  }
+  if (flags.needsReply !== undefined) {
+    assignments.push('needs_reply = $needs_reply');
+    params.$needs_reply = flags.needsReply ? 1 : 0;
+  }
+  if (assignments.length === 0) return;
+  const db = await openDb();
+  await db.runAsync(`UPDATE messages SET ${assignments.join(', ')} WHERE id = $id`, params);
+}
+
 /** Total cached count. */
 export async function countMessages(): Promise<number> {
   const db = await openDb();

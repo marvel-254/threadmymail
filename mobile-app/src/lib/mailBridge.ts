@@ -39,10 +39,12 @@ export type BridgeMailbox = {
   fetchHeaders(options: { limit?: number; since?: string }): Promise<MessageHeader[]>;
   /** Fetch a full parsed message by UID. */
   fetchMessage(uid: number): Promise<{ header: MessageHeader; textBody?: string; htmlBody?: string }>;
-  /** Mark messages seen. */
-  markSeen(uids: number[]): Promise<void>;
+  /** Mark messages seen or unseen. */
+  markSeen(uids: number[], seen?: boolean): Promise<void>;
   /** Add flags (e.g. \Flagged for star). */
   addFlags(uids: number[], flags: string[]): Promise<void>;
+  /** Remove flags (e.g. unstar). */
+  removeFlags(uids: number[], flags: string[]): Promise<void>;
   /** Start IMAP IDLE; returns an unsubscribe function. */
   idle(onMail: (event: NewMailEvent) => void, onError?: (err: unknown) => void): () => void;
   /** Close the mailbox. */
@@ -89,11 +91,14 @@ export function createMailBridge(): MailBridge {
               const msg = await mailbox.fetchMessage(uid, { includeAttachments: false });
               return { header: msg.header, textBody: msg.textBody, htmlBody: msg.htmlBody };
             },
-            async markSeen(uids) {
-              await mailbox.markSeen(uids, true);
+            async markSeen(uids, seen = true) {
+              await mailbox.markSeen(uids, seen);
             },
             async addFlags(uids, flags) {
               await mailbox.addFlags(uids, flags);
+            },
+            async removeFlags(uids, flags) {
+              await mailbox.removeFlags(uids, flags);
             },
             idle(onMail, onError) {
               return mailbox.idle(onMail, (err) => onError?.(err));

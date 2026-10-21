@@ -278,8 +278,9 @@ async function applyVerdicts(
   shadow: boolean,
   batch: Message[],
 ): Promise<void> {
-  const subjects = new Map(batch.map((message) => [message.id, message.subject]));
+  const messages = new Map(batch.map((message) => [message.id, message]));
   for (const result of results) {
+    const before = messages.get(result.messageId);
     if (!shadow) {
       if (result.verdict === 'ignore') {
         await markRead(result.messageId);
@@ -298,8 +299,20 @@ async function applyVerdicts(
       type: 'triage_decision',
       outcome: shadow ? 'skipped' : 'ok',
       detail: `${shadow ? 'Would have ' : ''}${actionLabel(result.verdict)}: ${result.reason}`,
-      messageId: result.messageId,
-      subject: subjects.get(result.messageId) ?? null,
+      targetType: 'message',
+      targetId: result.messageId,
+      subject: before?.subject ?? null,
+      ...(shadow || !before
+        ? {}
+        : {
+            undoPayload: {
+              kind: 'mail_flags' as const,
+              messageId: result.messageId,
+              unread: before.unread,
+              starred: before.starred,
+              needsReply: before.needsReply,
+            },
+          }),
     });
   }
 }

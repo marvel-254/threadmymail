@@ -26,7 +26,15 @@ import {
   type Message,
   type SyncState,
 } from './mail';
-import { loadMessages, markRead, setStarred, upsertMessages } from './mailStore';
+import {
+  loadMessage,
+  loadMessages,
+  markRead,
+  setStarred,
+  updateFlags,
+  upsertMessages,
+} from './mailStore';
+import { logActivity, setMailUndoHandler } from './agent/activityStore';
 import type { BridgeAccount, BridgeMailbox, MailBridge } from './mailBridge';
 
 export type SyncListener = (state: SyncState, messages: Message[]) => void;
@@ -53,6 +61,32 @@ export class MailSync {
 
   constructor(bridge: MailBridge) {
     this.bridge = bridge;
+    // Undo restores the cached flags through mailStore, then best-effort on the
+    // server via the live mailbox. If no account is connected the local half
+    // still succeeds.
+    setMailUndoHandler(async (payload) => {
+      await updateFlags(payload.messageId, {
+        unread: payload.unread,
+        starred: payload.starred,
+        needsReply: payload.needsReply,
+      });
+      const uid = Number(payload.messageId);
+      if (!this.mailbox || !Number.isFinite(uid)) return;
+      try {
+        if (payload.unread !== undefined) {
+          await this.mailbox.markSeen([uid], !payload.unread);
+        }
+        if (payload.starred !== undefined) {
+          if (payload.starred) {
+            await this.mailbox.addFlags([uid], ['\\Flagged']);
+          } else {
+            await this.mailbox.removeFlags([uid], ['\\Flagged']);
+          }
+        }
+      } catch {
+        // Local Undo already succeeded; server flags are best-effort.
+      }
+    });
   }
 
   /** Subscribe to state + message changes. Returns an unsubscribe fn. */
@@ -89,6 +123,7 @@ export class MailSync {
     this.bodyCache.clear();
     try {
       this.setState({ phase: 'importing', progress: 0, imported: 0, error: null });
+      const alreadyConnected = !!this.account;
       // SMTP is optional in the bridge type but required for the harness to be able
       // to send at all — pass it whenever the account has one, so send() works.
       this.account = await this.bridge.connect({
@@ -97,20 +132,40 @@ export class MailSync {
         auth: { type: 'password', user: config.auth.user, password: config.auth.password },
       });
       this.mailbox = await this.account.openInbox();
+      if (!alreadyConnected) {
+        await logActivity({
+          type: 'sync_connect',
+          outcome: 'ok',
+          detail: 'Connected to IMAP and opened the inbox.',
+        });
+      }
 
-      await this.importHistory();
+      const imported = await this.importHistory();
       this.startIdle();
       this.setState({ phase: 'idle-watching', lastSyncedAt: new Date().toISOString() });
+      if (imported > 0) {
+        await logActivity({
+          type: 'sync_import',
+          outcome: 'ok',
+          detail: `Imported ${imported} message header${imported === 1 ? '' : 's'} from the last ${HISTORY_DAYS} days.`,
+        });
+      }
     } catch (err) {
-      this.setState({ phase: 'error', error: err instanceof Error ? err.message : String(err) });
+      const message = err instanceof Error ? err.message : String(err);
+      this.setState({ phase: 'error', error: message });
+      await logActivity({
+        type: 'sync_error',
+        outcome: 'error',
+        detail: `Sync failed: ${message}`,
+      });
     } finally {
       this.running = false;
     }
   }
 
   /** Import the last HISTORY_DAYS days in bounded batches. */
-  private async importHistory(): Promise<void> {
-    if (!this.mailbox) return;
+  private async importHistory(): Promise<number> {
+    if (!this.mailbox) return 0;
     const since = sinceDate(HISTORY_DAYS);
     let imported = 0;
     let batch = 0;
@@ -154,6 +209,7 @@ export class MailSync {
       // If we got fewer than a full batch, we've reached the end.
       if (headers.length < IMPORT_BATCH_SIZE) break;
     }
+    return imported;
   }
 
   /** Start IMAP IDLE for realtime push. Stops any existing IDLE first. */
@@ -197,7 +253,13 @@ export class MailSync {
       await upsertMessages(messages);
       this.setState({ lastSyncedAt: new Date().toISOString() });
     } catch (err) {
-      this.setState({ phase: 'error', error: err instanceof Error ? err.message : String(err) });
+      const message = err instanceof Error ? err.message : String(err);
+      this.setState({ phase: 'error', error: message });
+      await logActivity({
+        type: 'sync_error',
+        outcome: 'error',
+        detail: `Realtime mail fetch failed: ${message}`,
+      });
     } finally {
       // Restart IDLE unless we're shutting down.
       if (this.mailbox) this.startIdle();
@@ -205,19 +267,37 @@ export class MailSync {
   }
 
   private onIdleError(err: unknown): void {
-    this.setState({ phase: 'error', error: err instanceof Error ? err.message : String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    this.setState({ phase: 'error', error: message });
+    void logActivity({
+      type: 'sync_error',
+      outcome: 'error',
+      detail: `Realtime connection failed: ${message}`,
+    });
   }
 
   /** Mark a message read (local + server). */
   async markRead(id: string): Promise<void> {
+    const before = await loadMessage(id);
     await markRead(id);
     const uid = Number(id);
     if (this.mailbox && Number.isFinite(uid)) {
       try {
-        await this.mailbox.markSeen([uid]);
+        await this.mailbox.markSeen([uid], true);
       } catch {
         // Local state is already updated; server flag is best-effort.
       }
+    }
+    if (before?.unread) {
+      await logActivity({
+        type: 'mark_read',
+        outcome: 'ok',
+        detail: `Marked "${before.subject}" read.`,
+        targetType: 'message',
+        targetId: id,
+        subject: before.subject,
+        undoPayload: { kind: 'mail_flags', messageId: id, unread: true },
+      });
     }
     this.emit();
   }
@@ -227,15 +307,29 @@ export class MailSync {
     const messages = await loadMessages();
     const msg = messages.find((m) => m.id === id);
     if (!msg) return;
-    await setStarred(id, !msg.starred);
+    const nextStarred = !msg.starred;
+    await setStarred(id, nextStarred);
     const uid = Number(id);
     if (this.mailbox && Number.isFinite(uid)) {
       try {
-        await this.mailbox.addFlags([uid], ['\\Flagged']);
+        if (nextStarred) {
+          await this.mailbox.addFlags([uid], ['\\Flagged']);
+        } else {
+          await this.mailbox.removeFlags([uid], ['\\Flagged']);
+        }
       } catch {
         // best-effort
       }
     }
+    await logActivity({
+      type: 'star',
+      outcome: 'ok',
+      detail: `${nextStarred ? 'Starred' : 'Unstarred'} "${msg.subject}".`,
+      targetType: 'message',
+      targetId: id,
+      subject: msg.subject,
+      undoPayload: { kind: 'mail_flags', messageId: id, starred: msg.starred },
+    });
     this.emit();
   }
 
@@ -288,7 +382,28 @@ export class MailSync {
     html?: string;
   }): Promise<void> {
     if (!this.account) throw new Error('Not connected');
-    await this.account.send(message);
+    const recipients = (Array.isArray(message.to) ? message.to : [message.to]).join(', ');
+    try {
+      await this.account.send(message);
+      await logActivity({
+        type: 'send',
+        outcome: 'ok',
+        detail: `Sent "${message.subject}" to ${recipients}. Sends cannot be undone.`,
+        targetType: 'message',
+        targetId: null,
+        subject: message.subject,
+      });
+    } catch (err) {
+      await logActivity({
+        type: 'send',
+        outcome: 'error',
+        detail: `Send to ${recipients} failed: ${err instanceof Error ? err.message : String(err)}.`,
+        targetType: 'message',
+        targetId: null,
+        subject: message.subject,
+      });
+      throw err;
+    }
   }
 
   /** Stop IDLE and disconnect. */
