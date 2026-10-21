@@ -148,6 +148,7 @@ export function AppShell() {
               <AgentScreen
                 onOpenDrawer={handleOpenDrawer}
                 conversationId={activeConversationId}
+                onConversationChange={setActiveConversationId}
                 onOpenMailThread={handleOpenMailThread}
               />
             )}

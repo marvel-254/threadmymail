@@ -44,6 +44,8 @@ import { IconAgent, IconBack, IconMenu, IconCopy, IconMail, IconMoreVertical } f
 import { colors, radii, spacing, touch, typography, motion } from '../theme/theme';
 import {
   createConversation,
+  deleteConversation,
+  deleteMessages,
   getConversation,
   getMessages,
   saveMessage,
@@ -70,6 +72,7 @@ type AgentScreenProps = {
   conversationId?: string;
   conversationTitle?: string;
   onNewChat?: () => void;
+  onConversationChange?: (id: string) => void;
   onOpenDrawer?: () => void;
   onOpenMailThread?: (threadId: string) => void;
 };
@@ -79,6 +82,7 @@ export function AgentScreen({
   conversationId,
   conversationTitle = 'New Chat',
   onNewChat,
+  onConversationChange,
   onOpenDrawer,
   onOpenMailThread,
 }: AgentScreenProps) {
@@ -247,8 +251,9 @@ export function AgentScreen({
     const conv = await createConversation('New Chat');
     setCurrentConversation(conv);
     setItems([]);
+    onConversationChange?.(conv.id);
     onNewChat?.();
-  }, [onNewChat]);
+  }, [onNewChat, onConversationChange]);
 
   const handleStopGeneration = useCallback(() => {
     // The send loop finalises the partial text and clears busy/streaming when
@@ -302,9 +307,11 @@ export function AgentScreen({
 
   const handleClearConversation = useCallback(async () => {
     if (!currentConversation) return;
+    const conversationId = currentConversation.id;
     Alert.alert('Clear conversation?', 'This will remove all messages but keep the conversation.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Clear', onPress: async () => {
+        await deleteMessages(conversationId);
         setItems([]);
       }},
     ]);
@@ -313,14 +320,20 @@ export function AgentScreen({
 
   const handleDeleteConversation = useCallback(async () => {
     if (!currentConversation) return;
+    const conversationId = currentConversation.id;
     Alert.alert('Delete conversation?', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
+        await deleteConversation(conversationId);
+        const conv = await createConversation('New Chat');
+        setCurrentConversation(conv);
+        setItems([]);
+        onConversationChange?.(conv.id);
         onNewChat?.();
       }},
     ]);
     setShowOverflow(false);
-  }, [currentConversation, onNewChat]);
+  }, [currentConversation, onNewChat, onConversationChange]);
 
   const renderItem = useCallback(({ item }: { item: StreamItem }) => {
     const isLongPressable = item.type === 'agent' || item.type === 'user';
