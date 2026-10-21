@@ -22,6 +22,7 @@ import {
   MAX_IMPORT_BATCHES,
   htmlToText,
   sinceDate,
+  threadIdFor,
   toStoredMessage,
   type Message,
   type SyncState,
@@ -85,6 +86,53 @@ export class MailSync {
             await this.mailbox.moveMessages([uid], payload.folder);
           } else {
             await this.mailbox.removeFlags([uid], ['\\Deleted']);
+          }
+        } catch {
+          // Local Undo already succeeded; server Undo is best-effort.
+        }
+        return;
+      }
+
+      if (payload.kind === 'mail_thread_restore') {
+        await upsertMessages(payload.messages);
+        const uids = payload.messages
+          .map((message) => Number(message.id))
+          .filter((uid) => Number.isFinite(uid));
+        if (!this.mailbox || uids.length === 0) return;
+        try {
+          if (payload.operation === 'move') {
+            await this.mailbox.moveMessages(uids, payload.folder);
+          } else {
+            await this.mailbox.removeFlags(uids, ['\\Deleted']);
+          }
+        } catch {
+          // Local Undo already succeeded; server Undo is best-effort.
+        }
+        return;
+      }
+
+      if (payload.kind === 'mail_thread_flags') {
+        for (const item of payload.items) {
+          await updateFlags(item.messageId, {
+            unread: item.unread,
+            starred: item.starred,
+          });
+        }
+        if (!this.mailbox) return;
+        try {
+          for (const item of payload.items) {
+            const uid = Number(item.messageId);
+            if (!Number.isFinite(uid)) continue;
+            if (item.unread !== undefined) {
+              await this.mailbox.markSeen([uid], !item.unread);
+            }
+            if (item.starred !== undefined) {
+              if (item.starred) {
+                await this.mailbox.addFlags([uid], ['\\Flagged']);
+              } else {
+                await this.mailbox.removeFlags([uid], ['\\Flagged']);
+              }
+            }
           }
         } catch {
           // Local Undo already succeeded; server Undo is best-effort.
@@ -210,7 +258,14 @@ export class MailSync {
       const messages: Message[] = headers.map((h) =>
         toStoredMessage({
           id: String(h.uid),
-          threadId: h.messageId ?? String(h.uid),
+          threadId: threadIdFor({
+            messageId: h.messageId,
+            inReplyTo: h.inReplyTo,
+            references: h.references,
+            subject: h.subject,
+            fromAddress: h.from[0]?.email,
+            date: h.date ? new Date(h.date).toISOString() : undefined,
+          }),
           from: h.from[0]?.name || h.from[0]?.email || 'Unknown',
           fromAddress: h.from[0]?.email ?? '',
           subject: h.subject ?? '(no subject)',
@@ -266,7 +321,14 @@ export class MailSync {
       const messages: Message[] = headers.map((h) =>
         toStoredMessage({
           id: String(h.uid),
-          threadId: h.messageId ?? String(h.uid),
+          threadId: threadIdFor({
+            messageId: h.messageId,
+            inReplyTo: h.inReplyTo,
+            references: h.references,
+            subject: h.subject,
+            fromAddress: h.from[0]?.email,
+            date: h.date ? new Date(h.date).toISOString() : undefined,
+          }),
           from: h.from[0]?.name || h.from[0]?.email || 'Unknown',
           fromAddress: h.from[0]?.email ?? '',
           subject: h.subject ?? '(no subject)',
@@ -385,6 +447,175 @@ export class MailSync {
       undoPayload: { kind: 'mail_flags', messageId: id, unread: before.unread },
     });
     this.emit();
+  }
+
+  private async threadMessages(threadId: string): Promise<Message[]> {
+    return (await loadMessages()).filter((message) => message.threadId === threadId);
+  }
+
+  /** Mark every message in a conversation read or unread, with one Undo entry. */
+  async setThreadRead(threadId: string, read: boolean): Promise<void> {
+    const messages = await this.threadMessages(threadId);
+    const changed = messages.filter((message) => message.unread === read);
+    if (changed.length === 0) return;
+
+    for (const message of changed) {
+      await updateFlags(message.id, { unread: !read });
+    }
+    const uids = changed
+      .map((message) => Number(message.id))
+      .filter((uid) => Number.isFinite(uid));
+    if (this.mailbox && uids.length > 0) {
+      try {
+        await this.mailbox.markSeen(uids, read);
+      } catch {
+        // Local state is already updated; server flags are best-effort.
+      }
+    }
+
+    const subject = messages[0]?.subject ?? '';
+    await logActivity({
+      type: read ? 'mark_read' : 'mark_unread',
+      outcome: 'ok',
+      detail: `Marked conversation "${subject}" ${read ? 'read' : 'unread'} (${changed.length} message${changed.length === 1 ? '' : 's'}).`,
+      targetType: 'thread',
+      targetId: threadId,
+      subject,
+      undoPayload: {
+        kind: 'mail_thread_flags',
+        items: changed.map((message) => ({
+          messageId: message.id,
+          unread: message.unread,
+        })),
+      },
+    });
+    this.emit();
+  }
+
+  /** Toggle the whole conversation: any unread → read, otherwise unread. */
+  async toggleThreadRead(threadId: string): Promise<void> {
+    const messages = await this.threadMessages(threadId);
+    if (messages.length === 0) return;
+    await this.setThreadRead(threadId, messages.some((message) => message.unread));
+  }
+
+  /** Star or unstar the whole conversation (any starred → unstar all). */
+  async toggleThreadStar(threadId: string): Promise<void> {
+    const messages = await this.threadMessages(threadId);
+    if (messages.length === 0) return;
+    const starred = !messages.some((message) => message.starred);
+    for (const message of messages) {
+      await updateFlags(message.id, { starred });
+    }
+    const uids = messages
+      .map((message) => Number(message.id))
+      .filter((uid) => Number.isFinite(uid));
+    if (this.mailbox && uids.length > 0) {
+      try {
+        if (starred) {
+          await this.mailbox.addFlags(uids, ['\\Flagged']);
+        } else {
+          await this.mailbox.removeFlags(uids, ['\\Flagged']);
+        }
+      } catch {
+        // Local state is already updated; server flags are best-effort.
+      }
+    }
+    const subject = messages[0].subject;
+    await logActivity({
+      type: 'star',
+      outcome: 'ok',
+      detail: `${starred ? 'Starred' : 'Unstarred'} conversation "${subject}" (${messages.length} message${messages.length === 1 ? '' : 's'}).`,
+      targetType: 'thread',
+      targetId: threadId,
+      subject,
+      undoPayload: {
+        kind: 'mail_thread_flags',
+        items: messages.map((message) => ({
+          messageId: message.id,
+          starred: message.starred,
+        })),
+      },
+    });
+    this.emit();
+  }
+
+  /**
+   * Archive every cached message in a conversation. Undo restores the rows and
+   * moves them back to INBOX.
+   */
+  async archiveThread(threadId: string): Promise<MailActionResult> {
+    const messages = await this.threadMessages(threadId);
+    return this.moveThread(threadId, messages, 'archive');
+  }
+
+  /** Delete every cached message in a conversation, with the same Undo rules. */
+  async removeThread(threadId: string): Promise<MailActionResult> {
+    const messages = await this.threadMessages(threadId);
+    return this.moveThread(threadId, messages, 'delete');
+  }
+
+  private async moveThread(
+    threadId: string,
+    messages: Message[],
+    kind: 'archive' | 'delete',
+  ): Promise<MailActionResult> {
+    const first = messages[0];
+    if (!first) return { activityId: null, serverChanged: false, error: 'Conversation not found.' };
+
+    const uids = messages
+      .map((message) => Number(message.id))
+      .filter((uid) => Number.isFinite(uid));
+    let serverChanged = false;
+    let operation: 'move' | 'delete' = 'move';
+    let error: string | undefined;
+
+    if (this.mailbox && uids.length > 0) {
+      try {
+        if (kind === 'archive') {
+          const destination = await this.resolveFolder('archive');
+          if (!destination) throw new Error('This server did not advertise an Archive folder.');
+          await this.mailbox.moveMessages(uids, destination);
+        } else {
+          const trash = await this.resolveFolder('trash');
+          if (trash) {
+            await this.mailbox.moveMessages(uids, trash);
+          } else {
+            await this.mailbox.deleteMessages(uids, false);
+            operation = 'delete';
+          }
+        }
+        serverChanged = true;
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err);
+      }
+    } else {
+      error = 'Not connected — changed on this device only.';
+    }
+
+    for (const message of messages) {
+      await deleteMessage(message.id);
+    }
+    const verb = kind === 'archive' ? 'Archived' : 'Deleted';
+    const count = messages.length;
+    const activityId = await logActivity({
+      type: kind,
+      outcome: serverChanged ? 'ok' : 'error',
+      detail: serverChanged
+        ? `${verb} conversation "${first.subject}" (${count} message${count === 1 ? '' : 's'}).`
+        : `${verb} conversation "${first.subject}" on this device; server change failed${error ? `: ${error}` : '.'}`,
+      targetType: 'thread',
+      targetId: threadId,
+      subject: first.subject,
+      undoPayload: {
+        kind: 'mail_thread_restore',
+        messages,
+        folder: 'INBOX',
+        operation,
+      },
+    });
+    this.emit();
+    return { activityId, serverChanged, error };
   }
 
   /**

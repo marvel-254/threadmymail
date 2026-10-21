@@ -12,6 +12,7 @@ import * as SQLite from 'expo-sqlite';
 import {
   MAX_CACHED_MESSAGES,
   applyCacheCap,
+  threadIdFor,
   type Message,
 } from './mail';
 
@@ -41,11 +42,50 @@ function openDb(): Promise<SQLite.SQLiteDatabase> {
         );
         CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date DESC);
         CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
+        CREATE TABLE IF NOT EXISTS mail_meta (
+          key TEXT PRIMARY KEY NOT NULL,
+          value TEXT NOT NULL
+        );
       `);
+      await migrateThreadIds(db);
       return db;
     });
   }
   return dbPromise;
+}
+
+/**
+ * One-time backfill for caches created before conversation threading. Old rows
+ * only stored their own Message-ID (or UID), so the best available key is the
+ * normalized subject; the next sync replaces these with reference-based keys.
+ */
+async function migrateThreadIds(db: SQLite.SQLiteDatabase): Promise<void> {
+  const marker = await db.getFirstAsync<{ value: string }>(
+    `SELECT value FROM mail_meta WHERE key = 'thread_backfill_v1'`,
+  );
+  if (marker) return;
+
+  const rows = await db.getAllAsync<{
+    id: string;
+    subject: string;
+    sender_address: string;
+    date: string;
+  }>('SELECT id, subject, sender_address, date FROM messages');
+  for (const row of rows) {
+    const threadId = threadIdFor({
+      subject: row.subject,
+      fromAddress: row.sender_address,
+      date: row.date,
+    });
+    await db.runAsync('UPDATE messages SET thread_id = $thread_id WHERE id = $id', {
+      $thread_id: threadId,
+      $id: row.id,
+    });
+  }
+  await db.runAsync(
+    `INSERT OR REPLACE INTO mail_meta (key, value) VALUES ('thread_backfill_v1', $value)`,
+    { $value: String(Date.now()) },
+  );
 }
 
 function toRow(m: Message): BindParams {

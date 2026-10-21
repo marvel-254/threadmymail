@@ -38,10 +38,12 @@ import {
   INITIAL_SYNC_STATE,
   MAX_CACHED_MESSAGES,
   applyCacheCap,
-  selectMessages,
+  buildThreads,
+  selectThreads,
   type MailFilter,
   type Message,
   type SyncState,
+  type Thread,
 } from '../lib/mail';
 import { loadMessages, markRead as storeMarkRead, setStarred } from '../lib/mailStore';
 import { undoActivity } from '../lib/agent/activityStore';
@@ -91,7 +93,7 @@ export function MailScreen({
     ok: boolean;
     undoId?: string | null;
   } | null>(null);
-  const [actionMessage, setActionMessage] = useState<Message | null>(null);
+  const [actionThread, setActionThread] = useState<Thread | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmKill, setConfirmKill] = useState(false);
   const { killSwitch: killEngaged, shadowMode } = useGuardrails();
@@ -107,10 +109,11 @@ export function MailScreen({
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
   const [sending, setSending] = useState(false);
-  const [body, setBody] = useState<{ id: string; text: string } | null>(null);
+  const [bodies, setBodies] = useState<Record<string, string>>({});
   const [bodyLoading, setBodyLoading] = useState(false);
-  const [bodyError, setBodyError] = useState<string | null>(null);
+  const [bodyErrors, setBodyErrors] = useState<Record<string, string>>({});
   const [bodyAttempt, setBodyAttempt] = useState(0);
+  const handledThreadLink = useRef<string | undefined>(undefined);
 
   const reloadMessages = useCallback(async () => {
     setMessages(await loadMessages());
@@ -135,13 +138,19 @@ export function MailScreen({
     setView('compose');
   }, [composeOnOpen]);
 
-  // Open specific thread if threadId is provided
+  // Deep links may carry either a message id or a conversation id.
   useEffect(() => {
-    if (threadId) {
-      setSelectedId(threadId);
-      setView('thread');
+    if (!threadId) {
+      handledThreadLink.current = undefined;
+      return;
     }
-  }, [threadId]);
+    if (handledThreadLink.current === threadId) return;
+    const match = messages.find((message) => message.id === threadId);
+    if (!match && messages.length === 0) return;
+    setSelectedId(match?.threadId ?? threadId);
+    setView('thread');
+    handledThreadLink.current = threadId;
+  }, [threadId, messages]);
 
   // Open a queued draft in the compose editor when Today sends one over.
   useEffect(() => {
@@ -169,7 +178,11 @@ export function MailScreen({
     });
     const sync = getMailSync();
     const unsub = sync.subscribe((state) => {
-      if (mounted) setSync(state);
+      if (!mounted) return;
+      setSync(state);
+      void loadMessages().then((rows) => {
+        if (mounted) setMessages(rows);
+      });
     });
     setSync(sync.getState());
     return () => {
@@ -178,27 +191,37 @@ export function MailScreen({
     };
   }, []);
 
+  const threads = useMemo(() => buildThreads(messages), [messages]);
+
   const visible = useMemo(
-    () => selectMessages(messages, filter, query),
-    [messages, filter, query],
+    () => selectThreads(threads, filter, query),
+    [threads, filter, query],
   );
 
   const counts = useMemo<Record<MailFilter, number>>(
     () => ({
-      all: messages.length,
-      unread: messages.filter((m) => m.unread).length,
-      needs_reply: messages.filter((m) => m.needsReply).length,
-      starred: messages.filter((m) => m.starred).length,
+      all: threads.length,
+      unread: threads.filter((thread) => thread.unreadCount > 0).length,
+      needs_reply: threads.filter((thread) => thread.needsReply).length,
+      starred: threads.filter((thread) => thread.starred).length,
     }),
-    [messages],
+    [threads],
   );
 
-  const selected = useMemo(
-    () => messages.find((m) => m.id === selectedId) ?? null,
+  const threadMessages = useMemo(
+    () => messages
+      .filter((message) => message.threadId === selectedId)
+      .sort((a, b) => a.date.localeCompare(b.date)),
     [messages, selectedId],
   );
 
+  const threadMessageKey = threadMessages.map((message) => message.id).join(',');
+  const selected = threadMessages[threadMessages.length - 1] ?? null;
   const activeThreadId = selected?.threadId;
+
+  useEffect(() => {
+    setBodyErrors({});
+  }, [selectedId]);
 
   // Load the pending draft / dismissal for the open thread.
   useEffect(() => {
@@ -226,53 +249,72 @@ export function MailScreen({
     };
   }, [view, activeThreadId]);
 
-  // Fetch the real body when a thread opens. MailSync caches it in memory for
-  // the session, so opening the same message again is effectively instant.
+  // Fetch bodies for the whole conversation when it opens. MailSync caches them
+  // in memory for the session, so re-opening a thread is effectively instant.
   useEffect(() => {
-    if (view !== 'thread' || !selectedId) return;
+    if (view !== 'thread' || !selectedId || threadMessages.length === 0) return;
     let cancelled = false;
     setBodyLoading(true);
-    setBodyError(null);
-    void getMailSync()
-      .fetchBody(selectedId)
-      .then((result) => {
-        if (!cancelled) setBody({ id: selectedId, text: result.text });
-      })
-      .catch((err) => {
+    void Promise.all(threadMessages.map(async (message) => {
+      if (bodies[message.id]) return;
+      try {
+        const result = await getMailSync().fetchBody(message.id);
         if (!cancelled) {
-          setBodyError(err instanceof Error ? err.message : 'Could not load this message.');
+          setBodies((prev) => ({ ...prev, [message.id]: result.text }));
+          setBodyErrors((prev) => {
+            if (!prev[message.id]) return prev;
+            const next = { ...prev };
+            delete next[message.id];
+            return next;
+          });
         }
-      })
-      .finally(() => {
-        if (!cancelled) setBodyLoading(false);
-      });
+      } catch (err) {
+        if (!cancelled) {
+          setBodyErrors((prev) => ({
+            ...prev,
+            [message.id]: err instanceof Error ? err.message : 'Could not load this message.',
+          }));
+        }
+      }
+    })).finally(() => {
+      if (!cancelled) setBodyLoading(false);
+    });
     return () => {
       cancelled = true;
     };
-  }, [view, selectedId, bodyAttempt]);
+    // threadMessageKey tracks membership; bodies is intentionally pre-checked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, threadMessageKey, bodyAttempt]);
 
   const openThread = (id: string) => {
     setSelectedId(id);
     setView('thread');
-    // Mark read locally + on the server (best-effort).
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, unread: false } : m)));
-    void getMailSync().markRead(id);
+    // Mark the whole conversation read locally + on the server (best-effort).
+    setMessages((prev) => prev.map((m) => (
+      m.threadId === id ? { ...m, unread: false } : m
+    )));
+    void getMailSync().setThreadRead(id, true);
   };
 
   const toggleStar = (id: string) => {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, starred: !m.starred } : m)),
-    );
-    void getMailSync().toggleStar(id);
+    const thread = threads.find((item) => item.id === id);
+    if (!thread) return;
+    const starred = !thread.starred;
+    setMessages((prev) => prev.map((m) => (
+      m.threadId === id ? { ...m, starred } : m
+    )));
+    void getMailSync().toggleThreadStar(id);
   };
 
   const toggleRead = (id: string) => {
-    const message = messages.find((m) => m.id === id);
-    if (!message) return;
-    const unread = !message.unread;
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, unread } : m)));
+    const thread = threads.find((item) => item.id === id);
+    if (!thread) return;
+    const unread = thread.unreadCount === 0;
+    setMessages((prev) => prev.map((m) => (
+      m.threadId === id ? { ...m, unread } : m
+    )));
     void getMailSync()
-      .toggleRead(id)
+      .toggleThreadRead(id)
       .then(() => showToast(unread ? 'Marked unread' : 'Marked read'))
       .catch(async (err) => {
         await reloadMessages();
@@ -280,13 +322,13 @@ export function MailScreen({
       });
   };
 
-  const archiveMessage = (id: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
+  const archiveThread = (id: string) => {
+    setMessages((prev) => prev.filter((m) => m.threadId !== id));
     void getMailSync()
-      .archive(id)
+      .archiveThread(id)
       .then((result) => {
         if (result.serverChanged) {
-          showToast('Archived', true, result.activityId);
+          showToast('Conversation archived', true, result.activityId);
         } else {
           showToast(
             `Archived on this device${result.error ? ` — ${result.error}` : ''}`,
@@ -301,13 +343,13 @@ export function MailScreen({
       });
   };
 
-  const removeMessage = (id: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
+  const removeThread = (id: string) => {
+    setMessages((prev) => prev.filter((m) => m.threadId !== id));
     void getMailSync()
-      .remove(id)
+      .removeThread(id)
       .then((result) => {
         if (result.serverChanged) {
-          showToast('Deleted', true, result.activityId);
+          showToast('Conversation deleted', true, result.activityId);
         } else {
           showToast(
             `Deleted on this device${result.error ? ` — ${result.error}` : ''}`,
@@ -322,14 +364,16 @@ export function MailScreen({
       });
   };
 
-  const deleteMessage = (id: string) => {
-    const message = messages.find((m) => m.id === id);
+  const deleteThread = (id: string) => {
+    const thread = threads.find((item) => item.id === id);
     Alert.alert(
-      'Delete message?',
-      message ? `"${message.subject}" will move to Trash.` : 'This message will move to Trash.',
+      'Delete conversation?',
+      thread
+        ? `"${thread.subject}" (${thread.messageCount} message${thread.messageCount === 1 ? '' : 's'}) will move to Trash.`
+        : 'This conversation will move to Trash.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => removeMessage(id) },
+        { text: 'Delete', style: 'destructive', onPress: () => removeThread(id) },
       ],
     );
   };
@@ -347,7 +391,7 @@ export function MailScreen({
     if (!selected || draftGenerating) return;
     setDraftGenerating(true);
     try {
-      const bodyText = (body?.id === selected.id ? body.text : '') || selected.body || selected.preview;
+      const bodyText = bodies[selected.id] || selected.body || selected.preview;
       const result = await generateDraft(selected, bodyText);
       if (result.ok) {
         setThreadDraft(result.draft);
@@ -580,13 +624,13 @@ export function MailScreen({
           keyExtractor={(m) => m.id}
           renderItem={({ item }) => (
             <ThreadRow
-              message={item}
+              thread={item}
               onPress={openThread}
               onToggleStar={toggleStar}
               onToggleRead={toggleRead}
-              onArchive={archiveMessage}
-              onDelete={deleteMessage}
-              onShowActions={setActionMessage}
+              onArchive={archiveThread}
+              onDelete={deleteThread}
+              onShowActions={setActionThread}
             />
           )}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -614,8 +658,8 @@ export function MailScreen({
           ListFooterComponent={
             messages.length > 0 ? (
               <Text style={styles.footerNote}>
-                Showing {visible.length} of {messages.length} cached ·{' '}
-                {HISTORY_DAYS}-day history · capped at{' '}
+                Showing {visible.length} of {threads.length} conversations ·{' '}
+                {messages.length} messages cached · {HISTORY_DAYS}-day history · capped at{' '}
                 {MAX_CACHED_MESSAGES.toLocaleString()} messages
               </Text>
             ) : null
@@ -631,11 +675,11 @@ export function MailScreen({
           />
         )}
         <MailActionSheet
-          message={actionMessage}
-          onClose={() => setActionMessage(null)}
+          thread={actionThread}
+          onClose={() => setActionThread(null)}
           onToggleRead={toggleRead}
-          onArchive={archiveMessage}
-          onDelete={deleteMessage}
+          onArchive={archiveThread}
+          onDelete={deleteThread}
         />
         <Pressable
           accessibilityLabel="Compose email"
@@ -654,26 +698,32 @@ export function MailScreen({
       <View style={styles.screen}>
         {header}
         <ScrollView contentContainerStyle={styles.threadContent}>
-          {selected ? (
+          {threadMessages.length > 0 ? (
             <>
-              <ThreadMessage
-                msg={{
-                  id: selected.id,
-                  sender: selected.from,
-                  email: selected.fromAddress,
-                  time: new Date(selected.date).toLocaleString(),
-                  body: (body?.id === selected.id && body.text) || selected.body || selected.preview,
-                }}
-              />
+              {threadMessages.map((message, index) => (
+                <ThreadMessage
+                  key={message.id}
+                  defaultCollapsed={index < threadMessages.length - 1}
+                  msg={{
+                    id: message.id,
+                    sender: message.from,
+                    email: message.fromAddress,
+                    time: new Date(message.date).toLocaleString(),
+                    body: bodies[message.id] || message.body || message.preview,
+                  }}
+                />
+              ))}
               {bodyLoading && (
                 <View style={styles.bodyStatus}>
                   <ActivityIndicator color={colors.primary} size="small" />
-                  <Text style={styles.bodyStatusText}>Loading the full message…</Text>
+                  <Text style={styles.bodyStatusText}>Loading the full conversation…</Text>
                 </View>
               )}
-              {!bodyLoading && bodyError && (
+              {Object.keys(bodyErrors).length > 0 && (
                 <View style={styles.bodyError}>
-                  <Text style={styles.bodyErrorText}>Showing preview only — {bodyError}</Text>
+                  <Text style={styles.bodyErrorText}>
+                    Some messages are showing previews only.
+                  </Text>
                   <Button
                     label="Retry"
                     variant="secondary"
@@ -730,8 +780,8 @@ export function MailScreen({
           ) : (
             <EmptyState
               icon={<IconMail size={48} color={colors.textSubtle} />}
-              title="Thread unavailable"
-              body="This message could not be loaded."
+              title="Conversation unavailable"
+              body="These messages could not be loaded."
             />
           )}
         </ScrollView>

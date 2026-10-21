@@ -36,7 +36,27 @@ export type MailRestoreUndo = {
   operation: 'move' | 'delete';
 };
 
-export type UndoPayload = MailFlagsUndo | MailRestoreUndo;
+export type MailThreadFlagsUndo = {
+  kind: 'mail_thread_flags';
+  items: Array<{
+    messageId: string;
+    unread?: boolean;
+    starred?: boolean;
+  }>;
+};
+
+export type MailThreadRestoreUndo = {
+  kind: 'mail_thread_restore';
+  messages: Message[];
+  folder: string;
+  operation: 'move' | 'delete';
+};
+
+export type UndoPayload =
+  | MailFlagsUndo
+  | MailRestoreUndo
+  | MailThreadFlagsUndo
+  | MailThreadRestoreUndo;
 
 type MailUndoHandler = (payload: UndoPayload) => Promise<void>;
 
@@ -118,7 +138,12 @@ function parseUndoPayload(raw: unknown): UndoPayload | null {
   if (typeof raw !== 'string' || !raw) return null;
   try {
     const parsed = JSON.parse(raw) as { kind?: unknown };
-    if (parsed.kind !== 'mail_flags' && parsed.kind !== 'mail_restore') return null;
+    if (
+      parsed.kind !== 'mail_flags'
+      && parsed.kind !== 'mail_restore'
+      && parsed.kind !== 'mail_thread_flags'
+      && parsed.kind !== 'mail_thread_restore'
+    ) return null;
     return parsed as UndoPayload;
   } catch {
     return null;

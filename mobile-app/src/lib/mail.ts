@@ -60,7 +60,43 @@ export type Thread = {
   messageCount: number;
   unreadCount: number;
   needsReply: boolean;
+  starred: boolean;
+  /** Newest message in the conversation (row subject/preview source). */
+  latest: Message;
 };
+
+/** Remove reply/forward prefixes and collapse whitespace for subject grouping. */
+export function normalizeSubject(subject: string): string {
+  return subject
+    .replace(/^\s*((re|fw|fwd)\s*:\s*)+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Conversation key. Prefer the root Message-ID from References, then the
+ * immediate parent from In-Reply-To, then the message's own Message-ID. Only
+ * messages with no usable IDs fall back to a normalized subject.
+ */
+export function threadIdFor(raw: {
+  messageId?: string | null;
+  inReplyTo?: string | null;
+  references?: string[] | null;
+  subject?: string | null;
+  fromAddress?: string | null;
+  date?: string | null;
+}): string {
+  const cleanId = (value: string | null | undefined) =>
+    value?.replace(/[<>]/g, '').trim() || null;
+  const root = raw.references?.map(cleanId).find(Boolean)
+    ?? cleanId(raw.inReplyTo)
+    ?? cleanId(raw.messageId);
+  if (root) return `ref:${root}`;
+
+  const subject = normalizeSubject(raw.subject ?? '').toLowerCase();
+  if (subject && subject !== '(no subject)') return `subj:${subject}`;
+  return `fallback:${(raw.fromAddress ?? '').toLowerCase()}:${(raw.date ?? '').slice(0, 10)}`;
+}
 
 export type SyncState = {
   phase: 'idle' | 'importing' | 'idle-watching' | 'offline' | 'error';
@@ -133,7 +169,7 @@ export function applyCacheCap(messages: Message[], cap = MAX_CACHED_MESSAGES): M
   return sorted.slice(0, cap);
 }
 
-/** Group messages into threads, newest thread first. */
+/** Group messages into conversations, newest thread first. */
 export function buildThreads(messages: Message[]): Thread[] {
   const byThread = new Map<string, Message[]>();
   for (const m of messages) {
@@ -153,31 +189,31 @@ export function buildThreads(messages: Message[]): Thread[] {
         messageCount: sorted.length,
         unreadCount: sorted.filter((m) => m.unread).length,
         needsReply: sorted.some((m) => m.needsReply),
+        starred: sorted.some((m) => m.starred),
+        latest: sorted[0],
       };
     })
     .sort((a, b) => b.lastDate.localeCompare(a.lastDate));
 }
 
-/** Apply a filter and a free-text query. */
-export function selectMessages(
-  messages: Message[],
+/** Apply filters and search to whole conversations, not individual messages. */
+export function selectThreads(
+  threads: Thread[],
   filter: MailFilter,
   query: string,
-): Message[] {
+): Thread[] {
   const q = query.trim().toLowerCase();
-  return messages
-    .filter((m) => {
-      if (filter === 'unread' && !m.unread) return false;
-      if (filter === 'needs_reply' && !m.needsReply) return false;
-      if (filter === 'starred' && !m.starred) return false;
-      if (!q) return true;
-      return (
-        m.subject.toLowerCase().includes(q) ||
-        m.from.toLowerCase().includes(q) ||
-        m.preview.toLowerCase().includes(q)
-      );
-    })
-    .sort((a, b) => b.date.localeCompare(a.date));
+  return threads.filter((thread) => {
+    if (filter === 'unread' && thread.unreadCount === 0) return false;
+    if (filter === 'needs_reply' && !thread.needsReply) return false;
+    if (filter === 'starred' && !thread.starred) return false;
+    if (!q) return true;
+    return (
+      thread.subject.toLowerCase().includes(q) ||
+      thread.participants.some((participant) => participant.toLowerCase().includes(q)) ||
+      thread.latest.preview.toLowerCase().includes(q)
+    );
+  });
 }
 
 /**

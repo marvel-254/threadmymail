@@ -59,7 +59,15 @@ export type ThreadMessage = {
   body: string;
 };
 
-export function ThreadMessage({ msg }: { msg: ThreadMessage }) {
+export function ThreadMessage({
+  msg,
+  defaultCollapsed = false,
+}: {
+  msg: ThreadMessage;
+  defaultCollapsed?: boolean;
+}) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+
   return (
     <View style={styles.threadCard}>
       <Text style={styles.threadSubject}>{msg.sender}</Text>
@@ -67,7 +75,30 @@ export function ThreadMessage({ msg }: { msg: ThreadMessage }) {
         {msg.email} · {msg.time}
       </Text>
       <View style={styles.threadDivider} />
-      <Text style={styles.threadBody}>{msg.body}</Text>
+      {collapsed ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Show this earlier message"
+          onPress={() => setCollapsed(false)}
+          style={({ pressed }) => [styles.collapseBtn, pressed && { opacity: 0.8 }]}
+        >
+          <Text style={styles.collapseBtnText}>Show earlier message</Text>
+        </Pressable>
+      ) : (
+        <>
+          <Text style={styles.threadBody}>{msg.body}</Text>
+          {defaultCollapsed && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Collapse this earlier message"
+              onPress={() => setCollapsed(true)}
+              style={({ pressed }) => [styles.collapseBtn, pressed && { opacity: 0.8 }]}
+            >
+              <Text style={styles.collapseBtnText}>Collapse</Text>
+            </Pressable>
+          )}
+        </>
+      )}
     </View>
   );
 }
@@ -164,6 +195,13 @@ const styles = StyleSheet.create({
   threadMeta: { ...typography.caption, color: colors.textMuted },
   threadDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
   threadBody: { ...typography.bodySmall, color: colors.text, lineHeight: 22 },
+  collapseBtn: {
+    minHeight: touch.minTarget,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm,
+  },
+  collapseBtnText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
   composerWrap: { gap: spacing.sm },
   disabledReason: { ...typography.caption, color: colors.warn, textAlign: 'center' },
   composer: {

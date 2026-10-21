@@ -18,7 +18,7 @@ import {
   View,
 } from 'react-native';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
-import { formatListTime, type MailFilter, type Message } from '../lib/mail';
+import { formatListTime, type MailFilter, type Thread } from '../lib/mail';
 import { IconCheck, IconMail, IconSearch, IconStar, IconTrash, IconX } from './Icons';
 
 /* ── Search field ──────────────────────────────────────────────────────── */
@@ -82,7 +82,7 @@ export function FilterChips({ value, onChange, counts }: FilterChipsProps) {
             key={f.id}
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
-            accessibilityLabel={`${f.label}, ${counts[f.id]} messages`}
+            accessibilityLabel={`${f.label}, ${counts[f.id]} conversations`}
             onPress={() => onChange(f.id)}
             style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && { opacity: 0.85 }]}
           >
@@ -102,17 +102,23 @@ const ACTION_WIDTH = 148;
 const SWIPE_TRIGGER = 64;
 
 type ThreadRowProps = {
-  message: Message;
-  onPress: (id: string) => void;
-  onToggleStar: (id: string) => void;
-  onToggleRead: (id: string) => void;
-  onArchive: (id: string) => void;
-  onDelete: (id: string) => void;
-  onShowActions: (message: Message) => void;
+  thread: Thread;
+  onPress: (threadId: string) => void;
+  onToggleStar: (threadId: string) => void;
+  onToggleRead: (threadId: string) => void;
+  onArchive: (threadId: string) => void;
+  onDelete: (threadId: string) => void;
+  onShowActions: (thread: Thread) => void;
 };
 
+function participantLabel(participants: string[]): string {
+  if (participants.length === 0) return 'Unknown sender';
+  if (participants.length <= 2) return participants.join(', ');
+  return `${participants.slice(0, 2).join(', ')} +${participants.length - 2}`;
+}
+
 export function ThreadRow({
-  message,
+  thread,
   onPress,
   onToggleStar,
   onToggleRead,
@@ -123,15 +129,17 @@ export function ThreadRow({
   const translateX = useRef(new Animated.Value(0)).current;
   const opened = useRef(false);
   const longPressed = useRef(false);
+  const message = thread.latest;
+  const unread = thread.unreadCount > 0;
   const latest = useRef({
-    message,
+    thread,
     onPress,
     onToggleRead,
     onArchive,
     onDelete,
     onShowActions,
   });
-  latest.current = { message, onPress, onToggleRead, onArchive, onDelete, onShowActions };
+  latest.current = { thread, onPress, onToggleRead, onArchive, onDelete, onShowActions };
 
   const snap = (toOpen: boolean) => {
     opened.current = toOpen;
@@ -157,7 +165,7 @@ export function ThreadRow({
         const target = base + gesture.dx;
         if (!opened.current && gesture.dx > SWIPE_TRIGGER) {
           snap(false);
-          latest.current.onToggleRead(latest.current.message.id);
+          latest.current.onToggleRead(latest.current.thread.id);
           return;
         }
         if (target < -ACTION_WIDTH * 0.3 || (gesture.vx < -0.45 && gesture.dx < 0)) {
@@ -179,7 +187,7 @@ export function ThreadRow({
       snap(false);
       return;
     }
-    onPress(message.id);
+    onPress(thread.id);
   };
 
   const handleLongPress = () => {
@@ -187,7 +195,7 @@ export function ThreadRow({
     setTimeout(() => {
       longPressed.current = false;
     }, 400);
-    onShowActions(message);
+    onShowActions(thread);
   };
 
   return (
@@ -195,10 +203,10 @@ export function ThreadRow({
       <View style={styles.swipeActions}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Archive message"
+          accessibilityLabel="Archive conversation"
           onPress={() => {
             snap(false);
-            onArchive(message.id);
+            onArchive(thread.id);
           }}
           style={({ pressed }) => [styles.swipeAction, styles.archiveAction, pressed && { opacity: 0.8 }]}
         >
@@ -207,10 +215,10 @@ export function ThreadRow({
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Delete message"
+          accessibilityLabel="Delete conversation"
           onPress={() => {
             snap(false);
-            onDelete(message.id);
+            onDelete(thread.id);
           }}
           style={({ pressed }) => [styles.swipeAction, styles.deleteAction, pressed && { opacity: 0.8 }]}
         >
@@ -225,23 +233,23 @@ export function ThreadRow({
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`${message.from}, ${message.subject}, ${formatListTime(message.date)}`}
+          accessibilityLabel={`${participantLabel(thread.participants)}, ${thread.subject}, ${thread.messageCount} messages, ${formatListTime(thread.lastDate)}`}
           accessibilityHint="Swipe right to toggle read, swipe left for archive and delete, or long-press for actions."
           accessibilityActions={[
-            { name: 'toggle_read', label: message.unread ? 'Mark read' : 'Mark unread' },
+            { name: 'toggle_read', label: unread ? 'Mark read' : 'Mark unread' },
             { name: 'archive', label: 'Archive' },
             { name: 'delete', label: 'Delete' },
           ]}
           onAccessibilityAction={(event) => {
             switch (event.nativeEvent.actionName) {
               case 'toggle_read':
-                onToggleRead(message.id);
+                onToggleRead(thread.id);
                 break;
               case 'archive':
-                onArchive(message.id);
+                onArchive(thread.id);
                 break;
               case 'delete':
-                onDelete(message.id);
+                onDelete(thread.id);
                 break;
               default:
                 break;
@@ -254,26 +262,26 @@ export function ThreadRow({
         >
           {/* Unread marker: a dot plus bold weight, never colour alone. */}
           <View style={styles.rowGutter}>
-            {message.unread ? <View style={styles.unreadDot} /> : null}
+            {unread ? <View style={styles.unreadDot} /> : null}
           </View>
 
           <View style={styles.rowMain}>
             <View style={styles.rowTop}>
               <Text
-                style={[styles.sender, message.unread && styles.senderUnread]}
+                style={[styles.sender, unread && styles.senderUnread]}
                 numberOfLines={1}
               >
-                {message.from}
+                {participantLabel(thread.participants)}
               </Text>
-              <Text style={styles.rowDate}>{formatListTime(message.date)}</Text>
+              <Text style={styles.rowDate}>{formatListTime(thread.lastDate)}</Text>
             </View>
 
             <View style={styles.rowBottom}>
               <Text
-                style={[styles.subject, message.unread && styles.subjectUnread]}
+                style={[styles.subject, unread && styles.subjectUnread]}
                 numberOfLines={1}
               >
-                {message.subject}
+                {thread.subject}
               </Text>
               <Text style={styles.preview} numberOfLines={1}>
                 {message.preview}
@@ -281,19 +289,25 @@ export function ThreadRow({
             </View>
           </View>
 
-          {message.needsReply && (
+          {thread.messageCount > 1 && (
+            <View style={styles.threadCount}>
+              <Text style={styles.threadCountText}>{thread.messageCount}</Text>
+            </View>
+          )}
+
+          {thread.needsReply && (
             <View style={styles.needsReply}>
               <Text style={styles.needsReplyText}>Reply</Text>
             </View>
           )}
 
           <Pressable
-            accessibilityLabel={message.starred ? 'Unstar' : 'Star'}
-            onPress={() => onToggleStar(message.id)}
+            accessibilityLabel={thread.starred ? 'Unstar conversation' : 'Star conversation'}
+            onPress={() => onToggleStar(thread.id)}
             style={({ pressed }) => [styles.starBtn, pressed && { opacity: 0.7 }]}
             hitSlop={8}
           >
-            <IconStar size={18} color={message.starred ? colors.warn : colors.textSubtle} filled={message.starred} />
+            <IconStar size={18} color={thread.starred ? colors.warn : colors.textSubtle} filled={thread.starred} />
           </Pressable>
         </Pressable>
       </Animated.View>
@@ -303,25 +317,26 @@ export function ThreadRow({
 
 /* ── Long-press action sheet ───────────────────────────────────────────── */
 type MailActionSheetProps = {
-  message: Message | null;
+  thread: Thread | null;
   onClose: () => void;
-  onToggleRead: (id: string) => void;
-  onArchive: (id: string) => void;
-  onDelete: (id: string) => void;
+  onToggleRead: (threadId: string) => void;
+  onArchive: (threadId: string) => void;
+  onDelete: (threadId: string) => void;
 };
 
 export function MailActionSheet({
-  message,
+  thread,
   onClose,
   onToggleRead,
   onArchive,
   onDelete,
 }: MailActionSheetProps) {
-  if (!message) return null;
-  const run = (action: (id: string) => void) => {
-    action(message.id);
+  if (!thread) return null;
+  const run = (action: (threadId: string) => void) => {
+    action(thread.id);
     onClose();
   };
+  const anyUnread = thread.unreadCount > 0;
 
   return (
     <Modal
@@ -338,14 +353,16 @@ export function MailActionSheet({
           accessibilityViewIsModal
         >
           <View style={styles.sheetHandle} />
-          <Text style={styles.sheetSubject} numberOfLines={1}>{message.subject}</Text>
+          <Text style={styles.sheetSubject} numberOfLines={1}>
+            {thread.subject} · {thread.messageCount} message{thread.messageCount === 1 ? '' : 's'}
+          </Text>
           <Pressable
             accessibilityRole="button"
             onPress={() => run(onToggleRead)}
             style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
           >
             <IconCheck size={18} color={colors.text} />
-            <Text style={styles.sheetItemText}>{message.unread ? 'Mark read' : 'Mark unread'}</Text>
+            <Text style={styles.sheetItemText}>{anyUnread ? 'Mark conversation read' : 'Mark conversation unread'}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -353,7 +370,7 @@ export function MailActionSheet({
             style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
           >
             <IconMail size={18} color={colors.text} />
-            <Text style={styles.sheetItemText}>Archive</Text>
+            <Text style={styles.sheetItemText}>Archive conversation</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -361,7 +378,7 @@ export function MailActionSheet({
             style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
           >
             <IconTrash size={18} color={colors.danger} />
-            <Text style={[styles.sheetItemText, styles.sheetItemDanger]}>Delete</Text>
+            <Text style={[styles.sheetItemText, styles.sheetItemDanger]}>Delete conversation</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -509,6 +526,18 @@ const styles = StyleSheet.create({
   subject: { ...typography.bodySmall, color: colors.textMuted, maxWidth: '55%' },
   subjectUnread: { color: colors.text, fontWeight: '600' },
   preview: { flex: 1, ...typography.caption, color: colors.textSubtle },
+
+  threadCount: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    backgroundColor: colors.surfaceStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+  },
+  threadCountText: { ...typography.label, fontSize: 10, color: colors.textMuted },
 
   needsReply: {
     paddingHorizontal: spacing.sm,
