@@ -1,13 +1,10 @@
 /**
  * BottomTabBar — 5-tab navigation (Today · Mail · Millo · Activity · Settings).
  *
- * Structure, top to bottom:
- *   1. A hairline rule that reads as a physical boundary above the bar.
- *   2. The row of icon buttons, separated by vertical divider bars so the tabs
- *      read as discrete slots rather than one continuous strip.
- *   3. A label bar underneath carrying the page names, so the words are stable
- *      regardless of what the icon row is doing (active pill, Millo's raised
- *      button) — the icon row and the words stay in lockstep.
+ * Each tab is one Pressable covering the icon and the word, so the visually
+ * obvious target is the real target and every slot clears the 48dp rule from
+ * theme.ts. The bar keeps its compact height by packing the icon and label into
+ * that single target instead of stacking separate rows.
  *
  * Millo is the raised centre button: it is the heart of the product, so it is
  * the one control that breaks the grid.
@@ -60,32 +57,38 @@ export function BottomTabBar({ active, onSelect, unreadCount = 0 }: BottomTabBar
   const badgeLabel = unreadCount > 99 ? '99+' : String(unreadCount);
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, { paddingBottom: insets.bottom }]}>
       {/* Boundary rule above the whole bar. */}
       <View style={styles.topRule} />
 
-      {/* Icon row, divided into slots. */}
-      <View style={styles.iconRow}>
+      <View style={styles.row}>
         {TABS.map((id, index) => {
           const isActive = active === id;
           const isMillo = id === 'agent';
           return (
-            <View key={id} style={styles.slot}>
-              {index > 0 && <View style={styles.divider} />}
-              <Pressable
-                accessibilityRole="tab"
-                accessibilityState={{ selected: isActive }}
-                accessibilityLabel={
-                  id === 'mail' && unreadCount > 0
-                    ? `Mail, ${unreadCount} unread`
-                    : TAB_LABELS[id]
-                }
-                onPress={() => onSelect(id)}
-                style={({ pressed }) => [
+            <Pressable
+              key={id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: isActive }}
+              accessibilityLabel={
+                id === 'mail' && unreadCount > 0
+                  ? `Mail, ${unreadCount} unread`
+                  : TAB_LABELS[id]
+              }
+              onPress={() => onSelect(id)}
+              android_ripple={{ color: colors.surfaceHover, borderless: false }}
+              style={({ pressed }) => [
+                styles.slot,
+                index > 0 && styles.slotDivider,
+                pressed && styles.slotPressed,
+              ]}
+            >
+              <View
+                style={[
                   styles.iconSlot,
                   isActive && !isMillo && styles.iconSlotActive,
                   isMillo && styles.milloSlot,
-                  pressed && { opacity: 0.7 },
+                  isMillo && isActive && styles.milloSlotActive,
                 ]}
               >
                 <TabIcon id={id} active={isActive} />
@@ -94,29 +97,18 @@ export function BottomTabBar({ active, onSelect, unreadCount = 0 }: BottomTabBar
                     <Text style={styles.badgeText}>{badgeLabel}</Text>
                   </View>
                 )}
-              </Pressable>
-            </View>
-          );
-        })}
-      </View>
-
-      {/* Label bar — the page names sit here, under their slots. */}
-      <View style={[styles.labelBar, { paddingBottom: insets.bottom }]}>
-        {TABS.map((id) => {
-          const isActive = active === id;
-          return (
-            <View key={id} style={styles.labelSlot}>
+              </View>
               <Text
                 style={[
                   styles.label,
                   isActive && styles.labelActive,
-                  id === 'agent' && styles.labelMillo,
+                  isMillo && styles.labelMillo,
                 ]}
                 numberOfLines={1}
               >
                 {TAB_LABELS[id]}
               </Text>
-            </View>
+            </Pressable>
           );
         })}
       </View>
@@ -126,9 +118,6 @@ export function BottomTabBar({ active, onSelect, unreadCount = 0 }: BottomTabBar
 
 const styles = StyleSheet.create({
   wrapper: {
-    // Ultra-compact height — icon row + hairline labels + safe-area only.
-    minHeight: 48,
-    paddingVertical: 2,
     backgroundColor: colors.bgDeep,
     justifyContent: 'center',
   },
@@ -136,27 +125,30 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.borderStrong,
   },
-  iconRow: {
+  row: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: spacing.xs,
+    alignItems: 'stretch',
   },
+  // One target per tab: icon + label, never smaller than 48dp.
   slot: {
     flex: 1,
-    flexDirection: 'row',
+    minHeight: touch.minTarget,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 1,
+    paddingVertical: spacing.xs,
+    overflow: 'hidden',
   },
-  // Vertical hairline between adjacent slots.
-  divider: {
-    width: 1,
-    alignSelf: 'stretch',
-    marginVertical: spacing.xs,
-    backgroundColor: colors.border,
+  slotDivider: {
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
+  },
+  slotPressed: {
+    opacity: 0.72,
   },
   iconSlot: {
     width: 40,
-    height: 28,
+    height: 26,
     borderRadius: radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -166,8 +158,8 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    top: -3,
-    right: 2,
+    top: -4,
+    right: 0,
     minWidth: 16,
     height: 16,
     borderRadius: radii.pill,
@@ -188,26 +180,20 @@ const styles = StyleSheet.create({
   // Millo breaks the grid: a raised pill that reads as the primary action.
   milloSlot: {
     width: 50,
-    height: 34,
+    height: 32,
     borderRadius: radii.pill,
     backgroundColor: colors.surfaceStrong,
     borderWidth: 1,
     borderColor: colors.borderPrimary,
     marginTop: -8,
   },
-  labelBar: {
-    flexDirection: 'row',
-    paddingTop: 0,
-    paddingBottom: 2,
-  },
-  labelSlot: {
-    flex: 1,
-    alignItems: 'center',
+  milloSlotActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   label: {
     ...typography.caption,
     color: colors.textSubtle,
-    fontSize: 11,
   },
   labelActive: {
     color: colors.primary,
