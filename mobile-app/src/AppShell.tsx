@@ -39,6 +39,10 @@ import {
   startTriageScheduler,
   stopTriageScheduler,
 } from './lib/agent/triageScheduler';
+import {
+  startFollowUpScheduler,
+  stopFollowUpScheduler,
+} from './lib/agent/followUpScheduler';
 import { isOnboarded, setOnboarded } from './lib/prefs';
 import type { MailFilter } from './lib/mail';
 import { colors } from './theme/theme';
@@ -96,7 +100,11 @@ export function AppShell() {
   useEffect(() => {
     if (!onboarded) return;
     void startTriageScheduler();
-    return stopTriageScheduler;
+    void startFollowUpScheduler();
+    return () => {
+      stopTriageScheduler();
+      stopFollowUpScheduler();
+    };
   }, [onboarded]);
 
   // Keep the tab badge and launcher badge in step with the cached unread count.
@@ -145,6 +153,10 @@ export function AppShell() {
       const data = response.notification.request.content.data as
         | Record<string, unknown>
         | undefined;
+      if (data?.followUps === true) {
+        setTab('today');
+        return;
+      }
       const target =
         typeof data?.threadId === 'string'
           ? data.threadId

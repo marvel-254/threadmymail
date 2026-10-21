@@ -16,7 +16,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
+import { Button, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
 import { StatusStrip } from '../components/agent';
 import { DraftCard } from '../components/drafts';
 import { SyncBanner } from '../components/inbox';
@@ -37,7 +37,17 @@ import {
 import { cancelTriage, runTriage, useTriage } from '../lib/agent/triage';
 import { loadLatestTriageRun, loadNeedsEye, type NeedsEyeItem } from '../lib/agent/triageStore';
 import { usePendingDrafts } from '../lib/agent/draftStore';
-import { discardDraft, sendDraft as sendQueuedDraft } from '../lib/agent/drafts';
+import {
+  discardDraft,
+  generateFollowUpDraft,
+  sendDraft as sendQueuedDraft,
+} from '../lib/agent/drafts';
+import {
+  loadFollowUps,
+  type FollowUp,
+} from '../lib/agent/followUps';
+import { snoozeFollowUp } from '../lib/agent/followUpStore';
+import { loadSkills } from '../lib/skillsStore';
 import { loadAccount } from '../lib/accountStore';
 import { getMailSync } from '../lib/mailSyncSingleton';
 import {
@@ -97,6 +107,9 @@ export function TodayScreen({
   const [confirmKill, setConfirmKill] = useState(false);
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
   const [draftBusy, setDraftBusy] = useState<string | null>(null);
+  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [followUpsOn, setFollowUpsOn] = useState(false);
+  const [followBusy, setFollowBusy] = useState<string | null>(null);
   const triage = useTriage();
   const pendingDrafts = usePendingDrafts();
   const guardrails = useGuardrails();
@@ -139,6 +152,36 @@ export function TodayScreen({
       cancelled = true;
     };
   }, [triage.lastRunAt]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadSkills().then((skills) => {
+      if (!cancelled) setFollowUpsOn(skills.follow_ups);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!followUpsOn) {
+      setFollowUps([]);
+      return;
+    }
+    let cancelled = false;
+    void loadFollowUps().then((items) => {
+      if (!cancelled) setFollowUps(items);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    followUpsOn,
+    messages,
+    triage.lastRunAt,
+    guardrails.loaded,
+    guardrails.followUpDays,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,6 +275,28 @@ export function TodayScreen({
     await discardDraft(draft);
     setDraftBusy(null);
     setToast({ text: 'Draft discarded', ok: true });
+  };
+
+  const handleNudge = async (item: FollowUp) => {
+    if (followBusy) return;
+    setFollowBusy(item.thread.id);
+    const result = await generateFollowUpDraft(item.thread.latest, item.waitingOn);
+    setFollowBusy(null);
+    if (!result.ok) {
+      setToast({ text: result.error, ok: false });
+      return;
+    }
+    setToast({ text: 'Follow-up draft added to your queue', ok: true });
+    void loadFollowUps().then(setFollowUps);
+  };
+
+  const handleSnooze = async (item: FollowUp) => {
+    if (followBusy) return;
+    setFollowBusy(item.thread.id);
+    await snoozeFollowUp(item.thread.id, 2);
+    setFollowBusy(null);
+    setFollowUps((current) => current.filter((entry) => entry.thread.id !== item.thread.id));
+    setToast({ text: 'Follow-up snoozed for 2 days', ok: true });
   };
 
   const confirmKillToggle = () => {
@@ -384,6 +449,56 @@ export function TodayScreen({
           </>
         )}
 
+        {followUpsOn && (
+          <>
+            <SectionLabel>Follow-ups ({followUps.length})</SectionLabel>
+            {followUps.length === 0 ? (
+              <Text style={styles.followEmpty}>
+                No cold threads. Millo will flag conversations that have waited too long.
+              </Text>
+            ) : (
+              followUps.map((item) => (
+                <View key={item.thread.id} style={styles.eyeCard}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Follow up with ${item.thread.latest.from}: ${item.thread.subject}`}
+                    onPress={() => onOpenMail(item.thread.latest.id)}
+                    style={({ pressed }) => [styles.followBody, pressed && styles.pressed]}
+                  >
+                    <View style={styles.eyeTop}>
+                      <Text style={styles.eyeSender} numberOfLines={1}>{item.thread.latest.from}</Text>
+                      <View style={[styles.verdictBadge, styles.followBadge]}>
+                        <Text style={styles.followBadgeText}>{item.daysCold}d cold</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.eyeSubject} numberOfLines={1}>{item.thread.subject}</Text>
+                    <Text style={styles.eyeReason} numberOfLines={2}>
+                      {item.waitingOn === 'reply'
+                        ? 'Waiting on your reply'
+                        : 'Waiting on them'}
+                      {' · '}
+                      {item.thread.messageCount} message{item.thread.messageCount === 1 ? '' : 's'}
+                    </Text>
+                  </Pressable>
+                  <View style={styles.followActions}>
+                    <Button
+                      label="Draft nudge"
+                      loading={followBusy === item.thread.id}
+                      onPress={() => void handleNudge(item)}
+                    />
+                    <Button
+                      label="Snooze 2d"
+                      variant="secondary"
+                      disabled={followBusy === item.thread.id}
+                      onPress={() => void handleSnooze(item)}
+                    />
+                  </View>
+                </View>
+              ))
+            )}
+          </>
+        )}
+
         <SectionLabel>Needs your eye</SectionLabel>
         {visibleNeedsEye.length === 0 ? (
           <EmptyState
@@ -529,4 +644,9 @@ const styles = StyleSheet.create({
   verdictTextDanger: { color: colors.danger },
   eyeSubject: { ...typography.body, color: colors.text, fontWeight: '600' },
   eyeReason: { ...typography.caption, color: colors.textMuted },
+  followEmpty: { ...typography.caption, color: colors.textMuted },
+  followBody: { gap: spacing.xs },
+  followBadge: { backgroundColor: colors.dangerBg },
+  followBadgeText: { ...typography.caption, color: colors.danger, fontWeight: '600' },
+  followActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
 });

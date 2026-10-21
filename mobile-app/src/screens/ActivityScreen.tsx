@@ -40,6 +40,11 @@ const ACTION_LABELS: Record<string, string> = {
   sync_connect: 'Sync connected',
   sync_import: 'Sync import',
   sync_error: 'Sync error',
+  follow_up_reminder: 'Follow-up reminder',
+  follow_up_skipped: 'Follow-up skipped',
+  follow_up_error: 'Follow-up error',
+  follow_up_draft: 'Follow-up draft',
+  follow_up_draft_error: 'Follow-up draft error',
 };
 
 const AGENT_TYPES = new Set([
@@ -48,6 +53,11 @@ const AGENT_TYPES = new Set([
   'draft',
   'draft_reply',
   'follow_up',
+  'follow_up_reminder',
+  'follow_up_skipped',
+  'follow_up_error',
+  'follow_up_draft',
+  'follow_up_draft_error',
   'agent_send',
 ]);
 

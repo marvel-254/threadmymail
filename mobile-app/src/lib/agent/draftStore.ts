@@ -171,6 +171,16 @@ export async function loadPendingDraftForThread(threadId: string): Promise<Draft
   return row ? fromRow(row) : null;
 }
 
+/** Most recent sent-draft time per thread, used to spot waiting-on-them threads. */
+export async function loadLastSentDraftTimes(): Promise<Map<string, number>> {
+  const db = await openDb();
+  const rows = await db.getAllAsync<{ thread_id: string; last_sent: number }>(
+    `SELECT thread_id, MAX(updated_at) AS last_sent FROM agent_drafts
+     WHERE status = 'sent' GROUP BY thread_id`,
+  );
+  return new Map(rows.map((row) => [row.thread_id, Number(row.last_sent)]));
+}
+
 export async function countPendingDrafts(): Promise<number> {
   const db = await openDb();
   const row = await db.getFirstAsync<{ n: number }>(

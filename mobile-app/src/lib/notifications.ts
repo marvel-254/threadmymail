@@ -271,6 +271,38 @@ export async function notifyNewMessages(messages: Message[]): Promise<void> {
   }
 }
 
+/**
+ * One summary alert for cold threads. Returns false when notifications are
+ * disabled, permission is missing, or a guardrail blocks the alert.
+ */
+export async function notifyFollowUps(count: number): Promise<boolean> {
+  if (count <= 0) return false;
+  await loadNotificationPrefs();
+  if (!state.enabled) return false;
+  if (!checkGuardrails('notification').allowed) return false;
+  try {
+    const permissions = await Notifications.getPermissionsAsync();
+    if (!permissions.granted) return false;
+  } catch {
+    return false;
+  }
+  const channelId = state.sound ? ALERT_CHANNEL : SILENT_CHANNEL;
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: count === 1 ? '1 thread went cold' : `${count} threads went cold`,
+        body: 'Open Today to review them and write a nudge.',
+        sound: state.sound ? 'default' : false,
+        data: { followUps: true },
+      },
+      trigger: Platform.OS === 'android' ? { channelId } : null,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** React binding for the notification preferences. */
 export function useNotificationPrefs(): NotificationPrefs {
   const [snapshot, setSnapshot] = useState(getNotificationPrefs);

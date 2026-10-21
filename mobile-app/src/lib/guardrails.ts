@@ -56,6 +56,10 @@ export type GuardrailsState = {
   dailyTriageEnabled: boolean;
   /** Minutes since local midnight. */
   dailyTriageTime: number;
+  /** Remind about threads that have gone cold after this many days. */
+  followUpDays: number;
+  /** Minutes since local midnight for the once-a-day follow-up reminder. */
+  followUpTime: number;
 };
 
 type PersistedConfig = Pick<
@@ -70,6 +74,8 @@ type PersistedConfig = Pick<
   | 'quietEnd'
   | 'dailyTriageEnabled'
   | 'dailyTriageTime'
+  | 'followUpDays'
+  | 'followUpTime'
 >;
 
 export const DEFAULT_DAILY_ACTION_LIMIT = 50;
@@ -77,6 +83,8 @@ export const DEFAULT_DAILY_AI_CALL_LIMIT = 100;
 export const DEFAULT_QUIET_START = 22 * 60;
 export const DEFAULT_QUIET_END = 7 * 60;
 export const DEFAULT_TRIAGE_TIME = 8 * 60;
+export const DEFAULT_FOLLOW_UP_DAYS = 3;
+export const DEFAULT_FOLLOW_UP_TIME = 9 * 60;
 
 export function localDayKey(now = new Date()): string {
   const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -118,6 +126,8 @@ let state: GuardrailsState = {
   quietEnd: DEFAULT_QUIET_END,
   dailyTriageEnabled: false,
   dailyTriageTime: DEFAULT_TRIAGE_TIME,
+  followUpDays: DEFAULT_FOLLOW_UP_DAYS,
+  followUpTime: DEFAULT_FOLLOW_UP_TIME,
 };
 
 const listeners = new Set<(next: GuardrailsState) => void>();
@@ -158,6 +168,8 @@ function normalizeConfig(raw: unknown): PersistedConfig {
     quietEnd: clampInt(record.quietEnd, 0, 1439, DEFAULT_QUIET_END),
     dailyTriageEnabled: record.dailyTriageEnabled === true,
     dailyTriageTime: clampInt(record.dailyTriageTime, 0, 1439, DEFAULT_TRIAGE_TIME),
+    followUpDays: clampInt(record.followUpDays, 1, 30, DEFAULT_FOLLOW_UP_DAYS),
+    followUpTime: clampInt(record.followUpTime, 0, 1439, DEFAULT_FOLLOW_UP_TIME),
   };
 }
 
@@ -173,6 +185,8 @@ function configSnapshot(): PersistedConfig {
     quietEnd: state.quietEnd,
     dailyTriageEnabled: state.dailyTriageEnabled,
     dailyTriageTime: state.dailyTriageTime,
+    followUpDays: state.followUpDays,
+    followUpTime: state.followUpTime,
   };
 }
 
@@ -266,6 +280,8 @@ export async function setGuardrailConfig(
     | 'quietEnd'
     | 'dailyTriageEnabled'
     | 'dailyTriageTime'
+    | 'followUpDays'
+    | 'followUpTime'
   >>,
 ): Promise<void> {
   state = {
@@ -279,6 +295,10 @@ export async function setGuardrailConfig(
     quietEnd: clampInt(patch.quietEnd ?? state.quietEnd, 0, 1439, state.quietEnd),
     dailyTriageTime: clampInt(
       patch.dailyTriageTime ?? state.dailyTriageTime, 0, 1439, state.dailyTriageTime),
+    followUpDays: clampInt(
+      patch.followUpDays ?? state.followUpDays, 1, 30, state.followUpDays),
+    followUpTime: clampInt(
+      patch.followUpTime ?? state.followUpTime, 0, 1439, state.followUpTime),
   };
   emit();
   await persistConfig();

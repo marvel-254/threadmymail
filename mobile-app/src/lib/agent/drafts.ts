@@ -23,6 +23,14 @@ import {
   type Draft,
 } from './draftStore';
 
+const FOLLOW_UP_SYSTEM = [
+  'You write short, polite follow-up nudges for the user, in the user\'s voice.',
+  'Output only the email body — no subject line, no markdown fences, no commentary.',
+  'Keep it to a few sentences. Reference the thread naturally and ask whether a reply is still coming.',
+  'Do not invent facts, deadlines, attachments, or commitments that are not in the thread preview.',
+  'Never sound passive-aggressive or guilt-tripping.',
+].join('\n');
+
 const DRAFT_SYSTEM = [
   'You write email replies for the user, in the user\'s voice.',
   'Output only the reply body — no subject line, no markdown fences, no commentary.',
@@ -135,6 +143,98 @@ export async function generateDraft(
     type: 'draft_generated',
     outcome: 'ok',
     detail: `${gate.shadowed ? 'Shadow mode — ' : ''}Generated a draft reply to ${message.from}. Send is ${
+      gate.shadowed ? 'disabled until shadow mode is off' : 'waiting for approval'
+    }.`,
+    targetType: 'thread',
+    targetId: message.threadId,
+    subject,
+  });
+
+  return { ok: true, draft, shadowed: gate.shadowed };
+}
+
+/** Generate a polite nudge for a thread that has gone cold. */
+export async function generateFollowUpDraft(
+  message: Message,
+  waitingOn: 'reply' | 'them',
+): Promise<GenerateDraftResult> {
+  const gate = await consumeAiCall();
+  if (!gate.allowed) {
+    const error = gate.reason ?? 'Millo cannot draft a follow-up right now.';
+    await logActivity({
+      type: 'follow_up_draft_error',
+      outcome: 'error',
+      detail: `Follow-up draft skipped: ${error}`,
+      targetType: 'thread',
+      targetId: message.threadId,
+      subject: message.subject,
+    });
+    return { ok: false, error };
+  }
+
+  const samples = await loadVoiceSamples(3);
+  const voice = samples.length
+    ? `\n\nRecent replies the user approved (match this voice, do not copy facts):\n${samples
+        .map((sample, index) => `--- sample ${index + 1} ---\n${clip(sample, 1_200)}`)
+        .join('\n')}`
+    : '';
+  const prompt = [
+    waitingOn === 'reply'
+      ? 'The last message in this thread is from them and is still waiting for the user\'s reply.'
+      : 'The user sent the last message and has not heard back. Nudge them for a response.',
+    '',
+    `From: ${message.from} <${message.fromAddress}>`,
+    `Subject: ${message.subject}`,
+    `Date: ${message.date.slice(0, 10)}`,
+    '',
+    clip(message.preview, 2_000),
+    voice,
+  ].join('\n');
+
+  const response = await streamChat({
+    system: FOLLOW_UP_SYSTEM,
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 500,
+  });
+  if (!response.ok) {
+    await logActivity({
+      type: 'follow_up_draft_error',
+      outcome: 'error',
+      detail: `Follow-up draft failed: ${response.error}`,
+      targetType: 'thread',
+      targetId: message.threadId,
+      subject: message.subject,
+    });
+    return { ok: false, error: response.error };
+  }
+
+  const bodyText = cleanDraft(response.text);
+  if (!bodyText) {
+    const error = 'The provider returned an empty follow-up.';
+    await logActivity({
+      type: 'follow_up_draft_error',
+      outcome: 'error',
+      detail: error,
+      targetType: 'thread',
+      targetId: message.threadId,
+      subject: message.subject,
+    });
+    return { ok: false, error };
+  }
+
+  const subject = /^re:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`;
+  const draft = await createDraft({
+    threadId: message.threadId,
+    messageId: message.id,
+    to: message.fromAddress,
+    subject,
+    body: bodyText,
+  });
+
+  await logActivity({
+    type: 'follow_up_draft',
+    outcome: 'ok',
+    detail: `${gate.shadowed ? 'Shadow mode — ' : ''}Prepared a follow-up nudge to ${message.from}. Send is ${
       gate.shadowed ? 'disabled until shadow mode is off' : 'waiting for approval'
     }.`,
     targetType: 'thread',

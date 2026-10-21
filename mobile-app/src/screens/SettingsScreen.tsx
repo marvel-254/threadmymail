@@ -19,6 +19,8 @@ import { getMailSync } from '../lib/mailSyncSingleton';
 import {
   DEFAULT_DAILY_ACTION_LIMIT,
   DEFAULT_DAILY_AI_CALL_LIMIT,
+  DEFAULT_FOLLOW_UP_DAYS,
+  DEFAULT_FOLLOW_UP_TIME,
   DEFAULT_QUIET_END,
   DEFAULT_QUIET_START,
   DEFAULT_TRIAGE_TIME,
@@ -38,6 +40,7 @@ import {
   type Skills,
 } from '../lib/skillsStore';
 import { testImap } from '../lib/emailTest';
+import { runFollowUps } from '../lib/agent/followUps';
 import {
   configureNotifications,
   muteSender,
@@ -220,6 +223,9 @@ export function SettingsScreen() {
   const [quietStartText, setQuietStartText] = useState(formatMinutes(DEFAULT_QUIET_START));
   const [quietEndText, setQuietEndText] = useState(formatMinutes(DEFAULT_QUIET_END));
   const [triageTimeText, setTriageTimeText] = useState(formatMinutes(DEFAULT_TRIAGE_TIME));
+  const [followUpDaysText, setFollowUpDaysText] = useState(String(DEFAULT_FOLLOW_UP_DAYS));
+  const [followUpTimeText, setFollowUpTimeText] = useState(formatMinutes(DEFAULT_FOLLOW_UP_TIME));
+  const [checkingFollowUps, setCheckingFollowUps] = useState(false);
 
   useEffect(() => {
     setActionLimitText(String(guardrails.dailyActionLimit));
@@ -227,12 +233,16 @@ export function SettingsScreen() {
     setQuietStartText(formatMinutes(guardrails.quietStart));
     setQuietEndText(formatMinutes(guardrails.quietEnd));
     setTriageTimeText(formatMinutes(guardrails.dailyTriageTime));
+    setFollowUpDaysText(String(guardrails.followUpDays));
+    setFollowUpTimeText(formatMinutes(guardrails.followUpTime));
   }, [
     guardrails.dailyActionLimit,
     guardrails.dailyAiCallLimit,
     guardrails.quietStart,
     guardrails.quietEnd,
     guardrails.dailyTriageTime,
+    guardrails.followUpDays,
+    guardrails.followUpTime,
   ]);
 
   const commitActionLimit = () => {
@@ -274,6 +284,44 @@ export function SettingsScreen() {
   const changeQuietHours = (value: boolean) => {
     void setGuardrailConfig({ quietHoursEnabled: value });
     toast(value ? 'Quiet hours on' : 'Quiet hours off');
+  };
+
+  const commitFollowUpDays = () => {
+    const value = Number(followUpDaysText);
+    if (!Number.isFinite(value) || value < 1) {
+      setFollowUpDaysText(String(guardrails.followUpDays));
+      return;
+    }
+    void setGuardrailConfig({ followUpDays: Math.round(value) });
+  };
+
+  const commitFollowUpTime = () => {
+    const minutes = parseTimeLabel(followUpTimeText);
+    if (minutes === null) {
+      setFollowUpTimeText(formatMinutes(guardrails.followUpTime));
+      return;
+    }
+    void setGuardrailConfig({ followUpTime: minutes });
+  };
+
+  const checkFollowUpsNow = async () => {
+    setCheckingFollowUps(true);
+    const result = await runFollowUps('manual');
+    setCheckingFollowUps(false);
+    if (result.error) {
+      toast(result.error, false);
+      return;
+    }
+    if (result.count === 0) {
+      toast('No cold threads right now');
+      return;
+    }
+    toast(
+      result.notified
+        ? `${result.count} cold thread${result.count === 1 ? '' : 's'} found`
+        : `${result.count} cold thread${result.count === 1 ? '' : 's'} found — notification blocked`,
+      result.notified,
+    );
   };
 
   const commitTriageTime = () => {
@@ -573,6 +621,59 @@ export function SettingsScreen() {
                 </View>
               ))
             )}
+          </View>
+        </Card>
+
+        {/* Follow-ups */}
+        <SectionLabel>Follow-ups</SectionLabel>
+        <Card>
+          <GuardrailRow
+            label="Follow-up reminders"
+            description="Flag cold threads and remind you once a day. Also controlled by the Follow-ups skill."
+            value={skills.follow_ups}
+            onChange={(value) => changeSkill('follow_ups', value)}
+          />
+          <Text style={[styles.cardSub, { marginTop: spacing.md }]}>
+            A thread is cold when an inbound message has waited longer than this, or when
+            your last sent reply has had no answer.
+          </Text>
+          <View style={styles.guardrailRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guardrailLabel}>Cold after</Text>
+              <Text style={styles.guardrailDesc}>Days a thread can wait before it is flagged.</Text>
+            </View>
+            <TextInput
+              value={followUpDaysText}
+              onChangeText={setFollowUpDaysText}
+              onEndEditing={commitFollowUpDays}
+              keyboardType="number-pad"
+              maxLength={2}
+              style={styles.numberInput}
+              accessibilityLabel="Cold thread threshold in days"
+            />
+          </View>
+          <View style={styles.timeRow}>
+            <View style={styles.timeField}>
+              <Text style={styles.guardrailDesc}>Reminder time</Text>
+              <TextInput
+                value={followUpTimeText}
+                onChangeText={setFollowUpTimeText}
+                onEndEditing={commitFollowUpTime}
+                placeholder="09:00"
+                placeholderTextColor={colors.textSubtle}
+                maxLength={5}
+                style={styles.timeInput}
+                accessibilityLabel="Follow-up reminder time"
+              />
+            </View>
+          </View>
+          <View style={styles.cardActions}>
+            <Button
+              label="Check now"
+              variant="secondary"
+              loading={checkingFollowUps}
+              onPress={() => void checkFollowUpsNow()}
+            />
           </View>
         </Card>
 
