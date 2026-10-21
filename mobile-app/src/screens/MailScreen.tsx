@@ -19,7 +19,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Button, EmptyState, Toast } from '../components/ui';
+import { Button, ConfirmDialog, EmptyState, Toast } from '../components/ui';
 import { Composer, ThreadMessage } from '../components/mail';
 import { EscalationCard } from '../components/agent';
 import { FilterChips, SearchBar, SyncBanner, ThreadRow } from '../components/inbox';
@@ -37,6 +37,7 @@ import {
 import { loadMessages, markRead as storeMarkRead, setStarred } from '../lib/mailStore';
 import { loadAccount } from '../lib/accountStore';
 import { getMailSync } from '../lib/mailSyncSingleton';
+import { setKillSwitch, useGuardrails } from '../lib/guardrails';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
 type MailScreenProps = {
@@ -53,7 +54,8 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [killEngaged, setKillEngaged] = useState(false);
+  const [confirmKill, setConfirmKill] = useState(false);
+  const { killSwitch: killEngaged } = useGuardrails();
   const [sync, setSync] = useState<SyncState>(INITIAL_SYNC_STATE);
 
   // Open specific thread if threadId is provided
@@ -165,13 +167,31 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
         {view === 'list' ? 'Inbox' : view === 'thread' ? selected?.subject ?? 'Thread' : 'New message'}
       </Text>
       <Pressable
-        accessibilityLabel="Kill switch"
-        onLongPress={() => setKillEngaged((k) => !k)}
+        accessibilityLabel={killEngaged ? 'Resume autonomous actions' : 'Stop autonomous actions'}
+        accessibilityHint={killEngaged ? 'Tap to resume autonomy' : 'Tap to engage the kill switch'}
+        onPress={() => setConfirmKill(true)}
         style={[styles.headerBtn, killEngaged && styles.killEngaged]}
       >
         <IconPower size={22} color={killEngaged ? colors.danger : colors.textMuted} />
       </Pressable>
     </View>
+  );
+
+  const killDialog = (
+    <ConfirmDialog
+      visible={confirmKill}
+      title={killEngaged ? 'Resume autonomous actions?' : 'Stop all autonomous actions?'}
+      body={killEngaged
+        ? 'Millo will start triaging, drafting, and following up again.'
+        : 'Millo will stop triaging, drafting, and following up. You can still read and send mail yourself.'}
+      confirmLabel={killEngaged ? 'Resume' : 'Stop'}
+      destructive={!killEngaged}
+      onConfirm={() => {
+        void setKillSwitch(!killEngaged);
+        setConfirmKill(false);
+      }}
+      onCancel={() => setConfirmKill(false)}
+    />
   );
 
   if (view === 'list') {
@@ -226,6 +246,7 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
           }
         />
         {toast && <Toast visible message={toast} />}
+        {killDialog}
       </View>
     );
   }
@@ -265,6 +286,7 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
         <View style={styles.composerBar}>
           <Composer placeholder="Reply…" onSend={sendDraft} onAskAgent={onOpenAgent} />
         </View>
+        {killDialog}
       </View>
     );
   }
@@ -287,6 +309,7 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
       <View style={styles.composerBar}>
         <Button label="Send" onPress={() => sendDraft('')} fullWidth />
       </View>
+      {killDialog}
     </View>
   );
 }

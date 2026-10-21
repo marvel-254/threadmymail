@@ -5,9 +5,10 @@
  */
 import React, { useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button, Card, EmptyState, SectionLabel } from '../components/ui';
+import { Button, Card, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
 import { StatusStrip } from '../components/agent';
 import { IconMenu, IconPower, IconSparkle, IconToday } from '../components/Icons';
+import { mayAct, setKillSwitch, useGuardrails } from '../lib/guardrails';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
 type TodayScreenProps = {
@@ -18,23 +19,37 @@ type TodayScreenProps = {
 
 export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodayScreenProps) {
   const [running, setRunning] = useState(false);
-  const [killEngaged, setKillEngaged] = useState(false);
+  const [confirmKill, setConfirmKill] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const { killSwitch: killEngaged } = useGuardrails();
 
   const runTriage = () => {
+    if (!mayAct()) {
+      setToast(killEngaged ? 'Autonomy is paused — turn the kill switch off first.' : 'Shadow mode is on — Millo will not act.');
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
     setRunning(true);
     setTimeout(() => setRunning(false), 1500);
   };
 
+  const confirmKillToggle = () => {
+    void setKillSwitch(!killEngaged);
+    setConfirmKill(false);
+  };
+
   return (
     <View style={styles.screen}>
+      <Toast visible={!!toast} message={toast ?? ''} ok={false} />
       <View style={styles.header}>
         <Pressable accessibilityLabel="Menu" onPress={onOpenSettings} style={styles.headerBtn}>
           <IconMenu size={22} color={colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Today</Text>
         <Pressable
-          accessibilityLabel="Kill switch"
-          onLongPress={() => setKillEngaged((k) => !k)}
+          accessibilityLabel={killEngaged ? 'Resume autonomous actions' : 'Stop autonomous actions'}
+          accessibilityHint={killEngaged ? 'Tap to resume autonomy' : 'Tap to engage the kill switch'}
+          onPress={() => setConfirmKill(true)}
           style={[styles.headerBtn, killEngaged && styles.killEngaged]}
         >
           <IconPower size={22} color={killEngaged ? colors.danger : colors.textMuted} />
@@ -60,8 +75,20 @@ export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodaySc
         />
 
         <SectionLabel>Agent status</SectionLabel>
-        <StatusStrip status={killEngaged ? 'quiet' : 'idle'} />
+        <StatusStrip status={killEngaged ? 'quiet' : running ? 'running' : 'idle'} />
       </ScrollView>
+
+      <ConfirmDialog
+        visible={confirmKill}
+        title={killEngaged ? 'Resume autonomous actions?' : 'Stop all autonomous actions?'}
+        body={killEngaged
+          ? 'Millo will start triaging, drafting, and following up again.'
+          : 'Millo will stop triaging, drafting, and following up. You can still read and send mail yourself.'}
+        confirmLabel={killEngaged ? 'Resume' : 'Stop'}
+        destructive={!killEngaged}
+        onConfirm={confirmKillToggle}
+        onCancel={() => setConfirmKill(false)}
+      />
     </View>
   );
 }

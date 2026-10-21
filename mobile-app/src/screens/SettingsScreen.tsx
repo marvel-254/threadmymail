@@ -16,6 +16,7 @@ import {
   type AccountConfig,
 } from '../lib/accountStore';
 import { getMailSync } from '../lib/mailSyncSingleton';
+import { setKillSwitch, setShadowMode, useGuardrails } from '../lib/guardrails';
 import { testImap } from '../lib/emailTest';
 import { IconPlus } from '../components/Icons';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
@@ -134,8 +135,29 @@ export function SettingsScreen() {
   };
 
   // ── Guardrails ─────────────────────────────────────────────────────────
-  const [killSwitch, setKillSwitch] = useState(false);
-  const [shadowMode, setShadowMode] = useState(false);
+  const { killSwitch, shadowMode } = useGuardrails();
+
+  const changeKillSwitch = (value: boolean) => {
+    if (value) {
+      ask(
+        'Stop all autonomous actions?',
+        'Millo will stop triaging, drafting, and following up. You can still read and send mail yourself.',
+        async () => {
+          await setKillSwitch(true);
+          setConfirm(null);
+          toast('Kill switch engaged');
+        },
+      );
+    } else {
+      void setKillSwitch(false);
+      toast('Autonomous actions enabled');
+    }
+  };
+
+  const changeShadowMode = (value: boolean) => {
+    void setShadowMode(value);
+    toast(value ? 'Shadow mode on — nothing will be sent' : 'Shadow mode off');
+  };
 
   const GuardrailRow = ({ label, description, value, onChange }: {
     label: string; description: string; value: boolean; onChange: (v: boolean) => void;
@@ -225,13 +247,13 @@ export function SettingsScreen() {
         {/* Guardrails */}
         <SectionLabel>Guardrails</SectionLabel>
         <Card>
-          <GuardrailRow label="Kill switch" description="Stop autonomous actions. Manual runs stay available." value={killSwitch} onChange={setKillSwitch} />
+          <GuardrailRow label="Kill switch" description="Stop autonomous actions. Manual runs stay available." value={killSwitch} onChange={changeKillSwitch} />
           <View style={styles.guardrailRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.guardrailLabel}>Shadow mode</Text>
               <Text style={styles.guardrailDesc}>All actions logged, nothing sent or changed.</Text>
             </View>
-            <Switch value={shadowMode} onValueChange={setShadowMode}
+            <Switch value={shadowMode} onValueChange={changeShadowMode}
               trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
               thumbColor={colors.textOnPrimary} />
           </View>

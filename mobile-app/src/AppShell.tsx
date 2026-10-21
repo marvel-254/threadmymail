@@ -26,6 +26,7 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { Onboarding } from './screens/Onboarding';
 import { loadAccount } from './lib/accountStore';
 import { getMailSync } from './lib/mailSyncSingleton';
+import { loadGuardrails } from './lib/guardrails';
 import { isOnboarded, setOnboarded } from './lib/prefs';
 import { colors } from './theme/theme';
 
@@ -49,7 +50,7 @@ export function AppShell() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [flag, account] = await Promise.all([isOnboarded(), loadAccount()]);
+      const [flag, account] = await Promise.all([isOnboarded(), loadAccount(), loadGuardrails()]);
       if (cancelled) return;
       setOnboardedState(flag);
       // Resume syncing for an already-configured account. Errors are surfaced

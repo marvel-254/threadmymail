@@ -39,7 +39,7 @@ import { AgentBubble, EscalationCard, ToolChip } from '../components/agent';
 import { Composer } from '../components/mail';
 import { EmptyState } from '../components/ui';
 import { WallpaperPicker } from '../components/WallpaperPicker';
-import { IconAgent, IconBack, IconPower, IconMenu, IconCopy, IconMail, IconMoreVertical } from '../components/Icons';
+import { IconAgent, IconBack, IconMenu, IconCopy, IconMail, IconMoreVertical } from '../components/Icons';
 import { colors, radii, spacing, touch, typography, motion } from '../theme/theme';
 import {
   createConversation,
@@ -84,7 +84,6 @@ export function AgentScreen({
   const [items, setItems] = useState<StreamItem[]>([]);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [loading, setLoading] = useState(true);
-  const [killEngaged, setKillEngaged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [showOverflow, setShowOverflow] = useState(false);
