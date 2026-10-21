@@ -180,6 +180,30 @@ export function selectMessages(
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
+/**
+ * Reduce an HTML-only message to readable text.
+ *
+ * The thread view is a plain `Text`, so a full HTML renderer would be the wrong
+ * first step. This strips scripts/styles and tags, keeps paragraph breaks, and
+ * decodes the handful of entities that show up in ordinary mail.
+ */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 /** Relative time label, Gmail-style: 3:04 PM · Yesterday · Mar 4. */
 export function formatListTime(iso: string, now = new Date()): string {
   const d = new Date(iso);

@@ -20,6 +20,7 @@ import {
   HISTORY_DAYS,
   IMPORT_BATCH_SIZE,
   MAX_IMPORT_BATCHES,
+  htmlToText,
   sinceDate,
   toStoredMessage,
   type Message,
@@ -45,6 +46,10 @@ export class MailSync {
   };
   private listeners = new Set<SyncListener>();
   private running = false;
+  /** Session-only body cache: fast re-opens, never written to SQLite. */
+  private bodyCache = new Map<string, { text: string }>();
+  /** Serialises body fetches so two threads cannot interleave IDLE restarts. */
+  private bodyQueue: Promise<unknown> = Promise.resolve();
 
   constructor(bridge: MailBridge) {
     this.bridge = bridge;
@@ -81,6 +86,7 @@ export class MailSync {
   }): Promise<void> {
     if (this.running) return;
     this.running = true;
+    this.bodyCache.clear();
     try {
       this.setState({ phase: 'importing', progress: 0, imported: 0, error: null });
       // SMTP is optional in the bridge type but required for the harness to be able
@@ -233,6 +239,46 @@ export class MailSync {
     this.emit();
   }
 
+  /**
+   * Fetch a full message body on demand.
+   *
+   * Bodies are intentionally never persisted: the result lives in a session
+   * map and is gone on restart, which keeps the storage invariant intact.
+   * IDLE owns the connection, so it is stopped around the fetch and restarted
+   * afterwards. Fetches are serialised for the same reason.
+   */
+  fetchBody(id: string): Promise<{ text: string }> {
+    const task = this.bodyQueue.then(() => this.fetchBodyNow(id));
+    this.bodyQueue = task.catch(() => undefined);
+    return task;
+  }
+
+  private async fetchBodyNow(id: string): Promise<{ text: string }> {
+    const cached = this.bodyCache.get(id);
+    if (cached) return cached;
+    if (!this.mailbox) throw new Error('Not connected — showing the cached preview.');
+    const uid = Number(id);
+    if (!Number.isInteger(uid) || uid <= 0) {
+      throw new Error('This message has no IMAP UID to fetch.');
+    }
+
+    const stopIdle = this.stopIdle;
+    this.stopIdle = null;
+    stopIdle?.();
+    try {
+      const msg = await this.mailbox.fetchMessage(uid);
+      const text =
+        (msg.textBody ?? '').trim() ||
+        htmlToText(msg.htmlBody ?? '') ||
+        '';
+      const result = { text };
+      if (text) this.bodyCache.set(id, result);
+      return result;
+    } finally {
+      if (this.mailbox) this.startIdle();
+    }
+  }
+
   /** Send a message over SMTP. */
   async send(message: { to: string | string[]; subject: string; text?: string; html?: string }): Promise<void> {
     if (!this.account) throw new Error('Not connected');
@@ -241,6 +287,7 @@ export class MailSync {
 
   /** Stop IDLE and disconnect. */
   async stop(): Promise<void> {
+    this.bodyCache.clear();
     this.stopIdle?.();
     this.stopIdle = null;
     if (this.mailbox) {

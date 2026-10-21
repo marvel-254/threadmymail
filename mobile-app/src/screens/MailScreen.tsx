@@ -11,6 +11,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -57,6 +58,10 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
   const [confirmKill, setConfirmKill] = useState(false);
   const { killSwitch: killEngaged } = useGuardrails();
   const [sync, setSync] = useState<SyncState>(INITIAL_SYNC_STATE);
+  const [body, setBody] = useState<{ id: string; text: string } | null>(null);
+  const [bodyLoading, setBodyLoading] = useState(false);
+  const [bodyError, setBodyError] = useState<string | null>(null);
+  const [bodyAttempt, setBodyAttempt] = useState(0);
 
   // Open specific thread if threadId is provided
   useEffect(() => {
@@ -102,6 +107,31 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
     () => messages.find((m) => m.id === selectedId) ?? null,
     [messages, selectedId],
   );
+
+  // Fetch the real body when a thread opens. MailSync caches it in memory for
+  // the session, so opening the same message again is effectively instant.
+  useEffect(() => {
+    if (view !== 'thread' || !selectedId) return;
+    let cancelled = false;
+    setBodyLoading(true);
+    setBodyError(null);
+    void getMailSync()
+      .fetchBody(selectedId)
+      .then((result) => {
+        if (!cancelled) setBody({ id: selectedId, text: result.text });
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setBodyError(err instanceof Error ? err.message : 'Could not load this message.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setBodyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, selectedId, bodyAttempt]);
 
   const openThread = (id: string) => {
     setSelectedId(id);
@@ -264,9 +294,25 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
                   sender: selected.from,
                   email: selected.fromAddress,
                   time: new Date(selected.date).toLocaleString(),
-                  body: selected.body ?? selected.preview,
+                  body: (body?.id === selected.id && body.text) || selected.body || selected.preview,
                 }}
               />
+              {bodyLoading && (
+                <View style={styles.bodyStatus}>
+                  <ActivityIndicator color={colors.primary} size="small" />
+                  <Text style={styles.bodyStatusText}>Loading the full message…</Text>
+                </View>
+              )}
+              {!bodyLoading && bodyError && (
+                <View style={styles.bodyError}>
+                  <Text style={styles.bodyErrorText}>Showing preview only — {bodyError}</Text>
+                  <Button
+                    label="Retry"
+                    variant="secondary"
+                    onPress={() => setBodyAttempt((n) => n + 1)}
+                  />
+                </View>
+              )}
               <EscalationCard
                 question="Millo can draft a reply. Want it to?"
                 choices={[{ label: 'Yes', primary: true }, { label: 'No' }]}
@@ -343,6 +389,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   threadContent: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
+  bodyStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  bodyStatusText: { ...typography.bodySmall, color: colors.textMuted },
+  bodyError: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  bodyErrorText: { ...typography.bodySmall, color: colors.textMuted },
   composerBar: { padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   composeContent: { padding: spacing.lg, gap: spacing.lg },
   composeField: { ...typography.body, color: colors.textMuted },
