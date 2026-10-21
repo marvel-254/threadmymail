@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import { BottomSheet } from './ui';
-import { colors, radii, spacing, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, typography } from '../theme/theme';
 import {
   PRESET_IDS,
   presetSource,
@@ -112,7 +112,7 @@ export function WallpaperPicker({ visible, current, onApply, onClose }: Wallpape
           style={styles.previewImg}
           resizeMode="cover"
         />
-        <View style={[styles.previewDim, { backgroundColor: `rgba(6,14,32,${draft.dim})` }]} />
+        <View style={[styles.previewDim, { backgroundColor: `rgba(${colors.dimRgb},${draft.dim})` }]} />
         <View style={styles.previewLabel}>
           <Text style={styles.previewLabelText}>Preview</Text>
         </View>
@@ -167,7 +167,7 @@ export function WallpaperPicker({ visible, current, onApply, onClose }: Wallpape
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   closeBtn: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   presetAdd: { ...typography.h2, color: colors.textMuted },
-  error: { ...typography.bodySmall, color: colors.danger, marginBottom: spacing.md },
+  error: { ...typography.bodySmall, color: colors.dangerText, marginBottom: spacing.md },
   resetBtn: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
@@ -273,4 +273,4 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingVertical: spacing.sm,
   },
-});
+}));

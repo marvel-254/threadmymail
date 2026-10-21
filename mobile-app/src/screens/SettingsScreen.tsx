@@ -49,7 +49,8 @@ import {
   useNotificationPrefs,
 } from '../lib/notifications';
 import { IconPlus } from '../components/Icons';
-import { colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
+import { useTheme, type ThemeMode } from '../theme/ThemeProvider';
 
 // ── Confirm helper ────────────────────────────────────────────────────────
 type Confirm = { title: string; body: string; action: () => void } | null;
@@ -62,6 +63,7 @@ export function SettingsScreen() {
     setToastMsg({ text, ok });
     setTimeout(() => setToastMsg(null), 2500);
   };
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const ask = (title: string, body: string, action: () => void) =>
     setConfirm({ title, body, action });
 
@@ -405,6 +407,31 @@ export function SettingsScreen() {
             </View>
           </Card>
         )}
+
+        {/* Appearance */}
+        <SectionLabel>Appearance</SectionLabel>
+        <Card>
+          <Text style={styles.cardTitle}>Theme</Text>
+          <Text style={styles.cardSub}>Follow the system automatically, or pin the app to dark or light.</Text>
+          <View style={styles.appearanceRow}>
+            {(['dark', 'light', 'system'] as ThemeMode[]).map((option) => {
+              const selected = themeMode === option;
+              return (
+                <Pressable
+                  key={option}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => setThemeMode(option)}
+                  style={[styles.appearanceOption, selected && styles.appearanceOptionActive]}
+                >
+                  <Text style={[styles.appearanceText, selected && styles.appearanceTextActive]}>
+                    {option === 'system' ? 'Follow system' : option === 'dark' ? 'Dark' : 'Light'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Card>
 
         {/* AI providers */}
         <SectionLabel>AI providers</SectionLabel>
@@ -788,7 +815,7 @@ export function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingTop: spacing.lg, minHeight: 56 },
   headerBtn: { width: touch.minTarget, height: touch.minTarget },
@@ -836,7 +863,7 @@ const styles = StyleSheet.create({
   },
   mutedAddress: { flex: 1, ...typography.caption, color: colors.text },
   unmuteBtn: { minHeight: touch.minTarget, justifyContent: 'center', paddingHorizontal: spacing.sm },
-  unmuteText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
+  unmuteText: { ...typography.caption, color: colors.primaryText, fontWeight: '600' },
   timeRow: { flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md },
   timeField: { flex: 1, gap: spacing.xs },
   timeInput: {
@@ -850,6 +877,21 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   sheetHint: { ...typography.bodySmall, color: colors.textMuted },
+  appearanceRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  appearanceOption: {
+    flex: 1,
+    minHeight: touch.minTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+  },
+  appearanceOptionActive: { borderColor: colors.primary, backgroundColor: colors.surfaceStrong },
+  appearanceText: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center' },
+  appearanceTextActive: { color: colors.primaryText, fontWeight: '600' },
   pickerWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   pickerItem: {
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderRadius: radii.pill,
@@ -863,7 +905,7 @@ const styles = StyleSheet.create({
   resultBannerOk: { backgroundColor: colors.successBg, borderColor: colors.success },
   resultBannerErr: { backgroundColor: colors.dangerBg, borderColor: colors.danger },
   resultText: { ...typography.bodySmall },
-  resultTextOk: { color: colors.success },
-  resultTextErr: { color: colors.danger },
+  resultTextOk: { color: colors.successText },
+  resultTextErr: { color: colors.dangerText },
   sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.md, paddingVertical: spacing.sm },
-});
+}));

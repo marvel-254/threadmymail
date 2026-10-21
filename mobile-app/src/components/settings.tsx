@@ -4,7 +4,7 @@
  */
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 import { IconChevron, IconTest, IconTrash } from './Icons';
 
 /* ── ProviderCard ──────────────────────────────────────────────────────── */
@@ -57,7 +57,7 @@ export function ProviderCard({ provider, onTest, onRemove }: ProviderCardProps) 
           onPress={() => onRemove(provider.id)}
           style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7 }]}
         >
-          <IconTrash size={18} color={colors.danger} />
+          <IconTrash size={18} color={colors.dangerText} />
         </Pressable>
       </View>
     </View>
@@ -139,7 +139,7 @@ export function Field({ label, value, onChangeText, placeholder, secure, helper,
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -198,4 +198,4 @@ const styles = StyleSheet.create({
     minHeight: touch.minTarget,
   },
   fieldHelper: { ...typography.caption, color: colors.textSubtle },
-});
+}));

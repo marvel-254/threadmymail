@@ -5,7 +5,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 import { IconCheck, IconThumbDown, IconThumbUp, IconX } from './Icons';
 
 /* ── TypingIndicator (3-dot pulse) ─────────────────────────────────────── */
@@ -104,9 +104,9 @@ export function ToolChip({ name, args, latencyMs, ok, running = false }: ToolChi
       {running ? (
         <TypingIndicator />
       ) : ok ? (
-        <IconCheck size={14} color={colors.success} />
+        <IconCheck size={14} color={colors.successText} />
       ) : (
-        <IconX size={14} color={colors.danger} />
+        <IconX size={14} color={colors.dangerText} />
       )}
     </Pressable>
   );
@@ -194,7 +194,7 @@ export function StatusStrip({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   typingRow: { flexDirection: 'row', gap: 4, marginTop: 6 },
   typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textMuted },
   bubbleWrap: { alignSelf: 'flex-start', maxWidth: '85%', gap: 4 },
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   toolChipRunning: { borderColor: colors.borderPrimary },
-  toolName: { ...typography.mono, color: colors.primary, fontWeight: '600' },
+  toolName: { ...typography.mono, color: colors.primaryText, fontWeight: '600' },
   toolArgs: { ...typography.mono, color: colors.textMuted, flexShrink: 1 },
   toolLatency: { ...typography.caption, color: colors.textSubtle },
   escalation: {
@@ -261,5 +261,5 @@ const styles = StyleSheet.create({
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { ...typography.bodySmall, color: colors.textMuted },
   statusMeta: { ...typography.caption, color: colors.textSubtle },
-  statusQuiet: { ...typography.caption, color: colors.warn },
-});
+  statusQuiet: { ...typography.caption, color: colors.warnText },
+}));

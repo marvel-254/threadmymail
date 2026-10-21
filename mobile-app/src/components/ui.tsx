@@ -17,7 +17,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 import { IconCheck, IconX } from './Icons';
 
 /* ── Button ─────────────────────────────────────────────────────────────── */
@@ -82,7 +82,7 @@ export function Button({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   btn: {
     minHeight: touch.minTarget,
     paddingHorizontal: spacing.xl,
@@ -97,14 +97,14 @@ const styles = StyleSheet.create({
   btnFull: { width: '100%' },
   btnDisabled: { opacity: 0.4 },
   btnText: { fontSize: 16, fontWeight: '600' },
-});
+}));
 
 /* ── Card ───────────────────────────────────────────────────────────────── */
 export function Card({ children, style }: { children: React.ReactNode; style?: object }) {
   return <View style={[styles2.card, style]}>{children}</View>;
 }
 
-const styles2 = StyleSheet.create({
+const styles2 = themedStyles(() => ({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
@@ -112,19 +112,19 @@ const styles2 = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.lg,
   },
-});
+}));
 export function SectionLabel({ children }: { children: React.ReactNode }) {
   return <Text style={styles3.label}>{children}</Text>;
 }
 
-const styles3 = StyleSheet.create({
+const styles3 = themedStyles(() => ({
   label: {
     ...typography.label,
     color: colors.textSubtle,
     marginBottom: spacing.sm,
     marginTop: spacing.lg,
   },
-});
+}));
 
 /* ── EmptyState ─────────────────────────────────────────────────────────── */
 type EmptyStateProps = {
@@ -145,11 +145,11 @@ export function EmptyState({ icon, title, body, action }: EmptyStateProps) {
   );
 }
 
-const styles4 = StyleSheet.create({
+const styles4 = themedStyles(() => ({
   container: { alignItems: 'center', padding: spacing.xxl, gap: spacing.md },
   title: { ...typography.h3, color: colors.text, textAlign: 'center' },
   body: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center', maxWidth: 280 },
-});
+}));
 
 /* ── ConfirmDialog ─────────────────────────────────────────────────────── */
 type ConfirmDialogProps = {
@@ -193,7 +193,7 @@ export function ConfirmDialog({
   );
 }
 
-const styles5 = StyleSheet.create({
+const styles5 = themedStyles(() => ({
   backdrop: {
     flex: 1,
     backgroundColor: colors.overlay,
@@ -214,7 +214,7 @@ const styles5 = StyleSheet.create({
   title: { ...typography.h3, color: colors.text },
   body: { ...typography.bodySmall, color: colors.textMuted },
   actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.sm },
-});
+}));
 
 /* ── Toast ─────────────────────────────────────────────────────────────── */
 type ToastProps = {
@@ -253,7 +253,7 @@ export function Toast({
       style={[styles6.toast, { opacity }]}
       pointerEvents={hasAction ? 'box-none' : 'none'}
     >
-      {ok ? <IconCheck size={16} color={colors.success} /> : <IconX size={16} color={colors.danger} />}
+      {ok ? <IconCheck size={16} color={colors.successText} /> : <IconX size={16} color={colors.dangerText} />}
       <Text style={styles6.text}>{message}</Text>
       {onAction && actionLabel ? (
         <Pressable
@@ -269,7 +269,7 @@ export function Toast({
   );
 }
 
-const styles6 = StyleSheet.create({
+const styles6 = themedStyles(() => ({
   toast: {
     position: 'absolute',
     top: 8,
@@ -291,8 +291,8 @@ const styles6 = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
   },
-  toastActionText: { ...typography.bodySmall, color: colors.primary, fontWeight: '700' },
-});
+  toastActionText: { ...typography.bodySmall, color: colors.primaryText, fontWeight: '700' },
+}));
 
 
 /* ── BottomSheet ────────────────────────────────────────────────────────── */
@@ -403,7 +403,7 @@ export function BottomSheet({
   );
 }
 
-const styles7 = StyleSheet.create({
+const styles7 = themedStyles(() => ({
   root: { flex: 1, justifyContent: 'flex-end' },
   backdrop: {
     ...StyleSheet.absoluteFill,
@@ -443,4 +443,4 @@ const styles7 = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-});
+}));

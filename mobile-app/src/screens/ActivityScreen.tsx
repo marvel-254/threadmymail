@@ -16,7 +16,7 @@ import {
   type ActivityEntry,
   type ActivityOutcome,
 } from '../lib/agent/activityStore';
-import { colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 
 const PAGE_SIZE = 50;
 
@@ -73,8 +73,8 @@ function actionLabel(type: string): string {
 
 function outcomeIcon(outcome: ActivityOutcome, undone: boolean) {
   if (undone) return <Text style={styles.skipped}>↺</Text>;
-  if (outcome === 'ok') return <IconCheck size={14} color={colors.success} />;
-  if (outcome === 'error') return <IconX size={14} color={colors.danger} />;
+  if (outcome === 'ok') return <IconCheck size={14} color={colors.successText} />;
+  if (outcome === 'error') return <IconX size={14} color={colors.dangerText} />;
   return <Text style={styles.skipped}>—</Text>;
 }
 
@@ -323,7 +323,7 @@ export function ActivityScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
   },
   undoText: { ...typography.caption, color: colors.accent, fontWeight: '600' },
   undoneTag: { ...typography.caption, color: colors.textSubtle },
-  irreversibleTag: { ...typography.caption, color: colors.warn },
+  irreversibleTag: { ...typography.caption, color: colors.warnText },
   expanded: {
     backgroundColor: colors.surface,
     borderRadius: radii.md,
@@ -398,8 +398,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   expandedLine: { ...typography.caption, color: colors.textMuted },
-  expandedWarn: { ...typography.caption, color: colors.warn },
-  skipped: { color: colors.warn, fontSize: 12 },
+  expandedWarn: { ...typography.caption, color: colors.warnText },
+  skipped: { color: colors.warnText, fontSize: 12 },
   noMatch: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center' },
   loadMore: {
     alignSelf: 'center',
@@ -412,4 +412,4 @@ const styles = StyleSheet.create({
   },
   loadMorePressed: { backgroundColor: colors.surfaceStrong },
   loadMoreText: { ...typography.bodySmall, color: colors.text },
-});
+}));

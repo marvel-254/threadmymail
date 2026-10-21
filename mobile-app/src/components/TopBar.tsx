@@ -3,7 +3,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { IconBack, IconPower } from './Icons';
 import { useGuardrails } from '../lib/guardrails';
-import { colors, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, spacing, touch, typography } from '../theme/theme';
 
 type TopBarProps = {
   title?: string;
@@ -26,7 +26,7 @@ export function TopBar({ title = 'ThreadMyMail', onBack }: TopBarProps) {
       <View style={styles.right}>
         {killSwitch ? (
           <View style={styles.paused} accessibilityLabel="Autonomous actions paused">
-            <IconPower size={16} color={colors.danger} />
+            <IconPower size={16} color={colors.dangerText} />
             <Text style={styles.pausedText}>Paused</Text>
           </View>
         ) : shadowMode ? (
@@ -39,7 +39,7 @@ export function TopBar({ title = 'ThreadMyMail', onBack }: TopBarProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -69,16 +69,16 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: colors.dangerBg,
   },
-  pausedText: { ...typography.label, color: colors.danger },
+  pausedText: { ...typography.label, color: colors.dangerText },
   shadow: {
     paddingHorizontal: spacing.sm,
     borderRadius: 999,
     backgroundColor: colors.warnBg,
     justifyContent: 'center',
   },
-  shadowText: { ...typography.label, color: colors.warn },
+  shadowText: { ...typography.label, color: colors.warnText },
   title: {
     ...typography.h2,
     color: colors.text,
   },
-});
+}));

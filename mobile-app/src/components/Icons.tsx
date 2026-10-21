@@ -93,13 +93,13 @@ export const IconSparkle = ({ size = 18, color = colors.primary, strokeWidth = 2
   </Svg>
 );
 
-export const IconCheck = ({ size = 18, color = colors.success, strokeWidth = 2 }: IconProps) => (
+export const IconCheck = ({ size = 18, color = colors.successText, strokeWidth = 2 }: IconProps) => (
   <Svg {...base(size, color, strokeWidth)}>
     <Polyline points="20 6 9 17 4 12" />
   </Svg>
 );
 
-export const IconX = ({ size = 18, color = colors.danger, strokeWidth = 2 }: IconProps) => (
+export const IconX = ({ size = 18, color = colors.dangerText, strokeWidth = 2 }: IconProps) => (
   <Svg {...base(size, color, strokeWidth)}>
     <Line x1="18" y1="6" x2="6" y2="18" />
     <Line x1="6" y1="6" x2="18" y2="18" />
@@ -138,7 +138,7 @@ export const IconRefresh = ({ size = 18, color = colors.textMuted, strokeWidth =
   </Svg>
 );
 
-export const IconWifi = ({ size = 18, color = colors.warn, strokeWidth = 2 }: IconProps) => (
+export const IconWifi = ({ size = 18, color = colors.warnText, strokeWidth = 2 }: IconProps) => (
   <Svg {...base(size, color, strokeWidth)}>
     <Path d="M5 12.55a11 11 0 0 1 14.08 0" />
     <Path d="M1.42 9a16 16 0 0 1 21.16 0" />
@@ -147,7 +147,7 @@ export const IconWifi = ({ size = 18, color = colors.warn, strokeWidth = 2 }: Ic
   </Svg>
 );
 
-export const IconTrash = ({ size = 18, color = colors.danger, strokeWidth = 2 }: IconProps) => (
+export const IconTrash = ({ size = 18, color = colors.dangerText, strokeWidth = 2 }: IconProps) => (
   <Svg {...base(size, color, strokeWidth)}>
     <Polyline points="3 6 5 6 21 6" />
     <Path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />

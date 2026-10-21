@@ -57,7 +57,7 @@ import {
   type SyncState,
 } from '../lib/mail';
 import { loadMessages } from '../lib/mailStore';
-import { colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 
 type TodayScreenProps = {
   onOpenDrawer: () => void;
@@ -559,7 +559,7 @@ export function TodayScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
@@ -641,12 +641,12 @@ const styles = StyleSheet.create({
   verdictPrimary: { backgroundColor: colors.accentBg },
   verdictDanger: { backgroundColor: colors.dangerBg },
   verdictText: { ...typography.caption, color: colors.accent, fontWeight: '600' },
-  verdictTextDanger: { color: colors.danger },
+  verdictTextDanger: { color: colors.dangerText },
   eyeSubject: { ...typography.body, color: colors.text, fontWeight: '600' },
   eyeReason: { ...typography.caption, color: colors.textMuted },
   followEmpty: { ...typography.caption, color: colors.textMuted },
   followBody: { gap: spacing.xs },
   followBadge: { backgroundColor: colors.dangerBg },
-  followBadgeText: { ...typography.caption, color: colors.danger, fontWeight: '600' },
+  followBadgeText: { ...typography.caption, color: colors.dangerText, fontWeight: '600' },
   followActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-});
+}));

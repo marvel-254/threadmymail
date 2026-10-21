@@ -7,7 +7,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Draft } from '../lib/agent/draftStore';
-import { colors, radii, spacing, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, typography } from '../theme/theme';
 
 type DraftCardProps = {
   draft: Draft;
@@ -68,7 +68,7 @@ export function DraftCard({ draft, shadow, busy = false, onSend, onEdit, onDisca
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   card: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
   to: { ...typography.caption, color: colors.textMuted, flexShrink: 1 },
   subject: { ...typography.body, color: colors.text, fontWeight: '600' },
   body: { ...typography.caption, color: colors.textMuted },
-  shadowNote: { ...typography.caption, color: colors.warn },
+  shadowNote: { ...typography.caption, color: colors.warnText },
   actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
   action: {
     minHeight: 40,
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
   send: { backgroundColor: colors.primary, borderColor: colors.primary },
   sendText: { ...typography.bodySmall, color: colors.textOnPrimary, fontWeight: '600' },
   actionText: { ...typography.bodySmall, color: colors.text },
-  discard: { color: colors.danger },
+  discard: { color: colors.dangerText },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.8 },
-});
+}));

@@ -27,7 +27,7 @@ import {
   type Skills,
 } from '../lib/skillsStore';
 import { testImap } from '../lib/emailTest';
-import { colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 
 const TOTAL_STEPS = 4; // welcome, email, AI key, skills
 
@@ -440,7 +440,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
@@ -508,8 +508,8 @@ const styles = StyleSheet.create({
   resultOk: { backgroundColor: colors.successBg, borderColor: colors.success },
   resultErr: { backgroundColor: colors.dangerBg, borderColor: colors.danger },
   resultText: { ...typography.bodySmall },
-  resultTextOk: { color: colors.success },
-  resultTextErr: { color: colors.danger },
+  resultTextOk: { color: colors.successText },
+  resultTextErr: { color: colors.dangerText },
   skillRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -531,4 +531,4 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   footerRow: { flexDirection: 'row', gap: spacing.md },
-});
+}));

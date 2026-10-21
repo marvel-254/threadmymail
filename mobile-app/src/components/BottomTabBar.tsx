@@ -12,7 +12,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 import { IconActivity, IconAgent, IconMail, IconSettings, IconToday } from './Icons';
 
 export type TabId = 'today' | 'mail' | 'agent' | 'activity' | 'settings';
@@ -116,7 +116,7 @@ export function BottomTabBar({ active, onSelect, unreadCount = 0 }: BottomTabBar
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   wrapper: {
     backgroundColor: colors.bgDeep,
     justifyContent: 'center',
@@ -196,11 +196,11 @@ const styles = StyleSheet.create({
     color: colors.textSubtle,
   },
   labelActive: {
-    color: colors.primary,
+    color: colors.primaryText,
     fontWeight: '600',
   },
   labelMillo: {
     color: colors.secondary,
     fontWeight: '600',
   },
-});
+}));

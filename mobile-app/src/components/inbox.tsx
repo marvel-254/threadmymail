@@ -17,7 +17,7 @@ import {
   View,
 } from 'react-native';
 import { BottomSheet } from './ui';
-import { colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 import { formatListTime, type MailFilter, type Thread } from '../lib/mail';
 import { IconCheck, IconMail, IconSearch, IconStar, IconTrash, IconX } from './Icons';
 
@@ -378,7 +378,7 @@ export function MailActionSheet({
         onPress={() => run(onDelete)}
         style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
       >
-        <IconTrash size={18} color={colors.danger} />
+        <IconTrash size={18} color={colors.dangerText} />
         <Text style={[styles.sheetItemText, styles.sheetItemDanger]}>Delete conversation</Text>
       </Pressable>
     </BottomSheet>
@@ -437,7 +437,7 @@ export function SyncBanner({ phase, progress, imported, cappedAt, error }: SyncB
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   searchWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   search: {
     flexDirection: 'row',
@@ -557,7 +557,7 @@ const styles = StyleSheet.create({
   },
   sheetItemPressed: { backgroundColor: colors.surfaceHover },
   sheetItemText: { ...typography.body, color: colors.text },
-  sheetItemDanger: { color: colors.danger },
+  sheetItemDanger: { color: colors.dangerText },
   sheetCancel: {
     minHeight: touch.minTarget,
     alignItems: 'center',
@@ -588,4 +588,4 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressFill: { height: 4, backgroundColor: colors.primary },
-});
+}));

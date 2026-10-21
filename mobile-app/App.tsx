@@ -1,11 +1,21 @@
 import { StatusBar } from 'expo-status-bar';
 import { AppShell } from './src/AppShell';
+import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 
-export default function App() {
+function ThemedApp() {
+  const { resolved } = useTheme();
   return (
     <>
       <AppShell />
-      <StatusBar style="light" />
+      <StatusBar style={resolved === 'dark' ? 'light' : 'dark'} />
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <ThemedApp />
+    </ThemeProvider>
   );
 }

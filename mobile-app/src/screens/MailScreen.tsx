@@ -63,7 +63,7 @@ import {
   recordEditedDraftSent,
   sendDraft as sendQueuedDraft,
 } from '../lib/agent/drafts';
-import { colors, radii, shadows, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, shadows, spacing, touch, typography } from '../theme/theme';
 
 type MailScreenProps = {
   onOpenAgent: () => void;
@@ -866,7 +866,7 @@ export function MailScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
@@ -958,4 +958,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     ...shadows.float,
   },
-});
+}));

@@ -41,7 +41,7 @@ import { Composer } from '../components/mail';
 import { BottomSheet, Button, EmptyState } from '../components/ui';
 import { WallpaperPicker } from '../components/WallpaperPicker';
 import { IconAgent, IconBack, IconMenu, IconCopy, IconMail, IconMoreVertical } from '../components/Icons';
-import { colors, radii, spacing, touch, typography, motion } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, touch, typography, motion } from '../theme/theme';
 import {
   createConversation,
   deleteConversation,
@@ -487,7 +487,7 @@ return (
           style={styles.wallpaperImg}
           resizeMode="cover"
         />
-        <View style={{ ...styles.wallpaperDim, backgroundColor: `rgba(6,14,32,${wallpaper.dim})` }} />
+        <View style={{ ...styles.wallpaperDim, backgroundColor: `rgba(${colors.dimRgb},${wallpaper.dim})` }} />
       </View>
 
       {/* Top App Bar */}
@@ -666,7 +666,7 @@ return (
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   wallpaperLayer: {
     ...StyleSheet.absoluteFill,
@@ -763,7 +763,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.warn,
   },
-  stopText: { ...typography.bodySmall, color: colors.warn },
+  stopText: { ...typography.bodySmall, color: colors.warnText },
   stopBtn: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
@@ -897,6 +897,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: spacing.sm,
   },
-});
+}));
 
 export default AgentScreen;

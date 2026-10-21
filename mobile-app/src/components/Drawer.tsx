@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getConversations } from '../lib/conversationStore';
-import { colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 import { IconAgent, IconMail, IconActivity, IconSettings, IconSearch, IconPlus, IconChevron } from './Icons';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -239,7 +239,7 @@ export function Drawer({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   container: {
     position: 'absolute',
     top: 0,
@@ -299,12 +299,12 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    backgroundColor: 'rgba(124,58,237,0.14)',
+    backgroundColor: colors.primaryBg,
     borderRadius: radii.sm,
   },
   newChatText: {
     ...typography.label,
-    color: colors.primary,
+    color: colors.primaryText,
     fontWeight: '600',
   },
   conversationList: {
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   conversationTitleActive: {
-    color: colors.primary,
+    color: colors.primaryText,
     fontWeight: '600',
   },
   loading: {
@@ -364,4 +364,4 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text,
   },
-});
+}));

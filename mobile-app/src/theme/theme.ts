@@ -7,10 +7,17 @@
  * Typography: Inter 300–700 (single-family precision system).
  *
  * Usage: import { colors, typography, spacing, radii, shadows } from './theme';
+ *        const styles = themedStyles(() => ({ ... }));
  * Do NOT hardcode hex values in components — always reference these tokens.
  */
 
-export const colors = {
+import { StyleSheet, type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
+
+/**
+ * Semantic palettes. Components never branch on the theme — they read the same
+ * token names, and the active palette is swapped underneath them.
+ */
+export const darkPalette = {
   // ── Backgrounds (dark cockpit — MVP-UI.md §1) ──────────────────────────
   bg: '#0B1326',            // app background
   bgDeep: '#060E20',        // deepest layer (gradient end)
@@ -21,24 +28,29 @@ export const colors = {
   // ── Text ────────────────────────────────────────────────────────────────
   text: '#F1F5F9',          // primary text
   textMuted: '#94A3B8',     // secondary text
-  textSubtle: '#64748B',    // tertiary / captions
+  textSubtle: '#8A9AB0',    // tertiary / captions
   textOnPrimary: '#FFFFFF', // text on primary buttons
   textOnAccent: '#000000',  // text on accent (cyan) buttons
 
   // ── Brand (AI-Native palette) ───────────────────────────────────────────
   primary: '#7C3AED',       // AI actions, active tab, primary buttons
+  primaryText: '#A78BFA',   // primary-colored text/icons on dark surfaces
   primaryDark: '#6D28D9',   // pressed state
   secondary: '#A78BFA',     // secondary actions, highlights
   accent: '#0891B2',        // CTA, links, "needs your eye" items
   accentDark: '#0E7490',    // pressed state
   accentBg: 'rgba(8,145,178,0.14)',
+  primaryBg: 'rgba(124,58,237,0.14)',
 
   // ── Semantic states ─────────────────────────────────────────────────────
   danger: '#DC2626',        // kill switch, destructive, errors
+  dangerText: '#F87171',    // readable danger text/icons on dark surfaces
   dangerBg: 'rgba(220,38,38,0.12)',
   success: '#16A34A',       // live / connected / done
+  successText: '#4ADE80',   // readable success text/icons on dark surfaces
   successBg: 'rgba(22,163,74,0.12)',
   warn: '#D97706',          // warnings, quiet hours
+  warnText: '#FBBF24',      // readable warning text/icons on dark surfaces
   warnBg: 'rgba(217,119,6,0.12)',
 
   // ── Borders ─────────────────────────────────────────────────────────────
@@ -49,9 +61,114 @@ export const colors = {
   // ── Overlays ────────────────────────────────────────────────────────────
   overlay: 'rgba(6,14,32,0.72)',   // modal backdrop
   scrim: 'rgba(6,14,32,0.55)',     // bottom-sheet scrim
-} as const;
+  dimRgb: '6,14,32',               // wallpaper dim overlay base (RGB triplet)
+};
 
-export type ColorToken = keyof typeof colors;
+export type ColorPalette = typeof darkPalette;
+
+/**
+ * Light palette: same semantic roles, tuned for daylight. Body and label colors
+ * meet WCAG AA on `bg`/`surface`; brand hues are darkened where the dark values
+ * would fail (primary, accent, semantic states).
+ */
+export const lightPalette: ColorPalette = {
+  bg: '#F6F7FB',
+  bgDeep: '#FFFFFF',
+  surface: 'rgba(15,23,42,0.04)',
+  surfaceStrong: 'rgba(15,23,42,0.07)',
+  surfaceHover: 'rgba(15,23,42,0.10)',
+
+  text: '#0F172A',
+  textMuted: '#475569',
+  textSubtle: '#526276',
+  textOnPrimary: '#FFFFFF',
+  textOnAccent: '#FFFFFF',
+
+  primary: '#6D28D9',
+  primaryText: '#6D28D9',
+  primaryDark: '#5B21B6',
+  secondary: '#7C3AED',
+  accent: '#0E7490',
+  accentDark: '#155E75',
+  accentBg: 'rgba(14,116,144,0.12)',
+  primaryBg: 'rgba(109,40,217,0.10)',
+
+  danger: '#B91C1C',
+  dangerText: '#B91C1C',
+  dangerBg: 'rgba(185,28,28,0.10)',
+  success: '#15803D',
+  successText: '#15803D',
+  successBg: 'rgba(21,128,61,0.10)',
+  warn: '#B45309',
+  warnText: '#B45309',
+  warnBg: 'rgba(180,83,9,0.10)',
+
+  border: 'rgba(15,23,42,0.12)',
+  borderStrong: 'rgba(15,23,42,0.22)',
+  borderPrimary: 'rgba(109,40,217,0.35)',
+
+  overlay: 'rgba(15,23,42,0.35)',
+  scrim: 'rgba(15,23,42,0.30)',
+  dimRgb: '15,23,42',
+};
+
+export const palettes = { dark: darkPalette, light: lightPalette };
+
+let activePalette: ColorPalette = darkPalette;
+
+/** Called by ThemeProvider before rendering the tree. */
+export function setActivePalette(next: ColorPalette): void {
+  activePalette = next;
+}
+
+export function getActivePalette(): ColorPalette {
+  return activePalette;
+}
+
+/**
+ * Live token proxy. Static `colors.x` reads resolve against the active palette,
+ * so every component keeps the plain `colors` import while still following the
+ * theme. Re-render is driven by ThemeProvider.
+ */
+export const colors: ColorPalette = new Proxy(darkPalette, {
+  get(_target, key: string | symbol) {
+    return activePalette[key as keyof ColorPalette];
+  },
+  ownKeys() {
+    return Reflect.ownKeys(activePalette);
+  },
+  getOwnPropertyDescriptor(_target, key: string | symbol) {
+    return {
+      enumerable: true,
+      configurable: true,
+      value: activePalette[key as keyof ColorPalette],
+    };
+  },
+}) as ColorPalette;
+
+export type ColorToken = keyof ColorPalette;
+
+type NamedStyles<T> = { [P in keyof T]: ViewStyle | TextStyle | ImageStyle };
+
+/**
+ * Theme-aware `StyleSheet.create`: the factory runs lazily the first time a
+ * style is read and is rebuilt whenever the active palette changes. This keeps
+ * module-level `const styles = themedStyles(() => ({...}))` declarations while
+ * making every color token live.
+ */
+export function themedStyles<T extends NamedStyles<T>>(factory: () => T): T {
+  let cachedPalette: ColorPalette | null = null;
+  let cached: T | null = null;
+  return new Proxy({} as T, {
+    get(_target, key: string | symbol) {
+      if (!cached || cachedPalette !== activePalette) {
+        cachedPalette = activePalette;
+        cached = StyleSheet.create(factory()) as unknown as T;
+      }
+      return (cached as Record<string | symbol, unknown>)[key];
+    },
+  });
+}
 
 export const typography = {
   // Inter — single family, precision system (DB: Modern Dark Cinema)

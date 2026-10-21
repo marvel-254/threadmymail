@@ -45,7 +45,7 @@ import {
 } from './lib/agent/followUpScheduler';
 import { isOnboarded, setOnboarded } from './lib/prefs';
 import type { MailFilter } from './lib/mail';
-import { colors, typography } from './theme/theme';
+import { themedStyles, colors, typography } from './theme/theme';
 
 export function AppShell() {
   // null means "still reading storage" — distinct from false, which means
@@ -361,7 +361,7 @@ export function AppShell() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   container: { flex: 1, flexDirection: 'column' },
   safe: { flex: 1 },
   boot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -379,6 +379,6 @@ const styles = StyleSheet.create({
   statusPaused: { backgroundColor: colors.dangerBg, borderBottomColor: colors.danger },
   statusShadow: { backgroundColor: colors.warnBg, borderBottomColor: colors.warn },
   statusText: { ...typography.label },
-  statusTextPaused: { color: colors.danger },
-  statusTextShadow: { color: colors.warn },
-});
+  statusTextPaused: { color: colors.dangerText },
+  statusTextShadow: { color: colors.warnText },
+}));

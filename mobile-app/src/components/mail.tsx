@@ -4,7 +4,7 @@
  */
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 import { IconSend, IconSparkle } from './Icons';
 
 /* ── MailRow ───────────────────────────────────────────────────────────── */
@@ -160,7 +160,7 @@ export function Composer({ placeholder = 'type a message…', disabled = false, 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { ...typography.body, color: colors.primary, fontWeight: '600' },
+  avatarText: { ...typography.body, color: colors.primaryText, fontWeight: '600' },
   main: { flex: 1, gap: 1 },
   sender: { ...typography.bodySmall, color: colors.text, fontWeight: '400' },
   senderUnread: { fontWeight: '700' },
@@ -201,9 +201,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingHorizontal: spacing.sm,
   },
-  collapseBtnText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
+  collapseBtnText: { ...typography.caption, color: colors.primaryText, fontWeight: '600' },
   composerWrap: { gap: spacing.sm },
-  disabledReason: { ...typography.caption, color: colors.warn, textAlign: 'center' },
+  disabledReason: { ...typography.caption, color: colors.warnText, textAlign: 'center' },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -239,4 +239,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtnDisabled: { backgroundColor: colors.surfaceStrong },
-});
+}));
