@@ -38,9 +38,11 @@ export type BridgeAccount = {
 
 export type BridgeMailbox = {
   /** Fetch newest-first envelopes, optionally since a date. */
-  fetchHeaders(options: { limit?: number; since?: string }): Promise<MessageHeader[]>;
+  fetchHeaders(options: { limit?: number; since?: string; sinceUid?: number; uidRange?: [number, number] }): Promise<MessageHeader[]>;
   /** Fetch a full parsed message by UID. */
   fetchMessage(uid: number): Promise<{ header: MessageHeader; textBody?: string; htmlBody?: string }>;
+  /** Server-side IMAP search; resolves to matching UIDs. */
+  search(criteria: { text?: string; from?: string; to?: string; subject?: string; body?: string }): Promise<number[]>;
   /** Mark messages seen or unseen. */
   markSeen(uids: number[], seen?: boolean): Promise<void>;
   /** Add flags (e.g. \Flagged for star). */
@@ -99,12 +101,17 @@ export function createMailBridge(): MailBridge {
               return mailbox.fetchHeaders({
                 limit: options.limit,
                 since: options.since,
+                sinceUid: options.sinceUid,
+                uidRange: options.uidRange,
                 fetchPreview: true,
               });
             },
             async fetchMessage(uid) {
               const msg = await mailbox.fetchMessage(uid, { includeAttachments: false });
               return { header: msg.header, textBody: msg.textBody, htmlBody: msg.htmlBody };
+            },
+            async search(criteria) {
+              return mailbox.search(criteria);
             },
             async markSeen(uids, seen = true) {
               await mailbox.markSeen(uids, seen);

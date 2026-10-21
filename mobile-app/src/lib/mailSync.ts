@@ -39,6 +39,7 @@ import {
 import { logActivity, setMailUndoHandler } from './agent/activityStore';
 import { notifyNewMessages } from './notifications';
 import type { BridgeAccount, BridgeMailbox, MailBridge } from './mailBridge';
+import type { MessageHeader } from 'react-native-mail-engine';
 
 export type SyncListener = (state: SyncState, messages: Message[]) => void;
 
@@ -240,6 +241,30 @@ export class MailSync {
     }
   }
 
+  /** Map an IMAP envelope to the header-only row the cache stores. */
+  private headerToMessage(h: MessageHeader): Message {
+    return toStoredMessage({
+      id: String(h.uid),
+      threadId: threadIdFor({
+        messageId: h.messageId,
+        inReplyTo: h.inReplyTo,
+        references: h.references,
+        subject: h.subject,
+        fromAddress: h.from[0]?.email,
+        date: h.date ? new Date(h.date).toISOString() : undefined,
+      }),
+      from: h.from[0]?.name || h.from[0]?.email || 'Unknown',
+      fromAddress: h.from[0]?.email ?? '',
+      subject: h.subject ?? '(no subject)',
+      preview: h.preview ?? '',
+      date: h.date ? new Date(h.date).toISOString() : new Date(0).toISOString(),
+      unread: !h.flags.includes('\\Seen'),
+      starred: h.flags.includes('\\Flagged'),
+      needsReply: h.flags.includes('\\Answered') === false && !h.flags.includes('\\Seen'),
+      hasAttachment: h.hasAttachments,
+    });
+  }
+
   /** Import the last HISTORY_DAYS days in bounded batches. */
   private async importHistory(): Promise<number> {
     if (!this.mailbox) return 0;
@@ -256,28 +281,7 @@ export class MailSync {
       });
       if (headers.length === 0) break;
 
-      const messages: Message[] = headers.map((h) =>
-        toStoredMessage({
-          id: String(h.uid),
-          threadId: threadIdFor({
-            messageId: h.messageId,
-            inReplyTo: h.inReplyTo,
-            references: h.references,
-            subject: h.subject,
-            fromAddress: h.from[0]?.email,
-            date: h.date ? new Date(h.date).toISOString() : undefined,
-          }),
-          from: h.from[0]?.name || h.from[0]?.email || 'Unknown',
-          fromAddress: h.from[0]?.email ?? '',
-          subject: h.subject ?? '(no subject)',
-          preview: h.preview ?? '',
-          date: h.date ? new Date(h.date).toISOString() : new Date(0).toISOString(),
-          unread: !h.flags.includes('\\Seen'),
-          starred: h.flags.includes('\\Flagged'),
-          needsReply: h.flags.includes('\\Answered') === false && !h.flags.includes('\\Seen'),
-          hasAttachment: h.hasAttachments,
-        }),
-      );
+      const messages: Message[] = headers.map((h) => this.headerToMessage(h));
 
       const { cappedAt } = await upsertMessages(messages);
       imported += messages.length;
@@ -319,28 +323,7 @@ export class MailSync {
     if (!this.mailbox) return;
     try {
       const headers = await this.mailbox.fetchHeaders({ limit: event.uids.length || 50 });
-      const messages: Message[] = headers.map((h) =>
-        toStoredMessage({
-          id: String(h.uid),
-          threadId: threadIdFor({
-            messageId: h.messageId,
-            inReplyTo: h.inReplyTo,
-            references: h.references,
-            subject: h.subject,
-            fromAddress: h.from[0]?.email,
-            date: h.date ? new Date(h.date).toISOString() : undefined,
-          }),
-          from: h.from[0]?.name || h.from[0]?.email || 'Unknown',
-          fromAddress: h.from[0]?.email ?? '',
-          subject: h.subject ?? '(no subject)',
-          preview: h.preview ?? '',
-          date: h.date ? new Date(h.date).toISOString() : new Date(0).toISOString(),
-          unread: !h.flags.includes('\\Seen'),
-          starred: h.flags.includes('\\Flagged'),
-          needsReply: h.flags.includes('\\Answered') === false && !h.flags.includes('\\Seen'),
-          hasAttachment: h.hasAttachments,
-        }),
-      );
+      const messages: Message[] = headers.map((h) => this.headerToMessage(h));
       await upsertMessages(messages);
       void notifyNewMessages(messages);
       this.setState({ lastSyncedAt: new Date().toISOString() });
@@ -734,6 +717,51 @@ export class MailSync {
     });
     this.folderCache[kind] = match?.path ?? null;
     return this.folderCache[kind] ?? null;
+  }
+
+  /**
+   * Search the whole IMAP mailbox, not just the local cache.
+   *
+   * IMAP SEARCH runs on the server, so it can find mail older than the
+   * 180-day import window and matches inside message bodies. Header envelopes
+   * for the first 40 UIDs are fetched one by one (the native API has no
+   * UID-list fetch), persisted so the result is tappable, and returned newest
+   * first. IDLE owns the connection, so it is stopped and restarted around the
+   * search; the body queue serialises this with body fetches.
+   */
+  searchServer(query: string): Promise<Message[]> {
+    const task = this.bodyQueue.then(() => this.searchServerNow(query));
+    this.bodyQueue = task.catch(() => undefined);
+    return task;
+  }
+
+  private async searchServerNow(query: string): Promise<Message[]> {
+    const term = query.trim();
+    if (term.length < 2) return [];
+    if (!this.mailbox) {
+      throw new Error('Connect an email account to search the whole mailbox.');
+    }
+
+    const stopIdle = this.stopIdle;
+    this.stopIdle = null;
+    stopIdle?.();
+    try {
+      const uids = await this.mailbox.search({ text: term });
+      const unique = [...new Set(uids)].slice(0, 40);
+      const messages: Message[] = [];
+      for (const uid of unique) {
+        const headers = await this.mailbox.fetchHeaders({ uidRange: [uid, uid], limit: 1 });
+        const header = headers.find((item) => item.uid === uid);
+        if (header) messages.push(this.headerToMessage(header));
+      }
+      if (messages.length > 0) {
+        await upsertMessages(messages);
+        this.emit();
+      }
+      return messages.sort((a, b) => b.date.localeCompare(a.date));
+    } finally {
+      if (this.mailbox) this.startIdle();
+    }
   }
 
   /**

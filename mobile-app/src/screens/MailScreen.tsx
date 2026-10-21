@@ -27,6 +27,7 @@ import { DraftCard } from '../components/drafts';
 import {
   FilterChips,
   MailActionSheet,
+  RecentSearches,
   SearchBar,
   SyncBanner,
   ThreadRow,
@@ -44,6 +45,7 @@ import {
   type Thread,
 } from '../lib/mail';
 import { loadMessages } from '../lib/mailStore';
+import { addRecentSearch, clearRecentSearches, loadRecentSearches } from '../lib/searchHistory';
 import { undoActivity } from '../lib/agent/activityStore';
 import { loadAccount } from '../lib/accountStore';
 import { getMailSync } from '../lib/mailSyncSingleton';
@@ -85,6 +87,10 @@ export function MailScreen({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<MailFilter>(initialFilter ?? 'all');
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [recents, setRecents] = useState<string[]>([]);
+  const [serverSearching, setServerSearching] = useState(false);
+  const [serverMessage, setServerMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<{
     text: string;
@@ -117,8 +123,48 @@ export function MailScreen({
     setMessages(await loadMessages());
   }, []);
 
+  const runServerSearch = useCallback(async (input = query) => {
+    const term = input.trim();
+    if (term.length < 2 || serverSearching) return;
+    setServerSearching(true);
+    setServerMessage(null);
+    setRecents(await addRecentSearch(term));
+    try {
+      const found = await getMailSync().searchServer(term);
+      await reloadMessages();
+      setServerMessage(
+        found.length === 0
+          ? 'No matches on the server.'
+          : `Added ${found.length} server match${found.length === 1 ? '' : 'es'}.`,
+      );
+    } catch (err) {
+      setServerMessage(err instanceof Error ? err.message : 'Server search failed.');
+    } finally {
+      setServerSearching(false);
+    }
+  }, [query, reloadMessages, serverSearching]);
+
+  const clearRecents = useCallback(async () => {
+    await clearRecentSearches();
+    setRecents([]);
+  }, []);
+
   useEffect(() => () => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, []);
+
+  // Debounce filtering so typing stays smooth with the full 5,000-message cache.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    setServerMessage(null);
+  }, [query]);
+
+  useEffect(() => {
+    void loadRecentSearches().then(setRecents);
   }, []);
 
   // Deep links from Today: filter, then compose.
@@ -192,8 +238,8 @@ export function MailScreen({
   const threads = useMemo(() => buildThreads(messages), [messages]);
 
   const visible = useMemo(
-    () => selectThreads(threads, filter, query),
-    [threads, filter, query],
+    () => selectThreads(threads, filter, debouncedQuery),
+    [threads, filter, debouncedQuery],
   );
 
   const counts = useMemo<Record<MailFilter, number>>(
@@ -603,8 +649,38 @@ export function MailScreen({
     return (
       <View style={styles.screen}>
         {header}
-        <SearchBar value={query} onChangeText={setQuery} />
+        <SearchBar
+          value={query}
+          onChangeText={setQuery}
+          onSubmitEditing={(value) => void runServerSearch(value)}
+        />
         <FilterChips value={filter} onChange={setFilter} counts={counts} />
+        {query.trim().length === 0 && (
+          <RecentSearches
+            items={recents}
+            onSelect={setQuery}
+            onClear={() => void clearRecents()}
+          />
+        )}
+        {query.trim().length >= 2 && (
+          <View style={styles.serverRow}>
+            <Button
+              label={serverSearching ? 'Searching' : 'Search server'}
+              variant="secondary"
+              loading={serverSearching}
+              onPress={() => void runServerSearch()}
+            />
+            <Text style={styles.serverHint} numberOfLines={2}>
+              {serverMessage ?? 'Search the whole mailbox, including older mail and message bodies.'}
+            </Text>
+          </View>
+        )}
+        {debouncedQuery.trim().length > 0 && (
+          <Text style={styles.resultCount}>
+            {visible.length} result{visible.length === 1 ? '' : 's'}
+            {serverSearching ? ' · searching server…' : ''}
+          </Text>
+        )}
         <SyncBanner
           phase={sync.phase}
           progress={sync.progress}
@@ -875,6 +951,20 @@ const styles = themedStyles(() => ({
   },
   killEngaged: { backgroundColor: colors.dangerBg },
   headerTitle: { flex: 1, ...typography.h3, color: colors.text },
+  serverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  serverHint: { flex: 1, ...typography.caption, color: colors.textSubtle },
+  resultCount: {
+    ...typography.caption,
+    color: colors.textMuted,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
   separator: { height: 1, backgroundColor: colors.border, marginLeft: spacing.lg + 10 + spacing.sm },
   footerNote: {
     ...typography.caption,

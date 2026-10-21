@@ -11,6 +11,7 @@ import {
   Animated,
   PanResponder,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -24,10 +25,11 @@ import { IconCheck, IconMail, IconSearch, IconStar, IconTrash, IconX } from './I
 type SearchBarProps = {
   value: string;
   onChangeText: (v: string) => void;
+  onSubmitEditing?: (v: string) => void;
   placeholder?: string;
 };
 
-export function SearchBar({ value, onChangeText, placeholder = 'Search mail' }: SearchBarProps) {
+export function SearchBar({ value, onChangeText, onSubmitEditing, placeholder = 'Search mail' }: SearchBarProps) {
   return (
     <View style={styles.searchWrap}>
       <View style={styles.search}>
@@ -42,6 +44,7 @@ export function SearchBar({ value, onChangeText, placeholder = 'Search mail' }: 
           autoCorrect={false}
           accessibilityLabel="Search mail"
           returnKeyType="search"
+          onSubmitEditing={() => onSubmitEditing?.(value)}
         />
         {value.length > 0 && (
           <Pressable
@@ -74,7 +77,12 @@ type FilterChipsProps = {
 
 export function FilterChips({ value, onChange, counts }: FilterChipsProps) {
   return (
-    <View style={styles.chipRow}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.chipScroll}
+      contentContainerStyle={styles.chipRow}
+    >
       {FILTERS.map((f) => {
         const active = f.id === value;
         return (
@@ -93,6 +101,49 @@ export function FilterChips({ value, onChange, counts }: FilterChipsProps) {
           </Pressable>
         );
       })}
+    </ScrollView>
+  );
+}
+
+/* ── Recent searches ───────────────────────────────────────────────────── */
+type RecentSearchesProps = {
+  items: string[];
+  onSelect: (query: string) => void;
+  onClear: () => void;
+};
+
+export function RecentSearches({ items, onSelect, onClear }: RecentSearchesProps) {
+  if (items.length === 0) return null;
+  return (
+    <View style={styles.recentRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.recentScroll}
+        contentContainerStyle={styles.recentList}
+      >
+        <Text style={styles.recentLabel}>Recent</Text>
+        {items.map((item) => (
+          <Pressable
+            key={item}
+            accessibilityRole="button"
+            accessibilityLabel={`Search for ${item}`}
+            onPress={() => onSelect(item)}
+            style={({ pressed }) => [styles.recentChip, pressed && { opacity: 0.75 }]}
+          >
+            <Text style={styles.recentChipText} numberOfLines={1}>{item}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Clear recent searches"
+        hitSlop={8}
+        onPress={onClear}
+        style={({ pressed }) => [styles.recentClear, pressed && { opacity: 0.7 }]}
+      >
+        <Text style={styles.recentClearText}>Clear</Text>
+      </Pressable>
     </View>
   );
 }
@@ -458,10 +509,11 @@ const styles = themedStyles(() => ({
   },
   searchClear: { minWidth: touch.minTarget, minHeight: touch.minTarget, alignItems: 'center', justifyContent: 'center' },
 
+  chipScroll: { flexGrow: 0 },
   chipRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
     paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
     paddingVertical: spacing.md,
   },
   chip: {
@@ -476,6 +528,29 @@ const styles = themedStyles(() => ({
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { ...typography.caption, color: colors.textMuted },
   chipTextActive: { color: colors.textOnPrimary, fontWeight: '600' },
+
+  recentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  recentScroll: { flex: 1 },
+  recentList: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  recentLabel: { ...typography.label, color: colors.textSubtle, marginRight: 2 },
+  recentChip: {
+    maxWidth: 160,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  recentChipText: { ...typography.caption, color: colors.textMuted },
+  recentClear: { paddingHorizontal: spacing.xs, minHeight: touch.minTarget, justifyContent: 'center' },
+  recentClearText: { ...typography.caption, color: colors.primaryText, fontWeight: '600' },
 
   swipeWrap: { overflow: 'hidden', backgroundColor: colors.bg },
   swipeActions: {
