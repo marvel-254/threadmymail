@@ -23,7 +23,7 @@ import {
 } from 'react-native';
 import { Button, ConfirmDialog, EmptyState, Toast } from '../components/ui';
 import { Composer, ThreadMessage } from '../components/mail';
-import { EscalationCard } from '../components/agent';
+import { DraftCard } from '../components/drafts';
 import { FilterChips, SearchBar, SyncBanner, ThreadRow } from '../components/inbox';
 import { IconBack, IconMail, IconPower, IconSend } from '../components/Icons';
 import {
@@ -40,15 +40,29 @@ import { loadMessages, markRead as storeMarkRead, setStarred } from '../lib/mail
 import { loadAccount } from '../lib/accountStore';
 import { getMailSync } from '../lib/mailSyncSingleton';
 import { setKillSwitch, useGuardrails } from '../lib/guardrails';
+import {
+  dismissDraftPrompt,
+  getDraft,
+  isDraftPromptDismissed,
+  loadPendingDraftForThread,
+  type Draft,
+} from '../lib/agent/draftStore';
+import {
+  discardDraft,
+  generateDraft,
+  recordEditedDraftSent,
+  sendDraft as sendQueuedDraft,
+} from '../lib/agent/drafts';
 import { colors, radii, shadows, spacing, touch, typography } from '../theme/theme';
 
 type MailScreenProps = {
   onOpenAgent: () => void;
   onOpenSettings: () => void;
   threadId?: string;
+  draftId?: string;
 };
 
-export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreenProps) {
+export function MailScreen({ onOpenAgent, onOpenSettings, threadId, draftId }: MailScreenProps) {
   const [view, setView] = useState<'list' | 'thread' | 'compose'>('list');
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -57,8 +71,14 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
   const [confirmKill, setConfirmKill] = useState(false);
-  const { killSwitch: killEngaged } = useGuardrails();
+  const { killSwitch: killEngaged, shadowMode } = useGuardrails();
   const [sync, setSync] = useState<SyncState>(INITIAL_SYNC_STATE);
+  const [threadDraft, setThreadDraft] = useState<Draft | null>(null);
+  const [draftPromptDismissed, setDraftPromptDismissed] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftGenerating, setDraftGenerating] = useState(false);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [composeDraftId, setComposeDraftId] = useState<string | null>(null);
   const [composeTo, setComposeTo] = useState('');
   const [composeCc, setComposeCc] = useState('');
   const [composeSubject, setComposeSubject] = useState('');
@@ -76,6 +96,24 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
       setView('thread');
     }
   }, [threadId]);
+
+  // Open a queued draft in the compose editor when Today sends one over.
+  useEffect(() => {
+    if (!draftId) return;
+    let cancelled = false;
+    void getDraft(draftId).then((draft) => {
+      if (cancelled || !draft || draft.status !== 'pending') return;
+      setComposeTo(draft.to);
+      setComposeCc('');
+      setComposeSubject(draft.subject);
+      setComposeBody(draft.body);
+      setComposeDraftId(draft.id);
+      setView('compose');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [draftId]);
 
   // Load persisted messages on mount, then subscribe to the sync engine.
   useEffect(() => {
@@ -113,6 +151,34 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
     () => messages.find((m) => m.id === selectedId) ?? null,
     [messages, selectedId],
   );
+
+  const activeThreadId = selected?.threadId;
+
+  // Load the pending draft / dismissal for the open thread.
+  useEffect(() => {
+    if (view !== 'thread' || !activeThreadId) {
+      setThreadDraft(null);
+      setDraftPromptDismissed(false);
+      return;
+    }
+    let cancelled = false;
+    setDraftLoading(true);
+    void Promise.all([
+      loadPendingDraftForThread(activeThreadId),
+      isDraftPromptDismissed(activeThreadId),
+    ])
+      .then(([draft, dismissed]) => {
+        if (cancelled) return;
+        setThreadDraft(draft);
+        setDraftPromptDismissed(dismissed);
+      })
+      .finally(() => {
+        if (!cancelled) setDraftLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, activeThreadId]);
 
   // Fetch the real body when a thread opens. MailSync caches it in memory for
   // the session, so opening the same message again is effectively instant.
@@ -152,6 +218,63 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
       prev.map((m) => (m.id === id ? { ...m, starred: !m.starred } : m)),
     );
     void getMailSync().toggleStar(id);
+  };
+
+  const openDraftInCompose = (draft: Draft) => {
+    setComposeTo(draft.to);
+    setComposeCc('');
+    setComposeSubject(draft.subject);
+    setComposeBody(draft.body);
+    setComposeDraftId(draft.id);
+    setView('compose');
+  };
+
+  const handleGenerateDraft = async () => {
+    if (!selected || draftGenerating) return;
+    setDraftGenerating(true);
+    try {
+      const bodyText = (body?.id === selected.id ? body.text : '') || selected.body || selected.preview;
+      const result = await generateDraft(selected, bodyText);
+      if (result.ok) {
+        setThreadDraft(result.draft);
+        showToast(result.shadowed ? 'Draft queued (shadow mode)' : 'Draft ready');
+      } else {
+        showToast(result.error, false);
+      }
+    } finally {
+      setDraftGenerating(false);
+    }
+  };
+
+  const handleDismissDraftPrompt = async () => {
+    if (!activeThreadId) return;
+    await dismissDraftPrompt(activeThreadId);
+    setDraftPromptDismissed(true);
+  };
+
+  const handleSendThreadDraft = async () => {
+    if (!threadDraft || draftBusy) return;
+    setDraftBusy(true);
+    const result = await sendQueuedDraft(threadDraft);
+    setDraftBusy(false);
+    if (result.ok) {
+      setThreadDraft(null);
+      setDraftPromptDismissed(true);
+      showToast(`Draft sent to ${threadDraft.to}`);
+    } else {
+      showToast(result.error, false);
+    }
+  };
+
+  const handleDiscardThreadDraft = async () => {
+    if (!threadDraft || draftBusy) return;
+    setDraftBusy(true);
+    await discardDraft(threadDraft);
+    if (activeThreadId) await dismissDraftPrompt(activeThreadId);
+    setDraftBusy(false);
+    setThreadDraft(null);
+    setDraftPromptDismissed(true);
+    showToast('Draft discarded');
   };
 
   /**
@@ -202,6 +325,7 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
     setComposeCc('');
     setComposeSubject('');
     setComposeBody('');
+    setComposeDraftId(null);
     setView('compose');
   };
 
@@ -210,6 +334,7 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
     setComposeCc('');
     setComposeSubject(selected?.subject ? `Re: ${selected.subject}` : '');
     setComposeBody('');
+    setComposeDraftId(null);
     setView('compose');
   };
 
@@ -235,6 +360,7 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
     }
 
     setSending(true);
+    const editedDraftId = composeDraftId;
     try {
       await getMailSync().send({
         to,
@@ -242,12 +368,20 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
         subject: composeSubject.trim() || '(no subject)',
         text: composeBody,
       });
+      if (editedDraftId) {
+        try {
+          await recordEditedDraftSent(editedDraftId, composeBody);
+        } catch {
+          // The mail was sent; the queue bookkeeping is best-effort.
+        }
+      }
       showToast('Message sent');
       setView('list');
       setComposeTo('');
       setComposeCc('');
       setComposeSubject('');
       setComposeBody('');
+      setComposeDraftId(null);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Send failed', false);
     } finally {
@@ -265,7 +399,11 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
         <IconBack size={22} color={colors.text} />
       </Pressable>
       <Text style={styles.headerTitle}>
-        {view === 'list' ? 'Inbox' : view === 'thread' ? selected?.subject ?? 'Thread' : 'New message'}
+        {view === 'list'
+          ? 'Inbox'
+          : view === 'thread'
+            ? selected?.subject ?? 'Thread'
+            : composeDraftId ? 'Edit draft' : 'New message'}
       </Text>
       <Pressable
         accessibilityLabel={killEngaged ? 'Resume autonomous actions' : 'Stop autonomous actions'}
@@ -391,13 +529,51 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId }: MailScreen
                   />
                 </View>
               )}
-              <EscalationCard
-                question="Millo can draft a reply. Want it to?"
-                choices={[{ label: 'Yes', primary: true }, { label: 'No' }]}
-                onChoose={(c) => {
-                  if (c === 'Yes') openReplyCompose();
-                }}
-              />
+              {draftLoading ? (
+                <View style={styles.draftLoading}>
+                  <ActivityIndicator color={colors.primary} size="small" />
+                  <Text style={styles.bodyStatusText}>Checking for a draft…</Text>
+                </View>
+              ) : threadDraft ? (
+                <DraftCard
+                  draft={threadDraft}
+                  shadow={shadowMode}
+                  busy={draftBusy}
+                  onSend={() => void handleSendThreadDraft()}
+                  onEdit={() => openDraftInCompose(threadDraft)}
+                  onDiscard={() => void handleDiscardThreadDraft()}
+                />
+              ) : !draftPromptDismissed ? (
+                <View style={styles.draftPrompt}>
+                  <Text style={styles.draftPromptText}>
+                    {draftGenerating
+                      ? 'Millo is writing a draft…'
+                      : 'Millo can draft a reply. Want it to?'}
+                  </Text>
+                  {draftGenerating ? (
+                    <ActivityIndicator color={colors.primary} size="small" />
+                  ) : (
+                    <View style={styles.draftPromptActions}>
+                      <Button
+                        label="Draft it"
+                        onPress={() => void handleGenerateDraft()}
+                      />
+                      <Button
+                        label="No"
+                        variant="secondary"
+                        onPress={() => void handleDismissDraftPrompt()}
+                      />
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <Button
+                  label={draftGenerating ? 'Drafting…' : 'Draft with Millo'}
+                  variant="secondary"
+                  loading={draftGenerating}
+                  onPress={() => void handleGenerateDraft()}
+                />
+              )}
             </>
           ) : (
             <EmptyState
@@ -529,6 +705,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   bodyErrorText: { ...typography.bodySmall, color: colors.textMuted },
+  draftLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  draftPrompt: {
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderPrimary,
+    backgroundColor: colors.surface,
+  },
+  draftPromptText: { ...typography.bodySmall, color: colors.text },
+  draftPromptActions: { flexDirection: 'row', gap: spacing.sm },
   composerBar: { padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   composeContent: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xxl },
   composeLabel: { ...typography.label, color: colors.textSubtle, marginTop: spacing.sm },

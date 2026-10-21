@@ -7,6 +7,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
 import { StatusStrip } from '../components/agent';
+import { DraftCard } from '../components/drafts';
 import { IconMenu, IconPower, IconSparkle, IconToday } from '../components/Icons';
 import {
   formatQuietHours,
@@ -16,12 +17,15 @@ import {
 } from '../lib/guardrails';
 import { cancelTriage, runTriage, useTriage } from '../lib/agent/triage';
 import { loadNeedsEye, type NeedsEyeItem } from '../lib/agent/triageStore';
+import { usePendingDrafts } from '../lib/agent/draftStore';
+import { discardDraft, sendDraft as sendQueuedDraft } from '../lib/agent/drafts';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
 type TodayScreenProps = {
   onOpenSettings: () => void;
   onOpenMail: (messageId?: string) => void;
   onOpenAgent: () => void;
+  onEditDraft: (draftId: string) => void;
 };
 
 const VERDICT_LABEL = {
@@ -29,11 +33,18 @@ const VERDICT_LABEL = {
   'action-required': 'Action required',
 } as const;
 
-export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodayScreenProps) {
+export function TodayScreen({
+  onOpenSettings,
+  onOpenMail,
+  onOpenAgent,
+  onEditDraft,
+}: TodayScreenProps) {
   const [needsEye, setNeedsEye] = useState<NeedsEyeItem[]>([]);
   const [confirmKill, setConfirmKill] = useState(false);
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
+  const [draftBusy, setDraftBusy] = useState<string | null>(null);
   const triage = useTriage();
+  const pendingDrafts = usePendingDrafts();
   const guardrails = useGuardrails();
   const killEngaged = guardrails.killSwitch;
   const quietNow = isQuietHours();
@@ -75,6 +86,24 @@ export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodaySc
     void runTriage({ trigger: 'manual' });
   };
 
+  const handleSendDraft = async (draft: Parameters<typeof sendQueuedDraft>[0]) => {
+    if (draftBusy) return;
+    setDraftBusy(draft.id);
+    const result = await sendQueuedDraft(draft);
+    setDraftBusy(null);
+    setToast(result.ok
+      ? { text: `Draft sent to ${draft.to}`, ok: true }
+      : { text: result.error, ok: false });
+  };
+
+  const handleDiscardDraft = async (draft: Parameters<typeof discardDraft>[0]) => {
+    if (draftBusy) return;
+    setDraftBusy(draft.id);
+    await discardDraft(draft);
+    setDraftBusy(null);
+    setToast({ text: 'Draft discarded', ok: true });
+  };
+
   const confirmKillToggle = () => {
     void setKillSwitch(!killEngaged);
     setConfirmKill(false);
@@ -108,6 +137,23 @@ export function TodayScreen({ onOpenSettings, onOpenMail, onOpenAgent }: TodaySc
           fullWidth
           icon={<IconSparkle size={18} color={colors.textOnPrimary} />}
         />
+
+        {pendingDrafts.length > 0 && (
+          <>
+            <SectionLabel>Drafts ({pendingDrafts.length})</SectionLabel>
+            {pendingDrafts.map((draft) => (
+              <DraftCard
+                key={draft.id}
+                draft={draft}
+                shadow={guardrails.shadowMode}
+                busy={draftBusy === draft.id}
+                onSend={() => void handleSendDraft(draft)}
+                onEdit={() => onEditDraft(draft.id)}
+                onDiscard={() => void handleDiscardDraft(draft)}
+              />
+            ))}
+          </>
+        )}
 
         <SectionLabel>Needs your eye</SectionLabel>
         {needsEye.length === 0 ? (

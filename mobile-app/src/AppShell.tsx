@@ -45,9 +45,13 @@ export function AppShell() {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | undefined>();
   const threadIdRef = useRef<string | undefined>(undefined);
+  const draftIdRef = useRef<string | undefined>(undefined);
 
   const switchTab = (next: TabId) => {
-    if (next !== 'mail') threadIdRef.current = undefined;
+    if (next !== 'mail') {
+      threadIdRef.current = undefined;
+      draftIdRef.current = undefined;
+    }
     setTab(next);
   };
 
@@ -130,8 +134,14 @@ export function AppShell() {
   };
   const handleOpenMailThread = (threadId: string) => {
     threadIdRef.current = threadId;
+    draftIdRef.current = undefined;
     switchTab('mail');
     handleCloseDrawer();
+  };
+  const handleOpenDraft = (draftId: string) => {
+    draftIdRef.current = draftId;
+    threadIdRef.current = undefined;
+    switchTab('mail');
   };
 
   return (
@@ -145,9 +155,11 @@ export function AppShell() {
                 onOpenSettings={() => switchTab('settings')}
                 onOpenMail={(messageId) => {
                   threadIdRef.current = messageId;
+                  draftIdRef.current = undefined;
                   switchTab('mail');
                 }}
                 onOpenAgent={() => switchTab('agent')}
+                onEditDraft={handleOpenDraft}
               />
             )}
             {tab === 'mail' && (
@@ -155,6 +167,7 @@ export function AppShell() {
                 onOpenAgent={() => switchTab('agent')}
                 onOpenSettings={() => switchTab('settings')}
                 threadId={threadIdRef.current}
+                draftId={draftIdRef.current}
               />
             )}
             {tab === 'agent' && (
