@@ -75,6 +75,17 @@ Set the following **GitHub Actions secrets**, then trigger the workflow:
 | THMMY_KEY_PASSWORD | Key password |
 
 The workflow publishes a GitHub Release with the signed APK automatically.
+Note: the workflow's release step cannot push tags (GITHUB_TOKEN lacks push
+permission) — create the tag + release manually:
+
+```bash
+git tag v3.0.0 && git push origin v3.0.0
+gh release create v3.0.0 android/app/build/outputs/apk/release/app-release.apk \
+  --title "ThreadMyMail v3.0.0" --notes "…"
+```
+
+Or push a `v*` tag to trigger `.github/workflows/release.yml` (same build,
+tag-triggered).
 
 ### Generate a signing keystore (first time)
 ```bash
@@ -108,17 +119,23 @@ and your AI key (BYOK), and runs the agent loop on-device.
 
 ---
 
-## Status (2026-10-10)
+## Status (2026-10-21)
 
 The mobile harness is the product. The website is a landing + download page.
 
+- **v3.0.0 released** — signed APK at
+  https://github.com/marvel-254/threadmymail/releases/tag/v3.0.0
 - APK builds with Expo + Gradle (CI: .github/workflows/android-build.yml)
 - IMAP/SMTP bridge wired (src/lib/mailBridge.ts, src/lib/mailSync.ts)
 - SMTP passthrough fixed — harness can send
 - BYOK providers wired (src/lib/providerStore.ts, src/lib/emailTest.ts)
 - Onboarding persists account + provider + onboarding flag (src/lib/prefs.ts)
 - Settings: connect/disconnect email, add/remove/test providers, guardrails
+- v3 Android-native chat redesign: native top app bar, drawer + edge swipe,
+  conversation store (expo-sqlite), wallpaper system, long-press copy,
+  message references to email threads
 - Signing plugin: plugins/withAndroidReleaseSigning.js (injects keystore config at prebuild)
 - Provider store: src/lib/providerStore.ts (SecureStore-backed, testProvider / GET /models)
 
-**Next:** real device test with a test Gmail app-password account.
+**Next:** real device test with a test Gmail app-password account; wire the
+agent loop (triage/drafts/follow-ups) on-device.
