@@ -38,7 +38,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AgentBubble, EscalationCard, ToolChip } from '../components/agent';
 import { Composer } from '../components/mail';
-import { Button, EmptyState } from '../components/ui';
+import { BottomSheet, Button, EmptyState } from '../components/ui';
 import { WallpaperPicker } from '../components/WallpaperPicker';
 import { IconAgent, IconBack, IconMenu, IconCopy, IconMail, IconMoreVertical } from '../components/Icons';
 import { colors, radii, spacing, touch, typography, motion } from '../theme/theme';
@@ -601,34 +601,29 @@ return (
       </Modal>
 
       {/* Long Press Action Sheet */}
-      <Modal
-        transparent
+      <BottomSheet
         visible={showLongPressSheet}
-        animationType="slide"
-        onRequestClose={() => { setShowLongPressSheet(false); setLongPressItem(null); }}
+        onClose={() => { setShowLongPressSheet(false); setLongPressItem(null); }}
+        title="Message actions"
+        scroll={false}
       >
-        <View style={styles.sheetBackdrop}>
-          <View style={styles.sheet} pointerEvents="box-none">
-            <View style={styles.sheetHandle} />
-            <Pressable
-              onPress={handleCopyText}
-              style={styles.sheetItem}
-              android_ripple={{ color: colors.surfaceHover }}
-            >
-              <IconCopy size={20} color={colors.text} />
-              <Text style={styles.sheetItemText}>Copy text</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleUseAsContext}
-              style={styles.sheetItem}
-              android_ripple={{ color: colors.surfaceHover }}
-            >
-              <IconMail size={20} color={colors.text} />
-              <Text style={styles.sheetItemText}>Use as context</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+        <Pressable
+          onPress={handleCopyText}
+          style={styles.sheetItem}
+          android_ripple={{ color: colors.surfaceHover }}
+        >
+          <IconCopy size={20} color={colors.text} />
+          <Text style={styles.sheetItemText}>Copy text</Text>
+        </Pressable>
+        <Pressable
+          onPress={handleUseAsContext}
+          style={styles.sheetItem}
+          android_ripple={{ color: colors.surfaceHover }}
+        >
+          <IconMail size={20} color={colors.text} />
+          <Text style={styles.sheetItemText}>Use as context</Text>
+        </Pressable>
+      </BottomSheet>
 
       {/* Rename Conversation Dialog */}
       <Modal

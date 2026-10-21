@@ -8,13 +8,13 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { BottomSheet } from './ui';
 import { colors, radii, spacing, typography } from '../theme/theme';
 import {
   PRESET_IDS,
@@ -68,137 +68,106 @@ export function WallpaperPicker({ visible, current, onApply, onClose }: Wallpape
   };
 
   return (
-    <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <View style={styles.header}>
-            <Text style={styles.title}>Wallpaper</Text>
-            <Pressable
-              accessibilityLabel="Close wallpaper picker"
-              onPress={onClose}
-              style={styles.closeBtn}
-            >
-              <Text style={styles.closeText}>Done</Text>
-            </Pressable>
-          </View>
-
-          {/* Live preview */}
-          <View style={styles.preview}>
-            <Image
-              source={
-                draft.source.kind === 'custom'
-                  ? { uri: draft.source.uri }
-                  : presetSource(draft.source.id)
-              }
-              style={styles.previewImg}
-              resizeMode="cover"
-            />
-            <View style={[styles.previewDim, { backgroundColor: `rgba(6,14,32,${draft.dim})` }]} />
-            <View style={styles.previewLabel}>
-              <Text style={styles.previewLabelText}>Preview</Text>
-            </View>
-          </View>
-
-          {/* Dimming adjustment */}
-          <View style={styles.dimRow}>
-            <Text style={styles.dimLabel}>Dim</Text>
-            <View style={styles.dimControls}>
-              {[0.2, 0.35, 0.5, 0.65].map((d) => (
-                <Pressable
-                  key={d}
-                  onPress={() => setDraft((prev) => ({ ...prev, dim: d }))}
-                  style={[styles.dimOption, draft.dim === d && styles.dimOptionActive]}
-                >
-                  <Text style={styles.dimOptionText}>{Math.round(d * 100)}%</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {/* Built-in presets */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presets}>
-            {PRESET_IDS.map((id) => (
-              <Pressable
-                key={id}
-                onPress={() => setDraft({ source: { kind: 'preset', id }, dim: draft.dim })}
-                style={[styles.preset, draft.source.kind === 'preset' && draft.source.id === id && styles.presetActive]}
-              >
-                <Image source={presetSource(id)} style={styles.presetImg} resizeMode="cover" />
-                <Text style={styles.presetName}>{id}</Text>
-              </Pressable>
-            ))}
-            <Pressable
-              onPress={handlePickCustom}
-              style={styles.preset}
-              disabled={picking}
-            >
-              {picking ? (
-                <ActivityIndicator size="small" color={colors.text} />
-              ) : (
-                <View style={styles.presetImg}>
-                  <Text style={styles.presetAdd}>+</Text>
-                </View>
-              )}
-              <Text style={styles.presetName}>Photo</Text>
-            </Pressable>
-          </ScrollView>
-
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          <View style={styles.actions}>
-            <Pressable
-              accessibilityLabel="Reset wallpaper to default"
-              onPress={handleReset}
-              style={styles.resetBtn}
-            >
-              <Text style={styles.resetText}>Reset</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="Apply wallpaper"
-              onPress={handleApply}
-              style={styles.applyBtn}
-            >
-              <Text style={styles.applyText}>Apply</Text>
-            </Pressable>
-          </View>
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      title="Wallpaper"
+      scroll={false}
+      headerRight={(
+        <Pressable
+          accessibilityLabel="Close wallpaper picker"
+          onPress={onClose}
+          style={styles.closeBtn}
+        >
+          <Text style={styles.closeText}>Done</Text>
+        </Pressable>
+      )}
+      footer={(
+        <View style={styles.actions}>
+          <Pressable
+            accessibilityLabel="Reset wallpaper to default"
+            onPress={handleReset}
+            style={styles.resetBtn}
+          >
+            <Text style={styles.resetText}>Reset</Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Apply wallpaper"
+            onPress={handleApply}
+            style={styles.applyBtn}
+          >
+            <Text style={styles.applyText}>Apply</Text>
+          </Pressable>
+        </View>
+      )}
+    >
+      {/* Live preview */}
+      <View style={styles.preview}>
+        <Image
+          source={
+            draft.source.kind === 'custom'
+              ? { uri: draft.source.uri }
+              : presetSource(draft.source.id)
+          }
+          style={styles.previewImg}
+          resizeMode="cover"
+        />
+        <View style={[styles.previewDim, { backgroundColor: `rgba(6,14,32,${draft.dim})` }]} />
+        <View style={styles.previewLabel}>
+          <Text style={styles.previewLabelText}>Preview</Text>
         </View>
       </View>
-    </Modal>
+
+      {/* Dimming adjustment */}
+      <View style={styles.dimRow}>
+        <Text style={styles.dimLabel}>Dim</Text>
+        <View style={styles.dimControls}>
+          {[0.2, 0.35, 0.5, 0.65].map((d) => (
+            <Pressable
+              key={d}
+              onPress={() => setDraft((prev) => ({ ...prev, dim: d }))}
+              style={[styles.dimOption, draft.dim === d && styles.dimOptionActive]}
+            >
+              <Text style={styles.dimOptionText}>{Math.round(d * 100)}%</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {/* Built-in presets */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presets}>
+        {PRESET_IDS.map((id) => (
+          <Pressable
+            key={id}
+            onPress={() => setDraft({ source: { kind: 'preset', id }, dim: draft.dim })}
+            style={[styles.preset, draft.source.kind === 'preset' && draft.source.id === id && styles.presetActive]}
+          >
+            <Image source={presetSource(id)} style={styles.presetImg} resizeMode="cover" />
+            <Text style={styles.presetName}>{id}</Text>
+          </Pressable>
+        ))}
+        <Pressable
+          onPress={handlePickCustom}
+          style={styles.preset}
+          disabled={picking}
+        >
+          {picking ? (
+            <ActivityIndicator size="small" color={colors.text} />
+          ) : (
+            <View style={styles.presetImg}>
+              <Text style={styles.presetAdd}>+</Text>
+            </View>
+          )}
+          <Text style={styles.presetName}>Photo</Text>
+        </Pressable>
+      </ScrollView>
+
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: colors.scrim,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: colors.bgDeep,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingBottom: spacing.xl,
-    paddingHorizontal: spacing.lg,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  title: { ...typography.h3, color: colors.text },
   closeBtn: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -302,6 +271,6 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: spacing.md,
-    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
   },
 });

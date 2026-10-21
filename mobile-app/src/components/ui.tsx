@@ -6,12 +6,17 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  KeyboardAvoidingView,
   Modal,
+  PanResponder,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 import { IconCheck, IconX } from './Icons';
 
@@ -287,4 +292,155 @@ const styles6 = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   toastActionText: { ...typography.bodySmall, color: colors.primary, fontWeight: '700' },
+});
+
+
+/* ── BottomSheet ────────────────────────────────────────────────────────── */
+type BottomSheetProps = {
+  visible: boolean;
+  onClose: () => void;
+  title?: string;
+  headerRight?: React.ReactNode;
+  footer?: React.ReactNode;
+  /** Wrap the body in a ScrollView (default true). */
+  scroll?: boolean;
+  children: React.ReactNode;
+};
+
+/**
+ * Shared bottom sheet: scrim, back-button close, drag-down dismiss, and a
+ * keyboard-aware scroll body with a pinned footer. Use this for every sheet so
+ * long forms stay reachable while the keyboard is open.
+ */
+export function BottomSheet({
+  visible,
+  onClose,
+  title,
+  headerRight,
+  footer,
+  scroll = true,
+  children,
+}: BottomSheetProps) {
+  const insets = useSafeAreaInsets();
+  const translateY = useRef(new Animated.Value(0)).current;
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => gesture.dy > 4,
+      onPanResponderMove: (_, gesture) => {
+        translateY.setValue(Math.max(0, gesture.dy));
+      },
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dy > 90 || gesture.vy > 0.6) {
+          closeRef.current();
+          return;
+        }
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          bounciness: 0,
+        }).start();
+      },
+    }),
+  ).current;
+
+  useEffect(() => {
+    if (visible) translateY.setValue(0);
+  }, [visible, translateY]);
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        style={styles7.root}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <Pressable
+          style={styles7.backdrop}
+          onPress={onClose}
+          accessibilityLabel="Close sheet"
+        />
+        <Animated.View
+          style={[
+            styles7.sheet,
+            { paddingBottom: Math.max(insets.bottom, spacing.lg) },
+            { transform: [{ translateY }] },
+          ]}
+          accessibilityViewIsModal
+        >
+          <View style={styles7.handleArea} {...panResponder.panHandlers}>
+            <View style={styles7.handle} />
+          </View>
+          {(title || headerRight) && (
+            <View style={styles7.header}>
+              {title ? <Text style={styles7.title} numberOfLines={2}>{title}</Text> : <View />}
+              {headerRight}
+            </View>
+          )}
+          {scroll ? (
+            <ScrollView
+              style={styles7.scroll}
+              contentContainerStyle={styles7.body}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {children}
+            </ScrollView>
+          ) : (
+            <View style={styles7.body}>{children}</View>
+          )}
+          {footer ? <View style={styles7.footer}>{footer}</View> : null}
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const styles7 = StyleSheet.create({
+  root: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: colors.scrim,
+  },
+  sheet: {
+    maxHeight: '92%',
+    backgroundColor: colors.bgDeep,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingHorizontal: spacing.lg,
+  },
+  handleArea: {
+    minHeight: touch.minTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderStrong,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: spacing.sm,
+  },
+  title: { ...typography.h3, color: colors.text, flex: 1 },
+  scroll: { flexGrow: 0, flexShrink: 1 },
+  body: { gap: spacing.md, paddingBottom: spacing.sm },
+  footer: {
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
 });

@@ -9,7 +9,6 @@
 import React, { useRef, useState } from 'react';
 import {
   Animated,
-  Modal,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -17,6 +16,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { BottomSheet } from './ui';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 import { formatListTime, type MailFilter, type Thread } from '../lib/mail';
 import { IconCheck, IconMail, IconSearch, IconStar, IconTrash, IconX } from './Icons';
@@ -339,57 +339,49 @@ export function MailActionSheet({
   const anyUnread = thread.unreadCount > 0;
 
   return (
-    <Modal
+    <BottomSheet
       visible
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
-      <Pressable style={styles.sheetBackdrop} onPress={onClose} accessibilityLabel="Close actions">
-        <View
-          style={styles.sheet}
-          onStartShouldSetResponder={() => true}
-          accessibilityViewIsModal
+      onClose={onClose}
+      title={thread.subject}
+      scroll={false}
+      footer={(
+        <Pressable
+          accessibilityRole="button"
+          onPress={onClose}
+          style={({ pressed }) => [styles.sheetCancel, pressed && styles.sheetItemPressed]}
         >
-          <View style={styles.sheetHandle} />
-          <Text style={styles.sheetSubject} numberOfLines={1}>
-            {thread.subject} · {thread.messageCount} message{thread.messageCount === 1 ? '' : 's'}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => run(onToggleRead)}
-            style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
-          >
-            <IconCheck size={18} color={colors.text} />
-            <Text style={styles.sheetItemText}>{anyUnread ? 'Mark conversation read' : 'Mark conversation unread'}</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => run(onArchive)}
-            style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
-          >
-            <IconMail size={18} color={colors.text} />
-            <Text style={styles.sheetItemText}>Archive conversation</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => run(onDelete)}
-            style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
-          >
-            <IconTrash size={18} color={colors.danger} />
-            <Text style={[styles.sheetItemText, styles.sheetItemDanger]}>Delete conversation</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={onClose}
-            style={({ pressed }) => [styles.sheetCancel, pressed && styles.sheetItemPressed]}
-          >
-            <Text style={styles.sheetCancelText}>Cancel</Text>
-          </Pressable>
-        </View>
+          <Text style={styles.sheetCancelText}>Cancel</Text>
+        </Pressable>
+      )}
+    >
+      <Text style={styles.sheetSubject}>
+        {thread.messageCount} message{thread.messageCount === 1 ? '' : 's'}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => run(onToggleRead)}
+        style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
+      >
+        <IconCheck size={18} color={colors.text} />
+        <Text style={styles.sheetItemText}>{anyUnread ? 'Mark conversation read' : 'Mark conversation unread'}</Text>
       </Pressable>
-    </Modal>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => run(onArchive)}
+        style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
+      >
+        <IconMail size={18} color={colors.text} />
+        <Text style={styles.sheetItemText}>Archive conversation</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => run(onDelete)}
+        style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
+      >
+        <IconTrash size={18} color={colors.danger} />
+        <Text style={[styles.sheetItemText, styles.sheetItemDanger]}>Delete conversation</Text>
+      </Pressable>
+    </BottomSheet>
   );
 }
 
@@ -550,28 +542,6 @@ const styles = StyleSheet.create({
 
   starBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
 
-  sheetBackdrop: {
-    flex: 1,
-    backgroundColor: colors.scrim,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: colors.surfaceStrong,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
-    gap: spacing.xs,
-  },
-  sheetHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderStrong,
-    alignSelf: 'center',
-    marginBottom: spacing.sm,
-  },
   sheetSubject: {
     ...typography.caption,
     color: colors.textMuted,
@@ -592,7 +562,7 @@ const styles = StyleSheet.create({
     minHeight: touch.minTarget,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: spacing.sm,
+    marginVertical: spacing.sm,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,

@@ -4,7 +4,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { Button, Card, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
+import { BottomSheet, Button, Card, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
 import { Field, ProviderCard } from '../components/settings';
 import { PROVIDER_PRESETS, CUSTOM_PROVIDER_ID } from '../lib/providers';
 import {
@@ -707,73 +707,77 @@ export function SettingsScreen() {
         </Card>
       </ScrollView>
 
-      {/* Add provider sheet */}
-      {showAddProvider && (
-        <View style={styles.sheet}>
-          <Text style={styles.sheetTitle}>Add AI provider</Text>
-          <View style={styles.pickerWrap}>
-            {PROVIDER_PRESETS.map((p) => (
-              <Pressable key={p.id} accessibilityRole="button"
-                accessibilityState={{ selected: p.id === providerPresetId }}
-                onPress={() => selectPreset(p.id)}
-                style={[styles.pickerItem, p.id === providerPresetId && styles.pickerItemActive]}>
-                <Text style={[styles.pickerText, p.id === providerPresetId && styles.pickerTextActive]}>{p.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <Field label="API key" value={providerKey} onChangeText={(t) => { setProviderKey(t); setAddResult(null); }} secure
-            placeholder={PROVIDER_PRESETS.find((p) => p.id === providerPresetId)?.keyHint ?? 'sk-…'} />
-          <Field label="Base URL" value={providerUrl} onChangeText={setProviderUrl} placeholder="https://api.openai.com/v1"
-            helper={providerPresetId === CUSTOM_PROVIDER_ID ? 'Required — must be an OpenAI-compatible endpoint.' : 'Prefilled for this provider.'} />
-          <Field label="Default model" value={providerModel} onChangeText={setProviderModel} placeholder="gpt-4o-mini" />
-          {addResult && (
-            <View style={[styles.resultBanner, addResult.ok ? styles.resultBannerOk : styles.resultBannerErr]}>
-              <Text style={[styles.resultText, addResult.ok ? styles.resultTextOk : styles.resultTextErr]}>{addResult.detail}</Text>
-            </View>
-          )}
+      <BottomSheet
+        visible={showAddProvider}
+        onClose={() => setShowAddProvider(false)}
+        title="Add AI provider"
+        footer={(
           <View style={styles.sheetActions}>
             <Button label="Cancel" variant="ghost" onPress={() => setShowAddProvider(false)} />
             <Button label={adding ? 'Testing…' : 'Add provider'} disabled={adding || !providerKey.trim()} loading={adding} onPress={saveNewProvider} />
           </View>
+        )}
+      >
+        <View style={styles.pickerWrap}>
+          {PROVIDER_PRESETS.map((p) => (
+            <Pressable key={p.id} accessibilityRole="button"
+              accessibilityState={{ selected: p.id === providerPresetId }}
+              onPress={() => selectPreset(p.id)}
+              style={[styles.pickerItem, p.id === providerPresetId && styles.pickerItemActive]}>
+              <Text style={[styles.pickerText, p.id === providerPresetId && styles.pickerTextActive]}>{p.label}</Text>
+            </Pressable>
+          ))}
         </View>
-      )}
-
-      {/* Connect email sheet */}
-      {showConnect && (
-        <View style={styles.sheet}>
-          <Text style={styles.sheetTitle}>Connect email</Text>
-          <Text style={styles.sheetHint}>Use an app password, not your normal password. 180-day history imports in the background.</Text>
-          <View style={styles.pickerWrap}>
-            {EMAIL_PROVIDERS.map((p) => (
-              <Pressable key={p.id} accessibilityRole="button"
-                accessibilityState={{ selected: p.id === emailProviderId }}
-                onPress={() => setEmailProviderId(p.id)}
-                style={[styles.pickerItem, p.id === emailProviderId && styles.pickerItemActive]}>
-                <Text style={[styles.pickerText, p.id === emailProviderId && styles.pickerTextActive]}>{p.label}</Text>
-              </Pressable>
-            ))}
+        <Field label="API key" value={providerKey} onChangeText={(t) => { setProviderKey(t); setAddResult(null); }} secure
+          placeholder={PROVIDER_PRESETS.find((p) => p.id === providerPresetId)?.keyHint ?? 'sk-…'} />
+        <Field label="Base URL" value={providerUrl} onChangeText={setProviderUrl} placeholder="https://api.openai.com/v1"
+          helper={providerPresetId === CUSTOM_PROVIDER_ID ? 'Required — must be an OpenAI-compatible endpoint.' : 'Prefilled for this provider.'} />
+        <Field label="Default model" value={providerModel} onChangeText={setProviderModel} placeholder="gpt-4o-mini" />
+        {addResult && (
+          <View style={[styles.resultBanner, addResult.ok ? styles.resultBannerOk : styles.resultBannerErr]}>
+            <Text style={[styles.resultText, addResult.ok ? styles.resultTextOk : styles.resultTextErr]}>{addResult.detail}</Text>
           </View>
-          <Field label="Email address" value={emailAddress} onChangeText={(t) => { setEmailAddress(t); setConnectResult(null); }} placeholder="you@example.com" keyboardType="email-address" />
-          <Field label="App password" value={emailPassword} onChangeText={(t) => { setEmailPassword(t); setConnectResult(null); }} secure placeholder="•••• •••• •••• ••••" />
-          {emailProviderId === 'custom' && (
-            <>
-              <Field label="IMAP host" value={customImapHost} onChangeText={setCustomImapHost} placeholder="imap.example.com" />
-              <Field label="IMAP port" value={customImapPort} onChangeText={setCustomImapPort} keyboardType="numeric" />
-              <Field label="SMTP host" value={customSmtpHost} onChangeText={setCustomSmtpHost} placeholder="smtp.example.com" />
-              <Field label="SMTP port" value={customSmtpPort} onChangeText={setCustomSmtpPort} keyboardType="numeric" />
-            </>
-          )}
-          {connectResult && (
-            <View style={[styles.resultBanner, connectResult.ok ? styles.resultBannerOk : styles.resultBannerErr]}>
-              <Text style={[styles.resultText, connectResult.ok ? styles.resultTextOk : styles.resultTextErr]}>{connectResult.detail}</Text>
-            </View>
-          )}
+        )}
+      </BottomSheet>
+
+      <BottomSheet
+        visible={showConnect}
+        onClose={() => setShowConnect(false)}
+        title="Connect email"
+        footer={(
           <View style={styles.sheetActions}>
             <Button label="Cancel" variant="ghost" onPress={() => setShowConnect(false)} />
             <Button label={connecting ? 'Connecting…' : 'Connect'} disabled={connecting || !emailAddress.trim() || !emailPassword} loading={connecting} onPress={connectAccount} />
           </View>
+        )}
+      >
+        <Text style={styles.sheetHint}>Use an app password, not your normal password. 180-day history imports in the background.</Text>
+        <View style={styles.pickerWrap}>
+          {EMAIL_PROVIDERS.map((p) => (
+            <Pressable key={p.id} accessibilityRole="button"
+              accessibilityState={{ selected: p.id === emailProviderId }}
+              onPress={() => setEmailProviderId(p.id)}
+              style={[styles.pickerItem, p.id === emailProviderId && styles.pickerItemActive]}>
+              <Text style={[styles.pickerText, p.id === emailProviderId && styles.pickerTextActive]}>{p.label}</Text>
+            </Pressable>
+          ))}
         </View>
-      )}
+        <Field label="Email address" value={emailAddress} onChangeText={(t) => { setEmailAddress(t); setConnectResult(null); }} placeholder="you@example.com" keyboardType="email-address" />
+        <Field label="App password" value={emailPassword} onChangeText={(t) => { setEmailPassword(t); setConnectResult(null); }} secure placeholder="•••• •••• •••• ••••" />
+        {emailProviderId === 'custom' && (
+          <>
+            <Field label="IMAP host" value={customImapHost} onChangeText={setCustomImapHost} placeholder="imap.example.com" />
+            <Field label="IMAP port" value={customImapPort} onChangeText={setCustomImapPort} keyboardType="numeric" />
+            <Field label="SMTP host" value={customSmtpHost} onChangeText={setCustomSmtpHost} placeholder="smtp.example.com" />
+            <Field label="SMTP port" value={customSmtpPort} onChangeText={setCustomSmtpPort} keyboardType="numeric" />
+          </>
+        )}
+        {connectResult && (
+          <View style={[styles.resultBanner, connectResult.ok ? styles.resultBannerOk : styles.resultBannerErr]}>
+            <Text style={[styles.resultText, connectResult.ok ? styles.resultTextOk : styles.resultTextErr]}>{connectResult.detail}</Text>
+          </View>
+        )}
+      </BottomSheet>
 
       <ConfirmDialog visible={!!confirm} title={confirm?.title ?? ''} body={confirm?.body}
         confirmLabel="Confirm" destructive
@@ -845,12 +849,6 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text,
   },
-  sheet: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
-    backgroundColor: colors.bgDeep, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl,
-    borderTopWidth: 1, borderTopColor: colors.border, padding: spacing.xl, gap: spacing.md,
-  },
-  sheetTitle: { ...typography.h3, color: colors.text },
   sheetHint: { ...typography.bodySmall, color: colors.textMuted },
   pickerWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   pickerItem: {
@@ -867,5 +865,5 @@ const styles = StyleSheet.create({
   resultText: { ...typography.bodySmall },
   resultTextOk: { color: colors.success },
   resultTextErr: { color: colors.danger },
-  sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.md, marginTop: spacing.sm },
+  sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.md, paddingVertical: spacing.sm },
 });
