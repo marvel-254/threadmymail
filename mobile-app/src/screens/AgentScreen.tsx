@@ -54,6 +54,7 @@ import {
   type Conversation,
   type StreamItem,
 } from '../lib/conversationStore';
+import { streamChat, type ChatMessage } from '../lib/aiClient';
 import {
   DEFAULT_WALLPAPER,
   resolveWallpaper,
@@ -161,20 +162,79 @@ export function AgentScreen({
     return () => backHandler.remove();
   }, [showOverflow, showLongPressSheet]);
 
-  const send = useCallback((text: string) => {
-    if (!text.trim() || busy || !currentConversation) return;
-    const userItem: StreamItem = { type: 'user', id: `u${Date.now()}`, text };
-    setItems((prev) => [...prev, userItem]);
-    saveMessage(streamItemToMessage(userItem, currentConversation.id));
-    setItems((prev) => [
-      ...prev,
-      {
-        type: 'notice',
-        id: `n${Date.now()}`,
-        text: 'No AI provider is connected. Add one in Settings.',
+  const send = useCallback(async (text: string) => {
+    const prompt = text.trim();
+    if (!prompt || busy || !currentConversation) return;
+    const conversationId = currentConversation.id;
+
+    const userItem: StreamItem = { type: 'user', id: `u${Date.now()}`, text: prompt };
+    const agentId = `a${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const agentItem: StreamItem = { type: 'agent', id: agentId, text: '', streaming: true };
+
+    const history: ChatMessage[] = items
+      .filter((item): item is Extract<StreamItem, { type: 'user' | 'agent' }> =>
+        item.type === 'user' || item.type === 'agent')
+      .map((item): ChatMessage => ({
+        role: item.type === 'user' ? 'user' : 'assistant',
+        content: item.text,
+      }))
+      .filter((message) => message.content.trim().length > 0);
+
+    setItems((prev) => [...prev, userItem, agentItem]);
+    setBusy(true);
+    setStreaming(true);
+    void saveMessage(streamItemToMessage(userItem, conversationId)).catch(() => undefined);
+
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    stopGenerationRef.current = abort;
+    streamCleanup.current = abort;
+
+    const result = await streamChat({
+      messages: [...history, { role: 'user', content: prompt }],
+      signal: controller.signal,
+      onToken: (token) => {
+        setItems((prev) => prev.map((item) =>
+          item.id === agentId && item.type === 'agent'
+            ? { ...item, text: item.text + token }
+            : item));
       },
-    ]);
-  }, [busy, currentConversation]);
+    });
+
+    stopGenerationRef.current = null;
+    streamCleanup.current = null;
+    setStreaming(false);
+    setBusy(false);
+
+    if (result.ok && result.text.trim()) {
+      setItems((prev) => prev.map((item) =>
+        item.id === agentId && item.type === 'agent'
+          ? { ...item, text: result.text, streaming: false }
+          : item));
+      try {
+        await saveMessage(streamItemToMessage(
+          { type: 'agent', id: agentId, text: result.text },
+          conversationId,
+        ));
+      } catch {
+        // The reply is still visible; persistence can be retried on the next send.
+      }
+      return;
+    }
+
+    // Drop the empty agent placeholder and explain what happened, with a retry
+    // path for provider errors. Error notices are not persisted.
+    setItems((prev) => prev.filter((item) => item.id !== agentId));
+    const notice: StreamItem = {
+      type: 'notice',
+      id: `n${Date.now()}`,
+      text: result.ok
+        ? 'Stopped — no response yet.'
+        : result.error,
+      retryText: result.ok ? undefined : prompt,
+    };
+    setItems((prev) => [...prev, notice]);
+  }, [busy, currentConversation, items]);
 
   const handleNewChat = useCallback(async () => {
     const conv = await createConversation('New Chat');
@@ -184,9 +244,9 @@ export function AgentScreen({
   }, [onNewChat]);
 
   const handleStopGeneration = useCallback(() => {
+    // The send loop finalises the partial text and clears busy/streaming when
+    // the abort resolves, so the partial response is what gets persisted.
     stopGenerationRef.current?.();
-    setStreaming(false);
-    setBusy(false);
   }, []);
 
   const handleLongPress = useCallback((item: StreamItem) => {
@@ -313,6 +373,15 @@ export function AgentScreen({
         return (
           <View style={styles.notice}>
             <Text style={styles.noticeText}>{item.text}</Text>
+            {item.retryText ? (
+              <Pressable
+                accessibilityLabel="Retry"
+                onPress={() => { void send(item.retryText as string); }}
+                style={styles.noticeRetryBtn}
+              >
+                <Text style={styles.noticeRetryText}>Retry</Text>
+              </Pressable>
+            ) : null}
           </View>
         );
       case 'escalation':
@@ -324,7 +393,7 @@ export function AgentScreen({
           />
         );
     }
-  }, [handleLongPress, onOpenMailThread]);
+  }, [handleLongPress, onOpenMailThread, send]);
 
   const overflowItems = [
     { label: 'Rename conversation', onPress: handleRenameConversation },
@@ -615,6 +684,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   noticeText: { ...typography.bodySmall, color: colors.textMuted },
+  noticeRetryBtn: {
+    marginTop: spacing.sm,
+    alignSelf: 'flex-start',
+    minHeight: touch.minTarget,
+    justifyContent: 'center',
+  },
+  noticeRetryText: { ...typography.bodySmall, color: colors.accent, fontWeight: '600' },
   composerBar: {
     padding: spacing.md,
     borderTopWidth: 1,

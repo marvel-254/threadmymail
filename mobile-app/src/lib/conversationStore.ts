@@ -76,7 +76,7 @@ export type StreamItem =
   | { type: 'user'; id: string; text: string; emailRefs?: EmailRef[] }
   | { type: 'tool'; id: string; name: string; args: string; latencyMs: number; ok: boolean; text?: string }
   | { type: 'escalation'; id: string; question: string }
-  | { type: 'notice'; id: string; text: string };
+  | { type: 'notice'; id: string; text: string; retryText?: string };
 
 export async function createConversation(title = 'New Chat'): Promise<Conversation> {
   const db = await getConversationDb();
