@@ -20,6 +20,8 @@ import type {
 } from 'react-native-mail-engine';
 
 export type BridgeAccount = {
+  /** List folders so the engine can resolve Archive/Trash by IMAP special-use flags. */
+  listMailboxes(): Promise<{ path: string; name: string; flags: string[]; selectable: boolean }[]>;
   /** Open the inbox and return a handle. */
   openInbox(): Promise<BridgeMailbox>;
   /** Send a message over SMTP. */
@@ -45,6 +47,10 @@ export type BridgeMailbox = {
   addFlags(uids: number[], flags: string[]): Promise<void>;
   /** Remove flags (e.g. unstar). */
   removeFlags(uids: number[], flags: string[]): Promise<void>;
+  /** Move messages to another folder. */
+  moveMessages(uids: number[], destinationPath: string): Promise<void>;
+  /** Set \Deleted; expunge controls whether the server also removes them permanently. */
+  deleteMessages(uids: number[], expunge: boolean): Promise<void>;
   /** Start IMAP IDLE; returns an unsubscribe function. */
   idle(onMail: (event: NewMailEvent) => void, onError?: (err: unknown) => void): () => void;
   /** Close the mailbox. */
@@ -77,6 +83,15 @@ export function createMailBridge(): MailBridge {
       };
       const account: MailAccount = await MailEngine.connect(connectConfig);
       return {
+        async listMailboxes() {
+          const mailboxes = await account.listMailboxes();
+          return mailboxes.map((mailbox) => ({
+            path: mailbox.path,
+            name: mailbox.name,
+            flags: mailbox.flags,
+            selectable: mailbox.selectable,
+          }));
+        },
         async openInbox() {
           const mailbox: Mailbox = await account.openMailbox('INBOX');
           return {
@@ -99,6 +114,12 @@ export function createMailBridge(): MailBridge {
             },
             async removeFlags(uids, flags) {
               await mailbox.removeFlags(uids, flags);
+            },
+            async moveMessages(uids, destinationPath) {
+              await mailbox.moveMessages(uids, destinationPath);
+            },
+            async deleteMessages(uids, expunge) {
+              await mailbox.deleteMessages(uids, expunge);
             },
             idle(onMail, onError) {
               return mailbox.idle(onMail, (err) => onError?.(err));

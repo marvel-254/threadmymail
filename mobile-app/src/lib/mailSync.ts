@@ -27,6 +27,7 @@ import {
   type SyncState,
 } from './mail';
 import {
+  deleteMessage,
   loadMessage,
   loadMessages,
   markRead,
@@ -38,6 +39,14 @@ import { logActivity, setMailUndoHandler } from './agent/activityStore';
 import type { BridgeAccount, BridgeMailbox, MailBridge } from './mailBridge';
 
 export type SyncListener = (state: SyncState, messages: Message[]) => void;
+
+export type MailActionResult = {
+  /** Activity row id, so the UI can offer Undo in its toast. */
+  activityId: string | null;
+  /** Whether the live IMAP mailbox confirmed the move/delete. */
+  serverChanged: boolean;
+  error?: string;
+};
 
 export class MailSync {
   private bridge: MailBridge;
@@ -58,6 +67,8 @@ export class MailSync {
   private bodyCache = new Map<string, { text: string }>();
   /** Serialises body fetches so two threads cannot interleave IDLE restarts. */
   private bodyQueue: Promise<unknown> = Promise.resolve();
+  /** Resolved once per connection: Archive/Trash paths from LIST special-use flags. */
+  private folderCache: { archive?: string | null; trash?: string | null } = {};
 
   constructor(bridge: MailBridge) {
     this.bridge = bridge;
@@ -65,6 +76,22 @@ export class MailSync {
     // server via the live mailbox. If no account is connected the local half
     // still succeeds.
     setMailUndoHandler(async (payload) => {
+      if (payload.kind === 'mail_restore') {
+        await upsertMessages([payload.message]);
+        const uid = Number(payload.message.id);
+        if (!this.mailbox || !Number.isFinite(uid)) return;
+        try {
+          if (payload.operation === 'move') {
+            await this.mailbox.moveMessages([uid], payload.folder);
+          } else {
+            await this.mailbox.removeFlags([uid], ['\\Deleted']);
+          }
+        } catch {
+          // Local Undo already succeeded; server Undo is best-effort.
+        }
+        return;
+      }
+
       await updateFlags(payload.messageId, {
         unread: payload.unread,
         starred: payload.starred,
@@ -121,6 +148,7 @@ export class MailSync {
     if (this.running) return;
     this.running = true;
     this.bodyCache.clear();
+    this.folderCache = {};
     try {
       this.setState({ phase: 'importing', progress: 0, imported: 0, error: null });
       const alreadyConnected = !!this.account;
@@ -331,6 +359,148 @@ export class MailSync {
       undoPayload: { kind: 'mail_flags', messageId: id, starred: msg.starred },
     });
     this.emit();
+  }
+
+  /** Toggle read/unread locally, then best-effort on the server. */
+  async toggleRead(id: string): Promise<void> {
+    const before = await loadMessage(id);
+    if (!before) return;
+    const unread = !before.unread;
+    await updateFlags(id, { unread });
+    const uid = Number(id);
+    if (this.mailbox && Number.isFinite(uid)) {
+      try {
+        await this.mailbox.markSeen([uid], !unread);
+      } catch {
+        // Local state is already updated; server flag is best-effort.
+      }
+    }
+    await logActivity({
+      type: unread ? 'mark_unread' : 'mark_read',
+      outcome: 'ok',
+      detail: `Marked "${before.subject}" ${unread ? 'unread' : 'read'}.`,
+      targetType: 'message',
+      targetId: id,
+      subject: before.subject,
+      undoPayload: { kind: 'mail_flags', messageId: id, unread: before.unread },
+    });
+    this.emit();
+  }
+
+  /**
+   * Archive: move out of INBOX to the folder advertised with \Archive (or
+   * Gmail's \All), then drop the cached row. Undo moves it back.
+   */
+  async archive(id: string): Promise<MailActionResult> {
+    const message = await loadMessage(id);
+    if (!message) return { activityId: null, serverChanged: false, error: 'Message not found.' };
+
+    const uid = Number(id);
+    let serverChanged = false;
+    let error: string | undefined;
+    if (this.mailbox && Number.isFinite(uid)) {
+      try {
+        const destination = await this.resolveFolder('archive');
+        if (!destination) throw new Error('This server did not advertise an Archive folder.');
+        await this.mailbox.moveMessages([uid], destination);
+        serverChanged = true;
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err);
+      }
+    } else {
+      error = 'Not connected — archived on this device only.';
+    }
+
+    await deleteMessage(id);
+    const activityId = await logActivity({
+      type: 'archive',
+      outcome: serverChanged ? 'ok' : 'error',
+      detail: serverChanged
+        ? `Archived "${message.subject}".`
+        : `Archived "${message.subject}" on this device; server move failed${error ? `: ${error}` : '.'}`,
+      targetType: 'message',
+      targetId: id,
+      subject: message.subject,
+      undoPayload: {
+        kind: 'mail_restore',
+        message,
+        folder: 'INBOX',
+        operation: 'move',
+      },
+    });
+    this.emit();
+    return { activityId, serverChanged, error };
+  }
+
+  /**
+   * Delete to the server's Trash folder when it has one; otherwise mark
+   * \Deleted without expunging so Undo can still clear the flag.
+   */
+  async remove(id: string): Promise<MailActionResult> {
+    const message = await loadMessage(id);
+    if (!message) return { activityId: null, serverChanged: false, error: 'Message not found.' };
+
+    const uid = Number(id);
+    let serverChanged = false;
+    let operation: 'move' | 'delete' = 'move';
+    let error: string | undefined;
+    if (this.mailbox && Number.isFinite(uid)) {
+      try {
+        const trash = await this.resolveFolder('trash');
+        if (trash) {
+          await this.mailbox.moveMessages([uid], trash);
+        } else {
+          await this.mailbox.deleteMessages([uid], false);
+          operation = 'delete';
+        }
+        serverChanged = true;
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err);
+      }
+    } else {
+      error = 'Not connected — deleted on this device only.';
+    }
+
+    await deleteMessage(id);
+    const activityId = await logActivity({
+      type: 'delete',
+      outcome: serverChanged ? 'ok' : 'error',
+      detail: serverChanged
+        ? `Deleted "${message.subject}"${operation === 'move' ? ' to Trash' : ''}.`
+        : `Deleted "${message.subject}" on this device; server delete failed${error ? `: ${error}` : '.'}`,
+      targetType: 'message',
+      targetId: id,
+      subject: message.subject,
+      undoPayload: {
+        kind: 'mail_restore',
+        message,
+        folder: 'INBOX',
+        operation,
+      },
+    });
+    this.emit();
+    return { activityId, serverChanged, error };
+  }
+
+  /** Resolve Archive/Trash by IMAP special-use flags, then by name/path. */
+  private async resolveFolder(kind: 'archive' | 'trash'): Promise<string | null> {
+    if (this.folderCache[kind] !== undefined) return this.folderCache[kind] ?? null;
+    if (!this.account) return null;
+
+    const boxes = await this.account.listMailboxes();
+    const specialUse = kind === 'archive' ? ['\\archive', '\\all'] : ['\\trash'];
+    const names = kind === 'archive'
+      ? ['archive', 'all mail']
+      : ['trash', 'deleted messages', 'deleted items', 'bin'];
+    const match = boxes.find((box) => box.flags.some(
+      (flag) => specialUse.includes(flag.toLowerCase()),
+    )) ?? boxes.find((box) => {
+      const name = box.name.toLowerCase();
+      const path = box.path.toLowerCase();
+      return names.some((candidate) => name === candidate || path === candidate || path.endsWith(`/${candidate}`));
+    });
+    this.folderCache[kind] = match?.path ?? null;
+    return this.folderCache[kind] ?? null;
   }
 
   /**

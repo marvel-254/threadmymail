@@ -216,26 +216,50 @@ type ToastProps = {
   visible: boolean;
   message: string;
   ok?: boolean;
+  actionLabel?: string;
+  onAction?: () => void;
 };
 
-export function Toast({ visible, message, ok = true }: ToastProps) {
+export function Toast({
+  visible,
+  message,
+  ok = true,
+  actionLabel,
+  onAction,
+}: ToastProps) {
   const opacity = useRef(new Animated.Value(0)).current;
+  const hasAction = !!onAction;
 
   useEffect(() => {
     if (visible) {
+      opacity.stopAnimation();
+      opacity.setValue(0);
       Animated.sequence([
         Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.delay(2000),
+        Animated.delay(hasAction ? 5000 : 2000),
         Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }),
       ]).start();
     }
-  }, [visible, opacity]);
+  }, [visible, opacity, hasAction, message]);
 
   if (!visible) return null;
   return (
-    <Animated.View style={[styles6.toast, { opacity }]} pointerEvents="none">
+    <Animated.View
+      style={[styles6.toast, { opacity }]}
+      pointerEvents={hasAction ? 'box-none' : 'none'}
+    >
       {ok ? <IconCheck size={16} color={colors.success} /> : <IconX size={16} color={colors.danger} />}
       <Text style={styles6.text}>{message}</Text>
+      {onAction && actionLabel ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={actionLabel}
+          onPress={onAction}
+          style={({ pressed }) => [styles6.toastAction, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles6.toastActionText}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
     </Animated.View>
   );
 }
@@ -257,4 +281,10 @@ const styles6 = StyleSheet.create({
     zIndex: 100,
   },
   text: { ...typography.bodySmall, color: colors.text, flex: 1 },
+  toastAction: {
+    minHeight: touch.minTarget,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+  },
+  toastActionText: { ...typography.bodySmall, color: colors.primary, fontWeight: '700' },
 });

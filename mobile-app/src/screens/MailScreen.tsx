@@ -9,9 +9,10 @@
  * message ceiling, bodies are never cached, and the banner reports what is
  * actually retained rather than implying the whole mailbox is local.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -24,7 +25,13 @@ import {
 import { Button, ConfirmDialog, EmptyState, Toast } from '../components/ui';
 import { Composer, ThreadMessage } from '../components/mail';
 import { DraftCard } from '../components/drafts';
-import { FilterChips, SearchBar, SyncBanner, ThreadRow } from '../components/inbox';
+import {
+  FilterChips,
+  MailActionSheet,
+  SearchBar,
+  SyncBanner,
+  ThreadRow,
+} from '../components/inbox';
 import { IconBack, IconMail, IconPower, IconSend } from '../components/Icons';
 import {
   HISTORY_DAYS,
@@ -37,6 +44,7 @@ import {
   type SyncState,
 } from '../lib/mail';
 import { loadMessages, markRead as storeMarkRead, setStarred } from '../lib/mailStore';
+import { undoActivity } from '../lib/agent/activityStore';
 import { loadAccount } from '../lib/accountStore';
 import { getMailSync } from '../lib/mailSyncSingleton';
 import { setKillSwitch, useGuardrails } from '../lib/guardrails';
@@ -78,7 +86,13 @@ export function MailScreen({
   const [filter, setFilter] = useState<MailFilter>(initialFilter ?? 'all');
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
+  const [toast, setToast] = useState<{
+    text: string;
+    ok: boolean;
+    undoId?: string | null;
+  } | null>(null);
+  const [actionMessage, setActionMessage] = useState<Message | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmKill, setConfirmKill] = useState(false);
   const { killSwitch: killEngaged, shadowMode } = useGuardrails();
   const [sync, setSync] = useState<SyncState>(INITIAL_SYNC_STATE);
@@ -97,6 +111,14 @@ export function MailScreen({
   const [bodyLoading, setBodyLoading] = useState(false);
   const [bodyError, setBodyError] = useState<string | null>(null);
   const [bodyAttempt, setBodyAttempt] = useState(0);
+
+  const reloadMessages = useCallback(async () => {
+    setMessages(await loadMessages());
+  }, []);
+
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, []);
 
   // Deep links from Today: filter, then compose.
   useEffect(() => {
@@ -244,6 +266,74 @@ export function MailScreen({
     void getMailSync().toggleStar(id);
   };
 
+  const toggleRead = (id: string) => {
+    const message = messages.find((m) => m.id === id);
+    if (!message) return;
+    const unread = !message.unread;
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, unread } : m)));
+    void getMailSync()
+      .toggleRead(id)
+      .then(() => showToast(unread ? 'Marked unread' : 'Marked read'))
+      .catch(async (err) => {
+        await reloadMessages();
+        showToast(err instanceof Error ? err.message : 'Could not change read state.', false);
+      });
+  };
+
+  const archiveMessage = (id: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+    void getMailSync()
+      .archive(id)
+      .then((result) => {
+        if (result.serverChanged) {
+          showToast('Archived', true, result.activityId);
+        } else {
+          showToast(
+            `Archived on this device${result.error ? ` — ${result.error}` : ''}`,
+            false,
+            result.activityId,
+          );
+        }
+      })
+      .catch(async (err) => {
+        await reloadMessages();
+        showToast(err instanceof Error ? err.message : 'Archive failed.', false);
+      });
+  };
+
+  const removeMessage = (id: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+    void getMailSync()
+      .remove(id)
+      .then((result) => {
+        if (result.serverChanged) {
+          showToast('Deleted', true, result.activityId);
+        } else {
+          showToast(
+            `Deleted on this device${result.error ? ` — ${result.error}` : ''}`,
+            false,
+            result.activityId,
+          );
+        }
+      })
+      .catch(async (err) => {
+        await reloadMessages();
+        showToast(err instanceof Error ? err.message : 'Delete failed.', false);
+      });
+  };
+
+  const deleteMessage = (id: string) => {
+    const message = messages.find((m) => m.id === id);
+    Alert.alert(
+      'Delete message?',
+      message ? `"${message.subject}" will move to Trash.` : 'This message will move to Trash.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => removeMessage(id) },
+      ],
+    );
+  };
+
   const openDraftInCompose = (draft: Draft) => {
     setComposeTo(draft.to);
     setComposeCc('');
@@ -322,9 +412,24 @@ export function MailScreen({
       .finally(() => setRefreshing(false));
   }, []);
 
-  const showToast = (text: string, ok = true) => {
-    setToast({ text, ok });
-    setTimeout(() => setToast(null), ok ? 2500 : 4000);
+  const showToast = (text: string, ok = true, undoId?: string | null) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ text, ok, undoId });
+    toastTimer.current = setTimeout(() => setToast(null), undoId ? 6000 : ok ? 2500 : 4000);
+  };
+
+  const handleUndo = async () => {
+    const undoId = toast?.undoId;
+    if (!undoId) return;
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast(null);
+    const result = await undoActivity(undoId);
+    if (result.ok) {
+      await reloadMessages();
+      showToast('Action undone');
+    } else {
+      showToast(result.error ?? 'Undo failed.', false);
+    }
   };
 
   const sendDraft = (text: string) => {
@@ -474,7 +579,15 @@ export function MailScreen({
           data={visible}
           keyExtractor={(m) => m.id}
           renderItem={({ item }) => (
-            <ThreadRow message={item} onPress={openThread} onToggleStar={toggleStar} />
+            <ThreadRow
+              message={item}
+              onPress={openThread}
+              onToggleStar={toggleStar}
+              onToggleRead={toggleRead}
+              onArchive={archiveMessage}
+              onDelete={deleteMessage}
+              onShowActions={setActionMessage}
+            />
           )}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           refreshControl={
@@ -508,7 +621,22 @@ export function MailScreen({
             ) : null
           }
         />
-        {toast && <Toast visible message={toast.text} ok={toast.ok} />}
+        {toast && (
+          <Toast
+            visible
+            message={toast.text}
+            ok={toast.ok}
+            actionLabel={toast.undoId ? 'Undo' : undefined}
+            onAction={toast.undoId ? () => void handleUndo() : undefined}
+          />
+        )}
+        <MailActionSheet
+          message={actionMessage}
+          onClose={() => setActionMessage(null)}
+          onToggleRead={toggleRead}
+          onArchive={archiveMessage}
+          onDelete={deleteMessage}
+        />
         <Pressable
           accessibilityLabel="Compose email"
           onPress={openCompose}

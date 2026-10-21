@@ -4,13 +4,15 @@
  * The log is append-only and lives in SQLite next to the mail cache. Retention
  * is bounded (90 days / 1,000 rows) so the audit trail cannot grow forever.
  *
- * Reversible entries store an inverse-operation payload. Today the only kind is
- * `mail_flags`, which restores the local unread/starred/needs-reply values that
- * a single action changed. Sends deliberately have no payload: the UI labels
- * them as irreversible rather than pretending otherwise.
+ * Reversible entries store an inverse-operation payload. `mail_flags` restores
+ * the local unread/starred/needs-reply values a single action changed;
+ * `mail_restore` puts an archived/deleted row back in the cache and asks the
+ * engine to reverse the server move. Sends deliberately have no payload: the UI
+ * labels them as irreversible rather than pretending otherwise.
  */
 import * as SQLite from 'expo-sqlite';
-import { updateFlags } from '../mailStore';
+import { updateFlags, upsertMessages } from '../mailStore';
+import type { Message } from '../mail';
 
 const DB_NAME = 'threadmymail.db';
 const RETENTION_DAYS = 90;
@@ -26,9 +28,17 @@ export type MailFlagsUndo = {
   needsReply?: boolean;
 };
 
-export type UndoPayload = MailFlagsUndo;
+export type MailRestoreUndo = {
+  kind: 'mail_restore';
+  message: Message;
+  /** Folder to move back into when the action was a folder move. */
+  folder: string;
+  operation: 'move' | 'delete';
+};
 
-type MailUndoHandler = (payload: MailFlagsUndo) => Promise<void>;
+export type UndoPayload = MailFlagsUndo | MailRestoreUndo;
+
+type MailUndoHandler = (payload: UndoPayload) => Promise<void>;
 
 let mailUndoHandler: MailUndoHandler | null = null;
 
@@ -108,7 +118,7 @@ function parseUndoPayload(raw: unknown): UndoPayload | null {
   if (typeof raw !== 'string' || !raw) return null;
   try {
     const parsed = JSON.parse(raw) as { kind?: unknown };
-    if (parsed.kind !== 'mail_flags') return null;
+    if (parsed.kind !== 'mail_flags' && parsed.kind !== 'mail_restore') return null;
     return parsed as UndoPayload;
   } catch {
     return null;
@@ -125,11 +135,12 @@ export async function logActivity(input: {
   messageId?: string | null;
   subject?: string | null;
   undoPayload?: UndoPayload | null;
-}): Promise<void> {
+}): Promise<string | null> {
   try {
     const db = await openDb();
     const messageId = input.messageId
       ?? (input.targetType === 'message' ? input.targetId ?? null : null);
+    const id = activityId();
     await db.runAsync(
       `INSERT INTO agent_activity (
          id, run_id, type, outcome, message_id, subject, detail, created_at,
@@ -139,7 +150,7 @@ export async function logActivity(input: {
          $target_type, $target_id, $undo_payload, 0
        )`,
       {
-        $id: activityId(),
+        $id: id,
         $run_id: input.runId ?? null,
         $type: input.type,
         $outcome: input.outcome,
@@ -153,8 +164,10 @@ export async function logActivity(input: {
       },
     );
     await prune(db);
+    return id;
   } catch {
     // Logging must never take the agent down; the run row still records it.
+    return null;
   }
 }
 
@@ -239,6 +252,12 @@ export async function undoActivity(id: string): Promise<{ ok: boolean; error?: s
           starred: entry.undoPayload.starred,
           needsReply: entry.undoPayload.needsReply,
         });
+      }
+    } else if (entry.undoPayload.kind === 'mail_restore') {
+      if (mailUndoHandler) {
+        await mailUndoHandler(entry.undoPayload);
+      } else {
+        await upsertMessages([entry.undoPayload.message]);
       }
     }
   } catch (err) {

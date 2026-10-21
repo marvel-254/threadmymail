@@ -155,6 +155,12 @@ export async function markRead(id: string): Promise<void> {
   await db.runAsync('UPDATE messages SET unread = 0 WHERE id = $id', { $id: id });
 }
 
+/** Remove a message from the local cache (archive/delete). */
+export async function deleteMessage(id: string): Promise<void> {
+  const db = await openDb();
+  await db.runAsync('DELETE FROM messages WHERE id = $id', { $id: id });
+}
+
 /** Persist the classifier's needs-reply flag. */
 export async function setNeedsReply(id: string, needsReply: boolean): Promise<void> {
   const db = await openDb();
