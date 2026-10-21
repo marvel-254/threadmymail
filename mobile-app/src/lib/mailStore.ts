@@ -11,7 +11,6 @@
 import * as SQLite from 'expo-sqlite';
 import {
   MAX_CACHED_MESSAGES,
-  applyCacheCap,
   threadIdFor,
   type Message,
 } from './mail';
@@ -149,7 +148,6 @@ export async function upsertMessages(messages: Message[]): Promise<{ cappedAt: n
   const countRow = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM messages');
   const total = countRow?.n ?? 0;
   if (total > MAX_CACHED_MESSAGES) {
-    const excess = total - MAX_CACHED_MESSAGES;
     await db.runAsync(
       `DELETE FROM messages WHERE id IN (
          SELECT id FROM messages ORDER BY date DESC LIMIT -1 OFFSET $keep

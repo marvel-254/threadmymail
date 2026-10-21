@@ -11,8 +11,12 @@
  *     who configured email yesterday should find their inbox populated today
  *     without having to visit Settings again.
  */
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Text,
+  View,
+} from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { BottomTabBar, type TabId } from './components/BottomTabBar';
@@ -362,7 +366,6 @@ export function AppShell() {
 }
 
 const styles = themedStyles(() => ({
-  container: { flex: 1, flexDirection: 'column' },
   safe: { flex: 1 },
   boot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   screen: { flex: 1 },

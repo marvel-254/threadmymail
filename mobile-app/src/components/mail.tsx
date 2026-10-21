@@ -1,54 +1,16 @@
 /**
- * Mail components — MailRow (inbox list), ThreadMessage, Composer.
+ * Mail components — ThreadMessage and Composer.
  * DB: Touch targets ≥48dp, color-not-only-indicator (unread = dot + bold).
  */
-import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useState } from 'react';
+import {
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 import { IconSend, IconSparkle } from './Icons';
-
-/* ── MailRow ───────────────────────────────────────────────────────────── */
-export type MailSummary = {
-  id: string;
-  sender: string;
-  subject: string;
-  preview: string;
-  time: string;
-  unread: boolean;
-};
-
-type MailRowProps = {
-  mail: MailSummary;
-  onPress: (id: string) => void;
-};
-
-export function MailRow({ mail, onPress }: MailRowProps) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${mail.sender}, ${mail.subject}`}
-      onPress={() => onPress(mail.id)}
-      style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surfaceHover }]}
-    >
-      {mail.unread && <View style={styles.unreadDot} />}
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{mail.sender.charAt(0).toUpperCase()}</Text>
-      </View>
-      <View style={styles.main}>
-        <Text style={[styles.sender, mail.unread && styles.senderUnread]} numberOfLines={1}>
-          {mail.sender}
-        </Text>
-        <Text style={styles.subject} numberOfLines={1}>
-          {mail.subject}
-        </Text>
-        <Text style={styles.preview} numberOfLines={1}>
-          {mail.preview}
-        </Text>
-      </View>
-      <Text style={styles.time}>{mail.time}</Text>
-    </Pressable>
-  );
-}
 
 /* ── ThreadMessage ─────────────────────────────────────────────────────── */
 export type ThreadMessage = {
@@ -161,30 +123,6 @@ export function Composer({ placeholder = 'type a message…', disabled = false, 
 }
 
 const styles = themedStyles(() => ({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    minHeight: 72,
-  },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { ...typography.body, color: colors.primaryText, fontWeight: '600' },
-  main: { flex: 1, gap: 1 },
-  sender: { ...typography.bodySmall, color: colors.text, fontWeight: '400' },
-  senderUnread: { fontWeight: '700' },
-  subject: { ...typography.bodySmall, color: colors.textMuted },
-  preview: { ...typography.caption, color: colors.textSubtle },
-  time: { ...typography.caption, color: colors.textSubtle },
   threadCard: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,

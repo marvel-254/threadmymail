@@ -2,7 +2,6 @@
  * Icon set — SVG-based (Lucide-style), no emojis (DB rule).
  * All icons accept size + color, defaulting to theme tokens.
  */
-import React from 'react';
 import Svg, { Circle, Line, Path, Polygon, Polyline, Rect } from 'react-native-svg';
 import { colors } from '../theme/theme';
 
@@ -128,22 +127,6 @@ export const IconThumbUp = ({ size = 18, color = colors.textMuted, strokeWidth =
 export const IconThumbDown = ({ size = 18, color = colors.textMuted, strokeWidth = 2 }: IconProps) => (
   <Svg {...base(size, color, strokeWidth)}>
     <Path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zM17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" />
-  </Svg>
-);
-
-export const IconRefresh = ({ size = 18, color = colors.textMuted, strokeWidth = 2 }: IconProps) => (
-  <Svg {...base(size, color, strokeWidth)}>
-    <Polyline points="23 4 23 10 17 10" />
-    <Path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-  </Svg>
-);
-
-export const IconWifi = ({ size = 18, color = colors.warnText, strokeWidth = 2 }: IconProps) => (
-  <Svg {...base(size, color, strokeWidth)}>
-    <Path d="M5 12.55a11 11 0 0 1 14.08 0" />
-    <Path d="M1.42 9a16 16 0 0 1 21.16 0" />
-    <Path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
-    <Line x1="12" y1="20" x2="12.01" y2="20" />
   </Svg>
 );
 

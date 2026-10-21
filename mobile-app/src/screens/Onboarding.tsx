@@ -5,8 +5,14 @@
  * where they left off. The "Test connection" buttons call live endpoints and
  * surface readable errors, not raw exceptions.
  */
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  Pressable,
+  ScrollView,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 import { ImageBackground } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Button } from '../components/ui';
@@ -16,7 +22,6 @@ import { PROVIDER_PRESETS, CUSTOM_PROVIDER_ID } from '../lib/providers';
 import {
   EMAIL_PROVIDERS,
   saveAccount,
-  type EmailProvider,
 } from '../lib/accountStore';
 import { addProvider } from '../lib/providerStore';
 import {

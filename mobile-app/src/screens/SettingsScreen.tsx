@@ -2,8 +2,15 @@
  * Settings — the control room. MVP-UI §4.5.
  * All four sections wired to real stores; "Test connection" calls live endpoints.
  */
-import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  Pressable,
+  ScrollView,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { BottomSheet, Button, Card, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
 import { Field, ProviderCard } from '../components/settings';
 import { PROVIDER_PRESETS, CUSTOM_PROVIDER_ID } from '../lib/providers';

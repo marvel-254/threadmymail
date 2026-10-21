@@ -3,7 +3,7 @@
  * Opens from left edge or menu button; dismisses via back, outside tap, or swipe.
  * Lists recent conversations, New Chat, Search, and app destinations.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -11,13 +11,11 @@ import {
   Dimensions,
   PanResponder,
   Pressable,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getConversations } from '../lib/conversationStore';
-import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, spacing, typography } from '../theme/theme';
 import { IconAgent, IconMail, IconActivity, IconSettings, IconSearch, IconPlus, IconChevron } from './Icons';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -44,7 +42,6 @@ export function Drawer({
   onOpenSettings,
   activeConversationId,
 }: DrawerProps) {
-  const insets = useSafeAreaInsets();
   const [conversations, setConversations] = useState<Awaited<ReturnType<typeof getConversations>>>([]);
   const [loading, setLoading] = useState(true);
   // Stay mounted through the closing animation; unmounting on `visible=false`

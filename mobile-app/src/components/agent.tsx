@@ -3,8 +3,13 @@
  * DB: Streaming (token-by-token), Disclaimer (the agent is named, not anonymous),
  * Feedback Loop (thumbs), Typing indicators, Contextual Live Badge.
  */
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Pressable,
+  Text,
+  View,
+} from 'react-native';
 import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 import { IconCheck, IconThumbDown, IconThumbUp, IconX } from './Icons';
 

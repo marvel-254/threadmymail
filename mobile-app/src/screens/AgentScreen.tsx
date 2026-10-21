@@ -18,7 +18,7 @@
  *  - Long-press message actions (copy, context)
  *  - Message references to email threads
  */
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   FlatList,
   Image,
@@ -40,8 +40,8 @@ import { AgentBubble, EscalationCard, ToolChip } from '../components/agent';
 import { Composer } from '../components/mail';
 import { BottomSheet, Button, EmptyState } from '../components/ui';
 import { WallpaperPicker } from '../components/WallpaperPicker';
-import { IconAgent, IconBack, IconMenu, IconCopy, IconMail, IconMoreVertical } from '../components/Icons';
-import { themedStyles, colors, radii, spacing, touch, typography, motion } from '../theme/theme';
+import { IconAgent, IconMenu, IconCopy, IconMail, IconMoreVertical } from '../components/Icons';
+import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 import {
   createConversation,
   deleteConversation,
@@ -49,7 +49,6 @@ import {
   getConversation,
   getMessages,
   saveMessage,
-  saveMessages,
   updateConversationTitle,
   updateConversationWallpaper,
   streamItemToMessage,
@@ -68,7 +67,6 @@ import {
 } from '../lib/wallpaper';
 
 type AgentScreenProps = {
-  onBack?: () => void;
   conversationId?: string;
   conversationTitle?: string;
   onNewChat?: () => void;
@@ -78,7 +76,6 @@ type AgentScreenProps = {
 };
 
 export function AgentScreen({
-  onBack,
   conversationId,
   conversationTitle = 'New Chat',
   onNewChat,
@@ -247,14 +244,6 @@ export function AgentScreen({
     setItems((prev) => [...prev, notice]);
   }, [busy, currentConversation, items]);
 
-  const handleNewChat = useCallback(async () => {
-    const conv = await createConversation('New Chat');
-    setCurrentConversation(conv);
-    setItems([]);
-    onConversationChange?.(conv.id);
-    onNewChat?.();
-  }, [onNewChat, onConversationChange]);
-
   const handleStopGeneration = useCallback(() => {
     // The send loop finalises the partial text and clears busy/streaming when
     // the abort resolves, so the partial response is what gets persisted.
@@ -271,14 +260,6 @@ export function AgentScreen({
   const handleCopyText = useCallback(async () => {
     if (longPressItem && (longPressItem.type === 'agent' || longPressItem.type === 'user')) {
       await Clipboard.setStringAsync(longPressItem.text);
-      setShowLongPressSheet(false);
-      setLongPressItem(null);
-    }
-  }, [longPressItem]);
-
-  const handleUseAsContext = useCallback(() => {
-    if (longPressItem && (longPressItem.type === 'agent' || longPressItem.type === 'user')) {
-      console.log('Use as email context:', longPressItem.text);
       setShowLongPressSheet(false);
       setLongPressItem(null);
     }
@@ -614,14 +595,6 @@ return (
         >
           <IconCopy size={20} color={colors.text} />
           <Text style={styles.sheetItemText}>Copy text</Text>
-        </Pressable>
-        <Pressable
-          onPress={handleUseAsContext}
-          style={styles.sheetItem}
-          android_ripple={{ color: colors.surfaceHover }}
-        >
-          <IconMail size={20} color={colors.text} />
-          <Text style={styles.sheetItemText}>Use as context</Text>
         </Pressable>
       </BottomSheet>
 

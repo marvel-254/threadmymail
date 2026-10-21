@@ -4,8 +4,11 @@
  * Send is explicitly disabled in shadow mode; the draft is still visible so the
  * user can edit or discard it, but nothing leaves the device.
  */
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  Text,
+  View,
+} from 'react-native';
 import type { Draft } from '../lib/agent/draftStore';
 import { themedStyles, colors, radii, spacing, typography } from '../theme/theme';
 

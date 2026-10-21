@@ -1,11 +1,16 @@
 /**
- * Settings components — ProviderCard, SkillRow, Field (form input).
+ * Settings components — ProviderCard and Field (form input).
  * DB: Confirmation Dialogs (remove/clear), Submit Feedback (test connection).
  */
-import React, { useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { useState } from 'react';
+import {
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
-import { IconChevron, IconTest, IconTrash } from './Icons';
+import { IconTest, IconTrash } from './Icons';
 
 /* ── ProviderCard ──────────────────────────────────────────────────────── */
 export type Provider = {
@@ -60,49 +65,6 @@ export function ProviderCard({ provider, onTest, onRemove }: ProviderCardProps) 
           <IconTrash size={18} color={colors.dangerText} />
         </Pressable>
       </View>
-    </View>
-  );
-}
-
-/* ── SkillRow ──────────────────────────────────────────────────────────── */
-export type Skill = {
-  id: string;
-  name: string;
-  trigger: string;
-  enabled: boolean;
-  shadow?: boolean;
-};
-
-type SkillRowProps = {
-  skill: Skill;
-  onToggle: (id: string, enabled: boolean) => void;
-  onEdit: (id: string) => void;
-};
-
-export function SkillRow({ skill, onToggle, onEdit }: SkillRowProps) {
-  return (
-    <View style={styles.skillRow}>
-      <View style={styles.skillMain}>
-        <View style={styles.skillTitleRow}>
-          {skill.shadow && <View style={styles.shadowDot} />}
-          <Text style={styles.skillName}>{skill.name}</Text>
-        </View>
-        <Text style={styles.skillTrigger}>{skill.trigger}</Text>
-      </View>
-      <Switch
-        accessibilityLabel={`Toggle ${skill.name}`}
-        value={skill.enabled}
-        onValueChange={(v) => onToggle(skill.id, v)}
-        trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
-        thumbColor={colors.textOnPrimary}
-      />
-      <Pressable
-        accessibilityLabel={`Edit ${skill.name}`}
-        onPress={() => onEdit(skill.id)}
-        style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7 }]}
-      >
-        <IconChevron size={20} color={colors.textSubtle} />
-      </Pressable>
     </View>
   );
 }
@@ -169,21 +131,6 @@ const styles = themedStyles(() => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  skillRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  skillMain: { flex: 1, gap: 2 },
-  skillTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  skillName: { ...typography.body, color: colors.text, fontWeight: '600' },
-  shadowDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.warn },
-  skillTrigger: { ...typography.caption, color: colors.textMuted },
   field: { gap: spacing.xs },
   fieldLabel: { ...typography.label, color: colors.textMuted },
   fieldInput: {

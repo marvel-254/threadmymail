@@ -9,8 +9,11 @@
  * Millo is the raised centre button: it is the heart of the product, so it is
  * the one control that breaks the grid.
  */
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 import { IconActivity, IconAgent, IconMail, IconSettings, IconToday } from './Icons';

@@ -4,7 +4,7 @@
  * Spec §7: built-in preset gallery, custom upload via the system Photo Picker,
  * live preview, dimming adjustment, Apply / Reset.
  */
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -20,7 +20,6 @@ import {
   PRESET_IDS,
   presetSource,
   pickCustomWallpaper,
-  type WallpaperPresetId,
   type WallpaperSetting,
 } from '../lib/wallpaper';
 

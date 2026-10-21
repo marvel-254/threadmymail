@@ -2,8 +2,12 @@
  * EdgeSwipe — invisible left-edge gesture zone that opens the navigation drawer.
  * Android-native pattern: swipe from the left screen edge to reveal the drawer.
  */
-import React, { useRef } from 'react';
-import { Animated, PanResponder, StyleSheet, View } from 'react-native';
+import { useRef } from 'react';
+import {
+  Animated,
+  PanResponder,
+  StyleSheet,
+} from 'react-native';
 
 type EdgeSwipeProps = {
   onOpen: () => void;

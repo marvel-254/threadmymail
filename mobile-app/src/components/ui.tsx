@@ -2,7 +2,7 @@
  * Shared UI primitives — Button, Card, SectionLabel, EmptyState, ConfirmDialog, Toast.
  * All token-referenced (theme.ts), ≥48dp touch targets, 8px gaps.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
   Animated,

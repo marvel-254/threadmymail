@@ -9,7 +9,7 @@
  * message ceiling, bodies are never cached, and the banner reports what is
  * actually retained rather than implying the whole mailbox is local.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,7 +17,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -37,7 +36,6 @@ import {
   HISTORY_DAYS,
   INITIAL_SYNC_STATE,
   MAX_CACHED_MESSAGES,
-  applyCacheCap,
   buildThreads,
   selectThreads,
   type MailFilter,
@@ -45,7 +43,7 @@ import {
   type SyncState,
   type Thread,
 } from '../lib/mail';
-import { loadMessages, markRead as storeMarkRead, setStarred } from '../lib/mailStore';
+import { loadMessages } from '../lib/mailStore';
 import { undoActivity } from '../lib/agent/activityStore';
 import { loadAccount } from '../lib/accountStore';
 import { getMailSync } from '../lib/mailSyncSingleton';
@@ -497,15 +495,6 @@ export function MailScreen({
     setComposeTo('');
     setComposeCc('');
     setComposeSubject('');
-    setComposeBody('');
-    setComposeDraftId(null);
-    setView('compose');
-  };
-
-  const openReplyCompose = () => {
-    setComposeTo(selected?.fromAddress ?? '');
-    setComposeCc('');
-    setComposeSubject(selected?.subject ? `Re: ${selected.subject}` : '');
     setComposeBody('');
     setComposeDraftId(null);
     setView('compose');

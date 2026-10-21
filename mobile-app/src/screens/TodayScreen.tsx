@@ -7,12 +7,11 @@
  * card subscribes to the engine, and needs-your-eye comes from classifier
  * verdicts (with a cached-flag fallback before the first triage run).
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';

@@ -6,8 +6,14 @@
  * This screen is a read-only projection of that table, grouped by day, with
  * working Undo for entries that carry an inverse payload.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 import { EmptyState, Toast } from '../components/ui';
 import { IconActivity, IconCheck, IconX } from '../components/Icons';
 import {

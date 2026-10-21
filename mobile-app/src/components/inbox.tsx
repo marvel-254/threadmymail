@@ -6,12 +6,11 @@
  * present, and an unread dot that is a dot *and* a weight change so the state
  * is never carried by colour alone.
  */
-import React, { useRef, useState } from 'react';
+import { useRef } from 'react';
 import {
   Animated,
   PanResponder,
   Pressable,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -47,6 +46,7 @@ export function SearchBar({ value, onChangeText, placeholder = 'Search mail' }: 
         {value.length > 0 && (
           <Pressable
             accessibilityLabel="Clear search"
+            hitSlop={8}
             onPress={() => onChangeText('')}
             style={({ pressed }) => [styles.searchClear, pressed && { opacity: 0.7 }]}
           >
@@ -456,7 +456,7 @@ const styles = themedStyles(() => ({
     color: colors.text,
     paddingVertical: spacing.sm,
   },
-  searchClear: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  searchClear: { minWidth: touch.minTarget, minHeight: touch.minTarget, alignItems: 'center', justifyContent: 'center' },
 
   chipRow: {
     flexDirection: 'row',
