@@ -29,6 +29,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   BackHandler,
   Alert,
@@ -37,7 +38,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AgentBubble, EscalationCard, ToolChip } from '../components/agent';
 import { Composer } from '../components/mail';
-import { EmptyState } from '../components/ui';
+import { Button, EmptyState } from '../components/ui';
 import { WallpaperPicker } from '../components/WallpaperPicker';
 import { IconAgent, IconBack, IconMenu, IconCopy, IconMail, IconMoreVertical } from '../components/Icons';
 import { colors, radii, spacing, touch, typography, motion } from '../theme/theme';
@@ -90,6 +91,8 @@ export function AgentScreen({
   const [showOverflow, setShowOverflow] = useState(false);
   const [longPressItem, setLongPressItem] = useState<StreamItem | null>(null);
   const [showLongPressSheet, setShowLongPressSheet] = useState(false);
+  const [showRename, setShowRename] = useState(false);
+  const [renameText, setRenameText] = useState('');
   const [wallpaper, setWallpaper] = useState<WallpaperSetting>(DEFAULT_WALLPAPER);
   const [showWallpaperPicker, setShowWallpaperPicker] = useState(false);
   const listRef = useRef<FlatList<StreamItem>>(null);
@@ -157,10 +160,14 @@ export function AgentScreen({
         setLongPressItem(null);
         return true;
       }
+      if (showRename) {
+        setShowRename(false);
+        return true;
+      }
       return false;
     });
     return () => backHandler.remove();
-  }, [showOverflow, showLongPressSheet]);
+  }, [showOverflow, showLongPressSheet, showRename]);
 
   const send = useCallback(async (text: string) => {
     const prompt = text.trim();
@@ -272,15 +279,26 @@ export function AgentScreen({
     }
   }, [longPressItem]);
 
+  const openRenameConversation = useCallback(() => {
+    if (!currentConversation) return;
+    setRenameText(currentConversation.title);
+    setShowOverflow(false);
+    setShowRename(true);
+  }, [currentConversation]);
+
   const handleRenameConversation = useCallback(async () => {
     if (!currentConversation) return;
-    const newTitle = prompt('Rename conversation', currentConversation.title);
-    if (newTitle && newTitle.trim() && newTitle !== currentConversation.title) {
-      await updateConversationTitle(currentConversation.id, newTitle.trim());
-      setCurrentConversation({ ...currentConversation, title: newTitle.trim() });
+    const newTitle = renameText.trim();
+    if (!newTitle) {
+      setShowRename(false);
+      return;
     }
-    setShowOverflow(false);
-  }, [currentConversation]);
+    if (newTitle !== currentConversation.title) {
+      await updateConversationTitle(currentConversation.id, newTitle);
+      setCurrentConversation({ ...currentConversation, title: newTitle });
+    }
+    setShowRename(false);
+  }, [currentConversation, renameText]);
 
   const handleClearConversation = useCallback(async () => {
     if (!currentConversation) return;
@@ -396,7 +414,7 @@ export function AgentScreen({
   }, [handleLongPress, onOpenMailThread, send]);
 
   const overflowItems = [
-    { label: 'Rename conversation', onPress: handleRenameConversation },
+    { label: 'Rename conversation', onPress: openRenameConversation },
     {
       label: 'Wallpaper',
       onPress: () => {
@@ -595,6 +613,36 @@ return (
               <IconMail size={20} color={colors.text} />
               <Text style={styles.sheetItemText}>Use as context</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Rename Conversation Dialog */}
+      <Modal
+        transparent
+        visible={showRename}
+        animationType="fade"
+        onRequestClose={() => setShowRename(false)}
+      >
+        <View style={styles.renameBackdrop}>
+          <View style={styles.renameCard}>
+            <Text style={styles.renameTitle}>Rename conversation</Text>
+            <TextInput
+              value={renameText}
+              onChangeText={setRenameText}
+              autoFocus
+              selectTextOnFocus
+              maxLength={80}
+              placeholder="Conversation name"
+              placeholderTextColor={colors.textSubtle}
+              style={styles.renameInput}
+              onSubmitEditing={() => { void handleRenameConversation(); }}
+              returnKeyType="done"
+            />
+            <View style={styles.renameActions}>
+              <Button label="Cancel" variant="ghost" onPress={() => setShowRename(false)} />
+              <Button label="Save" onPress={() => { void handleRenameConversation(); }} />
+            </View>
           </View>
         </View>
       </Modal>
@@ -808,6 +856,39 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   sheetItemText: { ...typography.body, color: colors.text },
+  renameBackdrop: {
+    flex: 1,
+    backgroundColor: colors.scrim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  renameCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: colors.surfaceStrong,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.xl,
+    gap: spacing.md,
+  },
+  renameTitle: { ...typography.h3, color: colors.text },
+  renameInput: {
+    minHeight: touch.minTarget,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    ...typography.body,
+    color: colors.text,
+  },
+  renameActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
 });
 
 export default AgentScreen;
