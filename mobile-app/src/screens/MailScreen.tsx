@@ -564,13 +564,17 @@ export function MailScreen({
 
   const header = (
     <View style={styles.header}>
-      <Pressable
-        accessibilityLabel="Back"
-        onPress={() => (view === 'list' ? undefined : setView('list'))}
-        style={styles.headerBtn}
-      >
-        <IconBack size={22} color={colors.text} />
-      </Pressable>
+      {view === 'list' ? (
+        <View style={styles.headerBtn} />
+      ) : (
+        <Pressable
+          accessibilityLabel="Back"
+          onPress={() => setView('list')}
+          style={styles.headerBtn}
+        >
+          <IconBack size={22} color={colors.text} />
+        </Pressable>
+      )}
       <Text style={styles.headerTitle}>
         {view === 'list'
           ? 'Inbox'

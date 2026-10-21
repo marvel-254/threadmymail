@@ -47,6 +47,9 @@ export function Drawer({
   const insets = useSafeAreaInsets();
   const [conversations, setConversations] = useState<Awaited<ReturnType<typeof getConversations>>>([]);
   const [loading, setLoading] = useState(true);
+  // Stay mounted through the closing animation; unmounting on `visible=false`
+  // would kill the slide-out before it is visible.
+  const [mounted, setMounted] = useState(visible);
 
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const panResponder = useRef(
@@ -82,14 +85,17 @@ export function Drawer({
     }
   }, [visible]);
 
-  // Animate drawer in/out
+  // Animate drawer in/out. Reopening interrupts the close cleanly.
   useEffect(() => {
-    if (visible) {
-      Animated.timing(translateX, { toValue: 0, duration: 250, useNativeDriver: true }).start();
-    } else {
-      Animated.timing(translateX, { toValue: -DRAWER_WIDTH, duration: 200, useNativeDriver: true }).start();
-    }
-  }, [visible]);
+    if (visible) setMounted(true);
+    Animated.timing(translateX, {
+      toValue: visible ? 0 : -DRAWER_WIDTH,
+      duration: visible ? 250 : 200,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished && !visible) setMounted(false);
+    });
+  }, [visible, translateX]);
 
   // Back handler
   useEffect(() => {
@@ -101,7 +107,7 @@ export function Drawer({
     return () => backHandler.remove();
   }, [visible, onClose]);
 
-  if (!visible) return null;
+  if (!mounted) return null;
 
   return (
     <View style={styles.container} {...panResponder.panHandlers}>

@@ -12,13 +12,13 @@
  *     without having to visit Settings again.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { BottomTabBar, type TabId } from './components/BottomTabBar';
 import { Drawer } from './components/Drawer';
 import { EdgeSwipe } from './components/EdgeSwipe';
-import { TopBar } from './components/TopBar';
+import { IconPower } from './components/Icons';
 import { TodayScreen } from './screens/TodayScreen';
 import { MailScreen } from './screens/MailScreen';
 import { AgentScreen } from './screens/AgentScreen';
@@ -34,7 +34,7 @@ import {
   loadNotificationPrefs,
   setAppBadgeCount,
 } from './lib/notifications';
-import { loadGuardrails } from './lib/guardrails';
+import { loadGuardrails, useGuardrails } from './lib/guardrails';
 import {
   startTriageScheduler,
   stopTriageScheduler,
@@ -45,7 +45,7 @@ import {
 } from './lib/agent/followUpScheduler';
 import { isOnboarded, setOnboarded } from './lib/prefs';
 import type { MailFilter } from './lib/mail';
-import { colors } from './theme/theme';
+import { colors, typography } from './theme/theme';
 
 export function AppShell() {
   // null means "still reading storage" — distinct from false, which means
@@ -57,6 +57,7 @@ export function AppShell() {
   // Bumped when a notification asks for a specific thread, so MailScreen
   // remounts even if the Mail tab was already showing.
   const [mailRequest, setMailRequest] = useState(0);
+  const guardrails = useGuardrails();
 
   // Drawer state
   const [drawerVisible, setDrawerVisible] = useState(false);
@@ -280,7 +281,29 @@ export function AppShell() {
     <SafeAreaProvider>
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.background}>
-          <TopBar />
+          {(guardrails.killSwitch || guardrails.shadowMode) && (
+            <View
+              style={[
+                styles.statusBanner,
+                guardrails.killSwitch ? styles.statusPaused : styles.statusShadow,
+              ]}
+            >
+              <IconPower
+                size={14}
+                color={guardrails.killSwitch ? colors.danger : colors.warn}
+              />
+              <Text
+                style={[
+                  styles.statusText,
+                  guardrails.killSwitch ? styles.statusTextPaused : styles.statusTextShadow,
+                ]}
+              >
+                {guardrails.killSwitch
+                  ? 'Autonomous actions paused'
+                  : 'Shadow mode — nothing will be sent'}
+              </Text>
+            </View>
+          )}
           <View style={styles.screen}>
             {tab === 'today' && (
               <TodayScreen
@@ -344,4 +367,18 @@ const styles = StyleSheet.create({
   boot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   screen: { flex: 1 },
   background: { flex: 1, backgroundColor: colors.bg },
+  statusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+  },
+  statusPaused: { backgroundColor: colors.dangerBg, borderBottomColor: colors.danger },
+  statusShadow: { backgroundColor: colors.warnBg, borderBottomColor: colors.warn },
+  statusText: { ...typography.label },
+  statusTextPaused: { color: colors.danger },
+  statusTextShadow: { color: colors.warn },
 });
