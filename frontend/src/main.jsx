@@ -15,10 +15,11 @@ import App from './App.jsx';
  *                      bg-tile body rule (overrides silk body)
  *   3. retro-landing.css — .lp-*, .doc-*, .sys-* page styles
  *   4. retro-auth.css    — .si-* sign-in styles
- *   5. retro-mail.css    — .mail-shell, .topbar, .rail, .feed, .work, etc.
+ *   5. retro-mail.css    — .feed-* page styles (mail shell styles removed with
+ *                          the legacy mail/ app; only .feed-note is still used)
  *
- * The old landing.css / auth.css / mail.css files are intentionally NOT
- * imported — they carry dark neomorphic rules that would conflict.
+ * The old landing.css / auth.css / mail.css files were removed — they carried
+ * dark neomorphic rules that would conflict with the retro layer.
  */
 import './styles/silk.css';
 import './styles/retro.css';
