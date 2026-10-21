@@ -5,7 +5,7 @@
  * where they left off. The "Test connection" buttons call live endpoints and
  * surface readable errors, not raw exceptions.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { ImageBackground } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -19,11 +19,17 @@ import {
   type EmailProvider,
 } from '../lib/accountStore';
 import { addProvider } from '../lib/providerStore';
+import {
+  DEFAULT_SKILLS,
+  SKILL_DEFINITIONS,
+  loadSkills,
+  saveSkills,
+  type Skills,
+} from '../lib/skillsStore';
 import { testImap } from '../lib/emailTest';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
-const EMAIL_STEPS = EMAIL_PROVIDERS.length; // 5 — Gmail, Outlook, Yahoo, iCloud, Custom
-const SKILL_LABELS = ['Triage', 'Draft replies', 'Follow-ups'] as const;
+const TOTAL_STEPS = 4; // welcome, email, AI key, skills
 
 type OnboardingProps = {
   onDone: () => void;
@@ -32,7 +38,6 @@ type OnboardingProps = {
 export function Onboarding({ onDone }: OnboardingProps) {
   // ── Navigation ──────────────────────────────────────────────────────────
   const [step, setStep] = useState(0);
-  const TOTAL_STEPS = 4; // welcome=0, email=1, AI=2, skills=3, done inline
 
   // ── Welcome video ───────────────────────────────────────────────────────
   const videoPlayer = useVideoPlayer(require('../assets/intro.mp4'), (player) => {
@@ -43,7 +48,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
 
   const next = () => {
     if (step === 3) {
-      void onDone();
+      void finish();
     } else {
       setStep(step + 1);
     }
@@ -160,11 +165,25 @@ export function Onboarding({ onDone }: OnboardingProps) {
   };
 
   // ── Skills state ────────────────────────────────────────────────────────
-  const [skills, setSkills] = useState<Record<string, boolean>>({
-    'Triage': true,
-    'Draft replies': false,
-    'Follow-ups': false,
-  });
+  const [skills, setSkills] = useState<Skills>({ ...DEFAULT_SKILLS });
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadSkills().then((saved) => {
+      if (!cancelled) setSkills(saved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const finish = async () => {
+    try {
+      await saveSkills(skills);
+    } finally {
+      onDone();
+    }
+  };
 
   // ── Shared helpers ──────────────────────────────────────────────────────
   const ResultBanner = ({ result }: { result: { ok: boolean; detail: string } | null }) => {
@@ -220,7 +239,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
             </Pressable>
           ) : null}
         </View>
-        <Text style={styles.stepCount}>{step + 1} / {TOTAL_STEPS + 1}</Text>
+        <Text style={styles.stepCount}>{step + 1} / {TOTAL_STEPS}</Text>
         <Pressable accessibilityLabel="Skip all setup" onPress={onDone} style={styles.headerBtnInner}>
           <Text style={styles.skipText}>Skip</Text>
         </Pressable>
@@ -356,12 +375,15 @@ export function Onboarding({ onDone }: OnboardingProps) {
             <Text style={styles.stepBody}>
               Optional — all of these can be changed later in Settings.
             </Text>
-            {SKILL_LABELS.map((s) => (
-              <View key={s} style={styles.skillRow}>
-                <Text style={styles.skillName}>{s}</Text>
+            {SKILL_DEFINITIONS.map((skill) => (
+              <View key={skill.id} style={styles.skillRow}>
+                <View style={styles.skillCopy}>
+                  <Text style={styles.skillName}>{skill.label}</Text>
+                  <Text style={styles.skillDescription}>{skill.description}</Text>
+                </View>
                 <Switch
-                  value={skills[s]}
-                  onValueChange={(v) => setSkills((prev) => ({ ...prev, [s]: v }))}
+                  value={skills[skill.id]}
+                  onValueChange={(v) => setSkills((prev) => ({ ...prev, [skill.id]: v }))}
                   trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
                   thumbColor={colors.textOnPrimary}
                 />
@@ -499,7 +521,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.md,
   },
-  skillName: { ...typography.body, color: colors.text, fontWeight: '600', flex: 1 },
+  skillCopy: { flex: 1, gap: 2 },
+  skillName: { ...typography.body, color: colors.text, fontWeight: '600' },
+  skillDescription: { ...typography.caption, color: colors.textMuted },
   footer: {
     padding: spacing.lg,
     borderTopWidth: 1,

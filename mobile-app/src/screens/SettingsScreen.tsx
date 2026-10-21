@@ -17,6 +17,14 @@ import {
 } from '../lib/accountStore';
 import { getMailSync } from '../lib/mailSyncSingleton';
 import { setKillSwitch, setShadowMode, useGuardrails } from '../lib/guardrails';
+import {
+  DEFAULT_SKILLS,
+  SKILL_DEFINITIONS,
+  loadSkills,
+  setSkill,
+  type SkillId,
+  type Skills,
+} from '../lib/skillsStore';
 import { testImap } from '../lib/emailTest';
 import { IconPlus } from '../components/Icons';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
@@ -159,6 +167,27 @@ export function SettingsScreen() {
     toast(value ? 'Shadow mode on — nothing will be sent' : 'Shadow mode off');
   };
 
+  // ── Skills ─────────────────────────────────────────────────────────────
+  const [skills, setSkillsState] = useState<Skills>({ ...DEFAULT_SKILLS });
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadSkills().then((saved) => {
+      if (!cancelled) setSkillsState(saved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const changeSkill = (id: SkillId, value: boolean) => {
+    void setSkill(id, value).then((next) => {
+      setSkillsState(next);
+      const label = SKILL_DEFINITIONS.find((skill) => skill.id === id)?.label ?? 'Skill';
+      toast(`${label} ${value ? 'on' : 'off'}`);
+    });
+  };
+
   const GuardrailRow = ({ label, description, value, onChange }: {
     label: string; description: string; value: boolean; onChange: (v: boolean) => void;
   }) => (
@@ -258,6 +287,28 @@ export function SettingsScreen() {
               thumbColor={colors.textOnPrimary} />
           </View>
           <Text style={[styles.cardSub, { marginTop: spacing.md }]}>Daily budget and quiet hours — coming next.</Text>
+        </Card>
+
+        {/* Skills */}
+        <SectionLabel>Skills</SectionLabel>
+        <Card>
+          {SKILL_DEFINITIONS.map((skill) => (
+            <View key={skill.id} style={styles.guardrailRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.guardrailLabel}>{skill.label}</Text>
+                <Text style={styles.guardrailDesc}>{skill.description}</Text>
+              </View>
+              <Switch
+                value={skills[skill.id]}
+                onValueChange={(value) => changeSkill(skill.id, value)}
+                trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
+                thumbColor={colors.textOnPrimary}
+              />
+            </View>
+          ))}
+          <Text style={[styles.cardSub, { marginTop: spacing.md }]}>
+            Skills also obey the kill switch and shadow mode.
+          </Text>
         </Card>
 
         {/* About */}
