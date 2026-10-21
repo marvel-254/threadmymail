@@ -2,13 +2,32 @@
  * Today — the agent's daily briefing (home screen).
  * MVP-UI §4.1 · DB: AI-Native (conversational briefing), Empty States,
  * Contextual Live Badge (status as atomic message).
+ *
+ * Everything on this screen is live: stats come from the mail cache, the sync
+ * card subscribes to the engine, and needs-your-eye comes from classifier
+ * verdicts (with a cached-flag fallback before the first triage run).
  */
-import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
 import { StatusStrip } from '../components/agent';
 import { DraftCard } from '../components/drafts';
-import { IconMenu, IconPower, IconSparkle, IconToday } from '../components/Icons';
+import { SyncBanner } from '../components/inbox';
+import {
+  IconAgent,
+  IconMenu,
+  IconPower,
+  IconSend,
+  IconSparkle,
+  IconToday,
+} from '../components/Icons';
 import {
   formatQuietHours,
   isQuietHours,
@@ -16,14 +35,25 @@ import {
   useGuardrails,
 } from '../lib/guardrails';
 import { cancelTriage, runTriage, useTriage } from '../lib/agent/triage';
-import { loadNeedsEye, type NeedsEyeItem } from '../lib/agent/triageStore';
+import { loadLatestTriageRun, loadNeedsEye, type NeedsEyeItem } from '../lib/agent/triageStore';
 import { usePendingDrafts } from '../lib/agent/draftStore';
 import { discardDraft, sendDraft as sendQueuedDraft } from '../lib/agent/drafts';
+import { loadAccount } from '../lib/accountStore';
+import { getMailSync } from '../lib/mailSyncSingleton';
+import {
+  INITIAL_SYNC_STATE,
+  type MailFilter,
+  type Message,
+  type SyncState,
+} from '../lib/mail';
+import { loadMessages } from '../lib/mailStore';
 import { colors, radii, spacing, touch, typography } from '../theme/theme';
 
 type TodayScreenProps = {
-  onOpenSettings: () => void;
+  onOpenDrawer: () => void;
   onOpenMail: (messageId?: string) => void;
+  onOpenMailFilter: (filter: MailFilter) => void;
+  onCompose: () => void;
   onOpenAgent: () => void;
   onEditDraft: (draftId: string) => void;
 };
@@ -33,13 +63,37 @@ const VERDICT_LABEL = {
   'action-required': 'Action required',
 } as const;
 
+function greeting(now = new Date()): string {
+  const hour = now.getHours();
+  if (hour < 12) return 'Good morning.';
+  if (hour < 17) return 'Good afternoon.';
+  return 'Good evening.';
+}
+
+function syncedLabel(iso: string | null): string {
+  if (!iso) return 'Not yet';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(diff) || diff < 60_000) return 'Just now';
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 export function TodayScreen({
-  onOpenSettings,
+  onOpenDrawer,
   onOpenMail,
+  onOpenMailFilter,
+  onCompose,
   onOpenAgent,
   onEditDraft,
 }: TodayScreenProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [sync, setSync] = useState<SyncState>(INITIAL_SYNC_STATE);
+  const [refreshing, setRefreshing] = useState(false);
   const [needsEye, setNeedsEye] = useState<NeedsEyeItem[]>([]);
+  const [triageHasRun, setTriageHasRun] = useState(false);
   const [confirmKill, setConfirmKill] = useState(false);
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
   const [draftBusy, setDraftBusy] = useState<string | null>(null);
@@ -53,10 +107,46 @@ export function TodayScreen({
     Math.round(((guardrails.dailyActionLimit - guardrails.actionsUsed) / guardrails.dailyActionLimit) * 100),
   );
 
+  // Live cache + sync state, same source MailScreen reads.
+  useEffect(() => {
+    let mounted = true;
+    const reload = () => {
+      void loadMessages().then((rows) => {
+        if (mounted) setMessages(rows);
+      });
+    };
+    reload();
+    const engine = getMailSync();
+    setSync(engine.getState());
+    const unsubscribe = engine.subscribe((state) => {
+      if (!mounted) return;
+      setSync(state);
+      reload();
+    });
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!triage.lastRunAt) return;
+    let cancelled = false;
+    void loadMessages().then((rows) => {
+      if (!cancelled) setMessages(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [triage.lastRunAt]);
+
   useEffect(() => {
     let cancelled = false;
     void loadNeedsEye().then((items) => {
       if (!cancelled) setNeedsEye(items);
+    });
+    void loadLatestTriageRun().then((run) => {
+      if (!cancelled) setTriageHasRun(!!run);
     });
     return () => {
       cancelled = true;
@@ -77,6 +167,46 @@ export function TodayScreen({
     const timer = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(timer);
   }, [triage.lastRunAt, triage.lastStatus, triage.lastSummary]);
+
+  const stats = useMemo(() => ({
+    unread: messages.filter((m) => m.unread).length,
+    needsReply: messages.filter((m) => m.needsReply).length,
+    starred: messages.filter((m) => m.starred).length,
+  }), [messages]);
+
+  // Before the first classifier run, fall back to the cached needs-reply flag.
+  const fallbackNeedsEye = useMemo<NeedsEyeItem[]>(() => {
+    if (triageHasRun) return [];
+    return messages
+      .filter((m) => m.unread && m.needsReply)
+      .slice(0, 5)
+      .map((m) => ({
+        message: m,
+        verdict: 'needs-reply',
+        reason: 'Cached as needing a reply — run triage for a reviewed verdict.',
+        runId: 'local-flags',
+        classifiedAt: new Date(m.date).getTime(),
+      }));
+  }, [messages, triageHasRun]);
+
+  const visibleNeedsEye = needsEye.length > 0 ? needsEye : fallbackNeedsEye;
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    void loadAccount()
+      .then((account) => {
+        if (!account) {
+          setSync((current) => ({ ...current, phase: 'offline' }));
+          return undefined;
+        }
+        return getMailSync().start({
+          imap: account.imap,
+          smtp: account.smtp,
+          auth: { user: account.email, password: account.password },
+        });
+      })
+      .finally(() => setRefreshing(false));
+  }, []);
 
   const handleRunTriage = () => {
     if (triage.running) {
@@ -109,11 +239,17 @@ export function TodayScreen({
     setConfirmKill(false);
   };
 
+  const dateLine = new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+
   return (
     <View style={styles.screen}>
       <Toast visible={!!toast} message={toast?.text ?? ''} ok={toast?.ok ?? true} />
       <View style={styles.header}>
-        <Pressable accessibilityLabel="Menu" onPress={onOpenSettings} style={styles.headerBtn}>
+        <Pressable accessibilityLabel="Open menu" onPress={onOpenDrawer} style={styles.headerBtn}>
           <IconMenu size={22} color={colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Today</Text>
@@ -127,16 +263,109 @@ export function TodayScreen({
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.greeting}>Good day.</Text>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
+        <Text style={styles.greeting}>{greeting()}</Text>
+        <Text style={styles.dateLine}>{dateLine}</Text>
 
-        <Button
-          label={triage.running ? 'Cancel triage' : 'Run morning triage'}
-          onPress={handleRunTriage}
-          variant={triage.running ? 'danger' : 'primary'}
-          fullWidth
-          icon={<IconSparkle size={18} color={colors.textOnPrimary} />}
-        />
+        <View style={styles.statRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${stats.unread} unread messages`}
+            onPress={() => onOpenMailFilter('unread')}
+            style={({ pressed }) => [styles.stat, pressed && styles.pressed]}
+          >
+            <Text style={styles.statValue}>{stats.unread}</Text>
+            <Text style={styles.statLabel}>Unread</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${stats.needsReply} messages need a reply`}
+            onPress={() => onOpenMailFilter('needs_reply')}
+            style={({ pressed }) => [styles.stat, pressed && styles.pressed]}
+          >
+            <Text style={styles.statValue}>{stats.needsReply}</Text>
+            <Text style={styles.statLabel}>Needs reply</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${stats.starred} starred messages`}
+            onPress={() => onOpenMailFilter('starred')}
+            style={({ pressed }) => [styles.stat, pressed && styles.pressed]}
+          >
+            <Text style={styles.statValue}>{stats.starred}</Text>
+            <Text style={styles.statLabel}>Starred</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Last synced ${syncedLabel(sync.lastSyncedAt)}`}
+            onPress={() => onOpenMailFilter('all')}
+            style={({ pressed }) => [styles.stat, pressed && styles.pressed]}
+          >
+            <Text style={styles.statTime}>{syncedLabel(sync.lastSyncedAt)}</Text>
+            <Text style={styles.statLabel}>Last sync</Text>
+          </Pressable>
+        </View>
+
+        <SectionLabel>Sync</SectionLabel>
+        <View style={styles.syncCard}>
+          {sync.phase === 'idle' ? (
+            <Text style={styles.syncIdle}>
+              {sync.lastSyncedAt
+                ? `Last synced ${syncedLabel(sync.lastSyncedAt)}. Pull down to sync again.`
+                : 'Not syncing yet. Pull down to connect or add an account in Settings.'}
+            </Text>
+          ) : (
+            <SyncBanner
+              phase={sync.phase}
+              progress={sync.progress}
+              imported={sync.imported}
+              cappedAt={sync.cappedAt}
+              error={sync.error}
+            />
+          )}
+        </View>
+
+        <View style={styles.quickRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={triage.running ? 'Cancel triage' : 'Run morning triage'}
+            onPress={handleRunTriage}
+            style={({ pressed }) => [styles.quick, styles.quickPrimary, pressed && styles.pressed]}
+          >
+            <IconSparkle size={18} color={colors.textOnPrimary} />
+            <Text style={[styles.quickText, styles.quickTextPrimary]}>
+              {triage.running ? 'Cancel' : 'Triage'}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Compose email"
+            onPress={onCompose}
+            style={({ pressed }) => [styles.quick, pressed && styles.pressed]}
+          >
+            <IconSend size={18} color={colors.text} />
+            <Text style={styles.quickText}>Compose</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Ask Millo"
+            onPress={onOpenAgent}
+            style={({ pressed }) => [styles.quick, pressed && styles.pressed]}
+          >
+            <IconAgent size={18} color={colors.text} />
+            <Text style={styles.quickText}>Ask Millo</Text>
+          </Pressable>
+        </View>
 
         {pendingDrafts.length > 0 && (
           <>
@@ -156,14 +385,14 @@ export function TodayScreen({
         )}
 
         <SectionLabel>Needs your eye</SectionLabel>
-        {needsEye.length === 0 ? (
+        {visibleNeedsEye.length === 0 ? (
           <EmptyState
             icon={<IconToday size={48} color={colors.textSubtle} />}
             title="Nothing needs you"
             body="Millo will surface anything that needs a decision."
           />
         ) : (
-          needsEye.map((item) => {
+          visibleNeedsEye.map((item) => {
             const dangerous = item.verdict === 'action-required';
             return (
               <Pressable
@@ -236,6 +465,47 @@ const styles = StyleSheet.create({
   headerTitle: { ...typography.h3, color: colors.text },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
   greeting: { ...typography.h1, color: colors.text },
+  dateLine: { ...typography.caption, color: colors.textMuted, marginTop: -spacing.sm },
+  statRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  stat: {
+    flexGrow: 1,
+    flexBasis: '46%',
+    minHeight: 72,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  statValue: { ...typography.h2, color: colors.text },
+  statTime: { ...typography.h3, color: colors.text },
+  statLabel: { ...typography.caption, color: colors.textMuted },
+  syncCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  syncIdle: { ...typography.bodySmall, color: colors.textMuted },
+  quickRow: { flexDirection: 'row', gap: spacing.sm },
+  quick: {
+    flex: 1,
+    minHeight: 56,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  quickPrimary: { backgroundColor: colors.primary, borderColor: colors.primary },
+  quickText: { ...typography.caption, color: colors.text, fontWeight: '600' },
+  quickTextPrimary: { color: colors.textOnPrimary },
+  pressed: { opacity: 0.82 },
   eyeCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,

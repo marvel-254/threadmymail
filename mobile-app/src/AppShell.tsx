@@ -32,6 +32,7 @@ import {
   stopTriageScheduler,
 } from './lib/agent/triageScheduler';
 import { isOnboarded, setOnboarded } from './lib/prefs';
+import type { MailFilter } from './lib/mail';
 import { colors } from './theme/theme';
 
 export function AppShell() {
@@ -46,11 +47,15 @@ export function AppShell() {
   const [activeConversationId, setActiveConversationId] = useState<string | undefined>();
   const threadIdRef = useRef<string | undefined>(undefined);
   const draftIdRef = useRef<string | undefined>(undefined);
+  const filterRef = useRef<MailFilter | undefined>(undefined);
+  const composeRef = useRef(false);
 
   const switchTab = (next: TabId) => {
     if (next !== 'mail') {
       threadIdRef.current = undefined;
       draftIdRef.current = undefined;
+      filterRef.current = undefined;
+      composeRef.current = false;
     }
     setTab(next);
   };
@@ -121,6 +126,10 @@ export function AppShell() {
     handleCloseDrawer();
   };
   const handleOpenInbox = () => {
+    threadIdRef.current = undefined;
+    draftIdRef.current = undefined;
+    filterRef.current = undefined;
+    composeRef.current = false;
     switchTab('mail');
     handleCloseDrawer();
   };
@@ -135,12 +144,30 @@ export function AppShell() {
   const handleOpenMailThread = (threadId: string) => {
     threadIdRef.current = threadId;
     draftIdRef.current = undefined;
+    filterRef.current = undefined;
+    composeRef.current = false;
     switchTab('mail');
     handleCloseDrawer();
   };
   const handleOpenDraft = (draftId: string) => {
     draftIdRef.current = draftId;
     threadIdRef.current = undefined;
+    filterRef.current = undefined;
+    composeRef.current = false;
+    switchTab('mail');
+  };
+  const handleOpenMailFilter = (filter: MailFilter) => {
+    filterRef.current = filter;
+    threadIdRef.current = undefined;
+    draftIdRef.current = undefined;
+    composeRef.current = false;
+    switchTab('mail');
+  };
+  const handleOpenCompose = () => {
+    composeRef.current = true;
+    threadIdRef.current = undefined;
+    draftIdRef.current = undefined;
+    filterRef.current = undefined;
     switchTab('mail');
   };
 
@@ -152,12 +179,16 @@ export function AppShell() {
           <View style={styles.screen}>
             {tab === 'today' && (
               <TodayScreen
-                onOpenSettings={() => switchTab('settings')}
+                onOpenDrawer={handleOpenDrawer}
                 onOpenMail={(messageId) => {
                   threadIdRef.current = messageId;
                   draftIdRef.current = undefined;
+                  filterRef.current = undefined;
+                  composeRef.current = false;
                   switchTab('mail');
                 }}
+                onOpenMailFilter={handleOpenMailFilter}
+                onCompose={handleOpenCompose}
                 onOpenAgent={() => switchTab('agent')}
                 onEditDraft={handleOpenDraft}
               />
@@ -168,6 +199,8 @@ export function AppShell() {
                 onOpenSettings={() => switchTab('settings')}
                 threadId={threadIdRef.current}
                 draftId={draftIdRef.current}
+                initialFilter={filterRef.current}
+                composeOnOpen={composeRef.current}
               />
             )}
             {tab === 'agent' && (

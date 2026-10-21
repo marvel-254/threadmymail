@@ -60,13 +60,22 @@ type MailScreenProps = {
   onOpenSettings: () => void;
   threadId?: string;
   draftId?: string;
+  initialFilter?: MailFilter;
+  composeOnOpen?: boolean;
 };
 
-export function MailScreen({ onOpenAgent, onOpenSettings, threadId, draftId }: MailScreenProps) {
+export function MailScreen({
+  onOpenAgent,
+  onOpenSettings,
+  threadId,
+  draftId,
+  initialFilter,
+  composeOnOpen,
+}: MailScreenProps) {
   const [view, setView] = useState<'list' | 'thread' | 'compose'>('list');
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<MailFilter>('all');
+  const [filter, setFilter] = useState<MailFilter>(initialFilter ?? 'all');
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
@@ -88,6 +97,21 @@ export function MailScreen({ onOpenAgent, onOpenSettings, threadId, draftId }: M
   const [bodyLoading, setBodyLoading] = useState(false);
   const [bodyError, setBodyError] = useState<string | null>(null);
   const [bodyAttempt, setBodyAttempt] = useState(0);
+
+  // Deep links from Today: filter, then compose.
+  useEffect(() => {
+    if (initialFilter) setFilter(initialFilter);
+  }, [initialFilter]);
+
+  useEffect(() => {
+    if (!composeOnOpen) return;
+    setComposeTo('');
+    setComposeCc('');
+    setComposeSubject('');
+    setComposeBody('');
+    setComposeDraftId(null);
+    setView('compose');
+  }, [composeOnOpen]);
 
   // Open specific thread if threadId is provided
   useEffect(() => {
