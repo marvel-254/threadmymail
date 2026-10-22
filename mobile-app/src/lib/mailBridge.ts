@@ -19,11 +19,23 @@ import type {
   NewMailEvent,
 } from 'react-native-mail-engine';
 
+export type BridgeMailboxInfo = {
+  path: string;
+  name: string;
+  delimiter: string;
+  flags: string[];
+  selectable: boolean;
+  exists?: number;
+  unseen?: number;
+};
+
 export type BridgeAccount = {
-  /** List folders so the engine can resolve Archive/Trash by IMAP special-use flags. */
-  listMailboxes(): Promise<{ path: string; name: string; flags: string[]; selectable: boolean }[]>;
+  /** List folders so the engine can resolve Archive/Trash and browse mailboxes. */
+  listMailboxes(): Promise<BridgeMailboxInfo[]>;
   /** Open the inbox and return a handle. */
   openInbox(): Promise<BridgeMailbox>;
+  /** Select any mailbox by IMAP path. */
+  openMailbox(path: string, readOnly?: boolean): Promise<BridgeMailbox>;
   /** Send a message over SMTP. */
   send(message: {
     to: string | string[];
@@ -84,57 +96,63 @@ export function createMailBridge(): MailBridge {
         auth: config.auth,
       };
       const account: MailAccount = await MailEngine.connect(connectConfig);
+      const wrapMailbox = (mailbox: Mailbox): BridgeMailbox => ({
+        async fetchHeaders(options) {
+          return mailbox.fetchHeaders({
+            limit: options.limit,
+            since: options.since,
+            sinceUid: options.sinceUid,
+            uidRange: options.uidRange,
+            fetchPreview: true,
+          });
+        },
+        async fetchMessage(uid) {
+          const msg = await mailbox.fetchMessage(uid, { includeAttachments: false });
+          return { header: msg.header, textBody: msg.textBody, htmlBody: msg.htmlBody };
+        },
+        async search(criteria) {
+          return mailbox.search(criteria);
+        },
+        async markSeen(uids, seen = true) {
+          await mailbox.markSeen(uids, seen);
+        },
+        async addFlags(uids, flags) {
+          await mailbox.addFlags(uids, flags);
+        },
+        async removeFlags(uids, flags) {
+          await mailbox.removeFlags(uids, flags);
+        },
+        async moveMessages(uids, destinationPath) {
+          await mailbox.moveMessages(uids, destinationPath);
+        },
+        async deleteMessages(uids, expunge) {
+          await mailbox.deleteMessages(uids, expunge);
+        },
+        idle(onMail, onError) {
+          return mailbox.idle(onMail, (err) => onError?.(err));
+        },
+        async close() {
+          await mailbox.close();
+        },
+      });
       return {
         async listMailboxes() {
           const mailboxes = await account.listMailboxes();
           return mailboxes.map((mailbox) => ({
             path: mailbox.path,
             name: mailbox.name,
+            delimiter: mailbox.delimiter,
             flags: mailbox.flags,
             selectable: mailbox.selectable,
+            exists: mailbox.exists,
+            unseen: mailbox.unseen,
           }));
         },
         async openInbox() {
-          const mailbox: Mailbox = await account.openMailbox('INBOX');
-          return {
-            async fetchHeaders(options) {
-              return mailbox.fetchHeaders({
-                limit: options.limit,
-                since: options.since,
-                sinceUid: options.sinceUid,
-                uidRange: options.uidRange,
-                fetchPreview: true,
-              });
-            },
-            async fetchMessage(uid) {
-              const msg = await mailbox.fetchMessage(uid, { includeAttachments: false });
-              return { header: msg.header, textBody: msg.textBody, htmlBody: msg.htmlBody };
-            },
-            async search(criteria) {
-              return mailbox.search(criteria);
-            },
-            async markSeen(uids, seen = true) {
-              await mailbox.markSeen(uids, seen);
-            },
-            async addFlags(uids, flags) {
-              await mailbox.addFlags(uids, flags);
-            },
-            async removeFlags(uids, flags) {
-              await mailbox.removeFlags(uids, flags);
-            },
-            async moveMessages(uids, destinationPath) {
-              await mailbox.moveMessages(uids, destinationPath);
-            },
-            async deleteMessages(uids, expunge) {
-              await mailbox.deleteMessages(uids, expunge);
-            },
-            idle(onMail, onError) {
-              return mailbox.idle(onMail, (err) => onError?.(err));
-            },
-            async close() {
-              await mailbox.close();
-            },
-          };
+          return wrapMailbox(await account.openMailbox('INBOX'));
+        },
+        async openMailbox(path, readOnly = false) {
+          return wrapMailbox(await account.openMailbox(path, readOnly));
         },
         async send(message) {
           await account.send({

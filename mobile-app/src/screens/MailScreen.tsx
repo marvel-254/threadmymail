@@ -27,13 +27,15 @@ import { DraftCard } from '../components/drafts';
 import {
   AccountChips,
   FilterChips,
+  FolderSheet,
   MailActionSheet,
   RecentSearches,
+  type FolderOption,
   SearchBar,
   SyncBanner,
   ThreadRow,
 } from '../components/inbox';
-import { IconBack, IconMail, IconPower, IconSend } from '../components/Icons';
+import { IconBack, IconChevron, IconMail, IconPower, IconSend } from '../components/Icons';
 import {
   HISTORY_DAYS,
   INITIAL_SYNC_STATE,
@@ -112,6 +114,13 @@ export function MailScreen({
   const { killSwitch: killEngaged, shadowMode } = useGuardrails();
   const [accounts, setAccounts] = useState<AccountConfig[]>([]);
   const [accountFilter, setAccountFilter] = useState<string>('all');
+  const [folderPath, setFolderPath] = useState('INBOX');
+  const [folderName, setFolderName] = useState('Inbox');
+  const [folders, setFolders] = useState<Record<string, FolderOption[]>>({});
+  const [folderErrors, setFolderErrors] = useState<Record<string, string>>({});
+  const [foldersLoading, setFoldersLoading] = useState(false);
+  const [folderBusy, setFolderBusy] = useState(false);
+  const [showFolders, setShowFolders] = useState(false);
   const [unreadByAccount, setUnreadByAccount] = useState<Record<string, number>>({});
   const [syncByAccount, setSyncByAccount] = useState<Record<string, SyncState>>({});
   const [composeAccountId, setComposeAccountId] = useState<string | undefined>();
@@ -133,9 +142,12 @@ export function MailScreen({
   const handledThreadLink = useRef<string | undefined>(undefined);
 
   const reloadMessages = useCallback(async () => {
-    setMessages(await loadMessages(accountFilter === 'all' ? undefined : accountFilter));
+    setMessages(await loadMessages(
+      accountFilter === 'all' ? undefined : accountFilter,
+      folderPath,
+    ));
     setUnreadByAccount(await countUnreadByAccount());
-  }, [accountFilter]);
+  }, [accountFilter, folderPath]);
   const reloadRef = useRef(reloadMessages);
   useEffect(() => {
     reloadRef.current = reloadMessages;
@@ -153,7 +165,7 @@ export function MailScreen({
     try {
       const results = await Promise.allSettled(
         (targets.length > 0 ? targets.map((account) => account.id) : [undefined])
-          .map((accountId) => getMailSync(accountId).searchServer(term)),
+          .map((accountId) => getMailSync(accountId).searchServer(term, folderPath)),
       );
       const found = results.reduce(
         (sum, result) => sum + (result.status === 'fulfilled' ? result.value.length : 0),
@@ -172,7 +184,7 @@ export function MailScreen({
     } finally {
       setServerSearching(false);
     }
-  }, [accounts, accountFilter, query, reloadMessages, serverSearching]);
+  }, [accounts, accountFilter, folderPath, query, reloadMessages, serverSearching]);
 
   const clearRecents = useCallback(async () => {
     await clearRecentSearches();
@@ -222,10 +234,16 @@ export function MailScreen({
     if (handledThreadLink.current === threadId) return;
     const match = messages.find((message) => message.id === threadId);
     if (!match && messages.length === 0) return;
+    if (!match && folderPath !== 'INBOX') {
+      setFolderPath('INBOX');
+      setFolderName('Inbox');
+      setAccountFilter('all');
+      return;
+    }
     setSelectedId(match?.threadId ?? threadId);
     setView('thread');
     handledThreadLink.current = threadId;
-  }, [threadId, messages]);
+  }, [threadId, messages, folderPath]);
 
   // Open a queued draft in the compose editor when Today sends one over.
   useEffect(() => {
@@ -400,7 +418,7 @@ export function MailScreen({
     setMessages((prev) => prev.map((m) => (
       m.threadId === id ? { ...m, unread: false } : m
     )));
-    void engineForThread(id).setThreadRead(id, true);
+    void engineForThread(id).setThreadRead(id, true, folderPath);
   };
 
   const toggleStar = (id: string) => {
@@ -410,7 +428,7 @@ export function MailScreen({
     setMessages((prev) => prev.map((m) => (
       m.threadId === id ? { ...m, starred } : m
     )));
-    void engineForThread(id).toggleThreadStar(id);
+    void engineForThread(id).toggleThreadStar(id, folderPath);
   };
 
   const toggleRead = (id: string) => {
@@ -421,7 +439,7 @@ export function MailScreen({
       m.threadId === id ? { ...m, unread } : m
     )));
     void engineForThread(id)
-      .toggleThreadRead(id)
+      .toggleThreadRead(id, folderPath)
       .then(() => showToast(unread ? 'Marked unread' : 'Marked read'))
       .catch(async (err) => {
         await reloadMessages();
@@ -432,7 +450,7 @@ export function MailScreen({
   const archiveThread = (id: string) => {
     setMessages((prev) => prev.filter((m) => m.threadId !== id));
     void engineForThread(id)
-      .archiveThread(id)
+      .archiveThread(id, folderPath)
       .then((result) => {
         if (result.serverChanged) {
           showToast('Conversation archived', true, result.activityId);
@@ -453,7 +471,7 @@ export function MailScreen({
   const removeThread = (id: string) => {
     setMessages((prev) => prev.filter((m) => m.threadId !== id));
     void engineForThread(id)
-      .removeThread(id)
+      .removeThread(id, folderPath)
       .then((result) => {
         if (result.serverChanged) {
           showToast('Conversation deleted', true, result.activityId);
@@ -555,8 +573,19 @@ export function MailScreen({
       imap: account.imap,
       smtp: account.smtp,
       auth: { user: account.email, password: account.password },
-    }))).finally(() => setRefreshing(false));
-  }, [accountFilter, accounts]);
+    })))
+      .then(async () => {
+        if (folderPath === 'INBOX') return;
+        for (const account of targets) {
+          try {
+            await getMailSync(account.id).syncFolder(folderPath);
+          } catch {
+            // The next open retries; the banner shows connection errors.
+          }
+        }
+      })
+      .finally(() => setRefreshing(false));
+  }, [accountFilter, accounts, folderPath]);
 
   const showToast = (text: string, ok = true, undoId?: string | null) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -660,6 +689,50 @@ export function MailScreen({
     }
   };
 
+  const chooseAccount = (accountId: string) => {
+    setAccountFilter(accountId);
+    setFolderPath('INBOX');
+    setFolderName('Inbox');
+  };
+
+  const loadFolders = async () => {
+    setShowFolders(true);
+    setFoldersLoading(true);
+    setFolderErrors({});
+    const targets = accountFilter === 'all'
+      ? accounts
+      : accounts.filter((account) => account.id === accountFilter);
+    const nextFolders: Record<string, FolderOption[]> = {};
+    const nextErrors: Record<string, string> = {};
+    await Promise.all(targets.map(async (account) => {
+      try {
+        nextFolders[account.id] = await getMailSync(account.id).listFolders();
+      } catch (err) {
+        nextFolders[account.id] = [];
+        nextErrors[account.id] = err instanceof Error ? err.message : 'Could not list folders.';
+      }
+    }));
+    setFolders(nextFolders);
+    setFolderErrors(nextErrors);
+    setFoldersLoading(false);
+  };
+
+  const openFolder = async (accountId: string, folder: FolderOption) => {
+    setShowFolders(false);
+    setAccountFilter(accountId);
+    setFolderPath(folder.path);
+    setFolderName(folder.path === 'INBOX' ? 'Inbox' : folder.name);
+    if (folder.path === 'INBOX') return;
+    setFolderBusy(true);
+    try {
+      await getMailSync(accountId).syncFolder(folder.path);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not load this folder.', false);
+    } finally {
+      setFolderBusy(false);
+    }
+  };
+
   const header = (
     <View style={styles.header}>
       {view === 'list' ? (
@@ -675,7 +748,7 @@ export function MailScreen({
       )}
       <Text style={styles.headerTitle}>
         {view === 'list'
-          ? 'Inbox'
+          ? folderName
           : view === 'thread'
             ? selected?.subject ?? 'Thread'
             : composeDraftId ? 'Edit draft' : 'New message'}
@@ -715,9 +788,23 @@ export function MailScreen({
         <AccountChips
           accounts={accounts}
           value={accountFilter}
-          onChange={setAccountFilter}
+          onChange={chooseAccount}
           unreadCounts={unreadByAccount}
         />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Folder: ${folderName}. Tap to switch folders.`}
+          onPress={() => void loadFolders()}
+          style={({ pressed }) => [styles.folderBar, pressed && { opacity: 0.85 }]}
+        >
+          <IconMail size={16} color={colors.textMuted} />
+          <Text style={styles.folderBarLabel} numberOfLines={1}>
+            {folderName}
+            {accountFilter === 'all' && accounts.length > 1 ? ' · all accounts' : ''}
+          </Text>
+          {folderBusy && <ActivityIndicator color={colors.primary} size="small" />}
+          <IconChevron size={16} color={colors.textSubtle} />
+        </Pressable>
         <SearchBar
           value={query}
           onChangeText={setQuery}
@@ -740,7 +827,7 @@ export function MailScreen({
               onPress={() => void runServerSearch()}
             />
             <Text style={styles.serverHint} numberOfLines={2}>
-              {serverMessage ?? 'Search the whole mailbox, including older mail and message bodies.'}
+              {serverMessage ?? 'Search this folder on the server, including older mail and message bodies.'}
             </Text>
           </View>
         )}
@@ -797,7 +884,7 @@ export function MailScreen({
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
           ListEmptyComponent={
-            messages.length === 0 ? (
+            accounts.length === 0 ? (
               <EmptyState
                 icon={<IconMail size={48} color={colors.textSubtle} />}
                 title="No mail yet"
@@ -805,6 +892,28 @@ export function MailScreen({
                 action={
                   <Button label="Connect an account" variant="secondary" onPress={onOpenSettings} />
                 }
+              />
+            ) : messages.length === 0 && folderPath !== 'INBOX' ? (
+              <EmptyState
+                icon={<IconMail size={48} color={colors.textSubtle} />}
+                title={`${folderName} is empty`}
+                body="Pull down to fetch the newest messages from this folder."
+                action={
+                  <Button
+                    label="Back to Inbox"
+                    variant="secondary"
+                    onPress={() => {
+                      setFolderPath('INBOX');
+                      setFolderName('Inbox');
+                    }}
+                  />
+                }
+              />
+            ) : messages.length === 0 ? (
+              <EmptyState
+                icon={<IconMail size={48} color={colors.textSubtle} />}
+                title="No mail yet"
+                body={`Millo will import the last ${HISTORY_DAYS} days, then watch for new messages.`}
               />
             ) : (
               <EmptyState
@@ -839,6 +948,19 @@ export function MailScreen({
           onToggleRead={toggleRead}
           onArchive={archiveThread}
           onDelete={deleteThread}
+        />
+        <FolderSheet
+          visible={showFolders}
+          accounts={accountFilter === 'all'
+            ? accounts
+            : accounts.filter((account) => account.id === accountFilter)}
+          folders={folders}
+          errors={folderErrors}
+          loading={foldersLoading}
+          currentAccountId={accountFilter}
+          currentPath={folderPath}
+          onSelect={(accountId, folder) => void openFolder(accountId, folder)}
+          onClose={() => setShowFolders(false)}
         />
         <Pressable
           accessibilityLabel="Compose email"
@@ -1041,6 +1163,20 @@ const styles = themedStyles(() => ({
   },
   killEngaged: { backgroundColor: colors.dangerBg },
   headerTitle: { flex: 1, ...typography.h3, color: colors.text },
+  folderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    minHeight: touch.minTarget,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  folderBarLabel: { flex: 1, ...typography.caption, color: colors.text },
   serverRow: {
     flexDirection: 'row',
     alignItems: 'center',

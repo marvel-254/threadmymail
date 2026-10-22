@@ -39,7 +39,12 @@ import {
 } from './mailStore';
 import { logActivity, type UndoPayload } from './agent/activityStore';
 import { notifyNewMessages } from './notifications';
-import type { BridgeAccount, BridgeMailbox, MailBridge } from './mailBridge';
+import type {
+  BridgeAccount,
+  BridgeMailbox,
+  BridgeMailboxInfo,
+  MailBridge,
+} from './mailBridge';
 import type { MessageHeader } from 'react-native-mail-engine';
 
 export type SyncListener = (state: SyncState, messages: Message[]) => void;
@@ -69,8 +74,8 @@ export class MailSync {
   private running = false;
   /** Session-only body cache: fast re-opens, never written to SQLite. */
   private bodyCache = new Map<string, { text: string }>();
-  /** Serialises body fetches so two threads cannot interleave IDLE restarts. */
-  private bodyQueue: Promise<unknown> = Promise.resolve();
+  /** Serialises mailbox access so folder switches and bodies cannot interleave. */
+  private queue: Promise<unknown> = Promise.resolve();
   /** Resolved once per connection: Archive/Trash paths from LIST special-use flags. */
   private folderCache: { archive?: string | null; trash?: string | null } = {};
 
@@ -90,13 +95,15 @@ export class MailSync {
     if (payload.kind === 'mail_restore') {
       await upsertMessages([payload.message]);
       const uid = uidFromMessageId(payload.message.id);
-      if (!this.mailbox || !Number.isFinite(uid)) return;
+      if (!this.account || !Number.isFinite(uid)) return;
       try {
-        if (payload.operation === 'move') {
-          await this.mailbox.moveMessages([uid], payload.folder);
-        } else {
-          await this.mailbox.removeFlags([uid], ['\\Deleted']);
-        }
+        await this.withMailbox(payload.message.folder ?? 'INBOX', false, async (mailbox) => {
+          if (payload.operation === 'move') {
+            await mailbox.moveMessages([uid], payload.folder);
+          } else {
+            await mailbox.removeFlags([uid], ['\\Deleted']);
+          }
+        });
       } catch {
         // Local Undo already succeeded; server Undo is best-effort.
       }
@@ -108,13 +115,15 @@ export class MailSync {
       const uids = payload.messages
         .map((message) => uidFromMessageId(message.id))
         .filter((uid) => Number.isFinite(uid));
-      if (!this.mailbox || uids.length === 0) return;
+      if (!this.account || uids.length === 0) return;
       try {
-        if (payload.operation === 'move') {
-          await this.mailbox.moveMessages(uids, payload.folder);
-        } else {
-          await this.mailbox.removeFlags(uids, ['\\Deleted']);
-        }
+        await this.withMailbox(payload.messages[0]?.folder ?? 'INBOX', false, async (mailbox) => {
+          if (payload.operation === 'move') {
+            await mailbox.moveMessages(uids, payload.folder);
+          } else {
+            await mailbox.removeFlags(uids, ['\\Deleted']);
+          }
+        });
       } catch {
         // Local Undo already succeeded; server Undo is best-effort.
       }
@@ -128,22 +137,28 @@ export class MailSync {
           starred: item.starred,
         });
       }
-      if (!this.mailbox) return;
+      if (!this.account) return;
+      const first = payload.items[0];
+      const folder = payload.folder
+        ?? (first ? (await loadMessage(first.messageId))?.folder : undefined)
+        ?? 'INBOX';
       try {
-        for (const item of payload.items) {
-          const uid = uidFromMessageId(item.messageId);
-          if (!Number.isFinite(uid)) continue;
-          if (item.unread !== undefined) {
-            await this.mailbox.markSeen([uid], !item.unread);
-          }
-          if (item.starred !== undefined) {
-            if (item.starred) {
-              await this.mailbox.addFlags([uid], ['\\Flagged']);
-            } else {
-              await this.mailbox.removeFlags([uid], ['\\Flagged']);
+        await this.withMailbox(folder, false, async (mailbox) => {
+          for (const item of payload.items) {
+            const uid = uidFromMessageId(item.messageId);
+            if (!Number.isFinite(uid)) continue;
+            if (item.unread !== undefined) {
+              await mailbox.markSeen([uid], !item.unread);
+            }
+            if (item.starred !== undefined) {
+              if (item.starred) {
+                await mailbox.addFlags([uid], ['\\Flagged']);
+              } else {
+                await mailbox.removeFlags([uid], ['\\Flagged']);
+              }
             }
           }
-        }
+        });
       } catch {
         // Local Undo already succeeded; server Undo is best-effort.
       }
@@ -156,18 +171,21 @@ export class MailSync {
       needsReply: payload.needsReply,
     });
     const uid = uidFromMessageId(payload.messageId);
-    if (!this.mailbox || !Number.isFinite(uid)) return;
+    if (!this.account || !Number.isFinite(uid)) return;
+    const message = await loadMessage(payload.messageId);
     try {
-      if (payload.unread !== undefined) {
-        await this.mailbox.markSeen([uid], !payload.unread);
-      }
-      if (payload.starred !== undefined) {
-        if (payload.starred) {
-          await this.mailbox.addFlags([uid], ['\\Flagged']);
-        } else {
-          await this.mailbox.removeFlags([uid], ['\\Flagged']);
+      await this.withMailbox(message?.folder ?? 'INBOX', false, async (mailbox) => {
+        if (payload.unread !== undefined) {
+          await mailbox.markSeen([uid], !payload.unread);
         }
-      }
+        if (payload.starred !== undefined) {
+          if (payload.starred) {
+            await mailbox.addFlags([uid], ['\\Flagged']);
+          } else {
+            await mailbox.removeFlags([uid], ['\\Flagged']);
+          }
+        }
+      });
     } catch {
       // Local Undo already succeeded; server flags are best-effort.
     }
@@ -252,11 +270,119 @@ export class MailSync {
     return this.accountId === 'legacy' ? String(uid) : `${this.accountId}:${uid}`;
   }
 
+  private enqueue<T>(run: () => Promise<T>): Promise<T> {
+    const task = this.queue.then(run);
+    this.queue = task.catch(() => undefined);
+    return task;
+  }
+
+  private async openInboxAgain(): Promise<void> {
+    if (!this.account) return;
+    try {
+      this.mailbox = await this.account.openInbox();
+      this.startIdle();
+    } catch (err) {
+      this.mailbox = null;
+      const message = err instanceof Error ? err.message : String(err);
+      this.setState({ phase: 'error', error: message });
+    }
+  }
+
+  /**
+   * Run one operation against a specific mailbox. IDLE is stopped first; other
+   * folders are opened read-only or read-write as needed, then INBOX is
+   * reselected and IDLE restarted. All mailbox work is serialised.
+   */
+  private withMailbox<T>(
+    folder: string,
+    readOnly: boolean,
+    run: (mailbox: BridgeMailbox) => Promise<T>,
+  ): Promise<T> {
+    return this.enqueue(async () => {
+      if (!this.account) throw new Error('Connect an email account first.');
+      if (this.running) throw new Error('The inbox import is still running. Try again in a moment.');
+      const stopIdle = this.stopIdle;
+      this.stopIdle = null;
+      stopIdle?.();
+
+      if (folder === 'INBOX') {
+        if (!this.mailbox) this.mailbox = await this.account.openInbox();
+        try {
+          return await run(this.mailbox);
+        } finally {
+          if (this.mailbox) this.startIdle();
+        }
+      }
+
+      const inbox = this.mailbox;
+      this.mailbox = null;
+      if (inbox) {
+        try {
+          await inbox.close();
+        } catch {
+          // The folder switch below re-establishes the session anyway.
+        }
+      }
+
+      let mailbox: BridgeMailbox | null = null;
+      try {
+        mailbox = await this.account.openMailbox(folder, readOnly);
+        return await run(mailbox);
+      } finally {
+        if (mailbox) {
+          try {
+            await mailbox.close();
+          } catch {
+            // Ignore close failures; INBOX is reopened next.
+          }
+        }
+        await this.openInboxAgain();
+      }
+    });
+  }
+
+  /** List selectable folders with the server's message/unseen counts. */
+  async listFolders(): Promise<BridgeMailboxInfo[]> {
+    if (!this.account) throw new Error('Connect an email account first.');
+    const folders = await this.account.listMailboxes();
+    const selectable = folders.filter((folder) => folder.selectable);
+    if (!selectable.some((folder) => folder.path === 'INBOX')) {
+      selectable.unshift({
+        path: 'INBOX',
+        name: 'Inbox',
+        delimiter: '/',
+        flags: ['\\Inbox'],
+        selectable: true,
+      });
+    }
+    return selectable;
+  }
+
+  /**
+   * Lazily cache the newest headers in a folder. INBOX is imported by
+   * `start()`, so folder browsing never runs during the initial history import.
+   */
+  async syncFolder(folder: string, limit = 100): Promise<number> {
+    if (folder === 'INBOX') return 0;
+    const headers = await this.withMailbox(
+      folder,
+      true,
+      (mailbox) => mailbox.fetchHeaders({ limit }),
+    );
+    const messages = headers.map((header) => this.headerToMessage(header, folder));
+    if (messages.length > 0) {
+      await upsertMessages(messages);
+      this.emit();
+    }
+    return messages.length;
+  }
+
   /** Map an IMAP envelope to the header-only row the cache stores. */
-  private headerToMessage(h: MessageHeader): Message {
+  private headerToMessage(h: MessageHeader, folder = 'INBOX'): Message {
     return toStoredMessage({
       id: this.messageId(h.uid),
       accountId: this.accountId,
+      folder,
       threadId: threadIdFor({
         messageId: h.messageId,
         inReplyTo: h.inReplyTo,
@@ -369,9 +495,13 @@ export class MailSync {
     const before = await loadMessage(id);
     await markRead(id);
     const uid = uidFromMessageId(id);
-    if (this.mailbox && Number.isFinite(uid)) {
+    if (Number.isFinite(uid)) {
       try {
-        await this.mailbox.markSeen([uid], true);
+        await this.withMailbox(
+          before?.folder ?? 'INBOX',
+          false,
+          (mailbox) => mailbox.markSeen([uid], true),
+        );
       } catch {
         // Local state is already updated; server flag is best-effort.
       }
@@ -392,19 +522,20 @@ export class MailSync {
 
   /** Toggle starred (local + server). */
   async toggleStar(id: string): Promise<void> {
-    const messages = await loadMessages();
-    const msg = messages.find((m) => m.id === id);
+    const msg = await loadMessage(id);
     if (!msg) return;
     const nextStarred = !msg.starred;
     await setStarred(id, nextStarred);
     const uid = uidFromMessageId(id);
-    if (this.mailbox && Number.isFinite(uid)) {
+    if (Number.isFinite(uid)) {
       try {
-        if (nextStarred) {
-          await this.mailbox.addFlags([uid], ['\\Flagged']);
-        } else {
-          await this.mailbox.removeFlags([uid], ['\\Flagged']);
-        }
+        await this.withMailbox(msg.folder, false, async (mailbox) => {
+          if (nextStarred) {
+            await mailbox.addFlags([uid], ['\\Flagged']);
+          } else {
+            await mailbox.removeFlags([uid], ['\\Flagged']);
+          }
+        });
       } catch {
         // best-effort
       }
@@ -428,9 +559,13 @@ export class MailSync {
     const unread = !before.unread;
     await updateFlags(id, { unread });
     const uid = uidFromMessageId(id);
-    if (this.mailbox && Number.isFinite(uid)) {
+    if (Number.isFinite(uid)) {
       try {
-        await this.mailbox.markSeen([uid], !unread);
+        await this.withMailbox(
+          before.folder,
+          false,
+          (mailbox) => mailbox.markSeen([uid], !unread),
+        );
       } catch {
         // Local state is already updated; server flag is best-effort.
       }
@@ -447,13 +582,14 @@ export class MailSync {
     this.emit();
   }
 
-  private async threadMessages(threadId: string): Promise<Message[]> {
-    return (await loadMessages()).filter((message) => message.threadId === threadId);
+  private async threadMessages(threadId: string, folder = 'INBOX'): Promise<Message[]> {
+    return (await loadMessages(this.accountId, folder))
+      .filter((message) => message.threadId === threadId);
   }
 
   /** Mark every message in a conversation read or unread, with one Undo entry. */
-  async setThreadRead(threadId: string, read: boolean): Promise<void> {
-    const messages = await this.threadMessages(threadId);
+  async setThreadRead(threadId: string, read: boolean, folder = 'INBOX'): Promise<void> {
+    const messages = await this.threadMessages(threadId, folder);
     const changed = messages.filter((message) => message.unread === read);
     if (changed.length === 0) return;
 
@@ -463,9 +599,9 @@ export class MailSync {
     const uids = changed
       .map((message) => uidFromMessageId(message.id))
       .filter((uid) => Number.isFinite(uid));
-    if (this.mailbox && uids.length > 0) {
+    if (uids.length > 0) {
       try {
-        await this.mailbox.markSeen(uids, read);
+        await this.withMailbox(folder, false, (mailbox) => mailbox.markSeen(uids, read));
       } catch {
         // Local state is already updated; server flags are best-effort.
       }
@@ -481,6 +617,7 @@ export class MailSync {
       subject,
       undoPayload: {
         kind: 'mail_thread_flags',
+        folder,
         items: changed.map((message) => ({
           messageId: message.id,
           unread: message.unread,
@@ -491,15 +628,15 @@ export class MailSync {
   }
 
   /** Toggle the whole conversation: any unread → read, otherwise unread. */
-  async toggleThreadRead(threadId: string): Promise<void> {
-    const messages = await this.threadMessages(threadId);
+  async toggleThreadRead(threadId: string, folder = 'INBOX'): Promise<void> {
+    const messages = await this.threadMessages(threadId, folder);
     if (messages.length === 0) return;
-    await this.setThreadRead(threadId, messages.some((message) => message.unread));
+    await this.setThreadRead(threadId, messages.some((message) => message.unread), folder);
   }
 
   /** Star or unstar the whole conversation (any starred → unstar all). */
-  async toggleThreadStar(threadId: string): Promise<void> {
-    const messages = await this.threadMessages(threadId);
+  async toggleThreadStar(threadId: string, folder = 'INBOX'): Promise<void> {
+    const messages = await this.threadMessages(threadId, folder);
     if (messages.length === 0) return;
     const starred = !messages.some((message) => message.starred);
     for (const message of messages) {
@@ -508,13 +645,15 @@ export class MailSync {
     const uids = messages
       .map((message) => uidFromMessageId(message.id))
       .filter((uid) => Number.isFinite(uid));
-    if (this.mailbox && uids.length > 0) {
+    if (uids.length > 0) {
       try {
-        if (starred) {
-          await this.mailbox.addFlags(uids, ['\\Flagged']);
-        } else {
-          await this.mailbox.removeFlags(uids, ['\\Flagged']);
-        }
+        await this.withMailbox(folder, false, async (mailbox) => {
+          if (starred) {
+            await mailbox.addFlags(uids, ['\\Flagged']);
+          } else {
+            await mailbox.removeFlags(uids, ['\\Flagged']);
+          }
+        });
       } catch {
         // Local state is already updated; server flags are best-effort.
       }
@@ -529,6 +668,7 @@ export class MailSync {
       subject,
       undoPayload: {
         kind: 'mail_thread_flags',
+        folder,
         items: messages.map((message) => ({
           messageId: message.id,
           starred: message.starred,
@@ -540,16 +680,16 @@ export class MailSync {
 
   /**
    * Archive every cached message in a conversation. Undo restores the rows and
-   * moves them back to INBOX.
+   * moves them back to the folder they came from.
    */
-  async archiveThread(threadId: string): Promise<MailActionResult> {
-    const messages = await this.threadMessages(threadId);
+  async archiveThread(threadId: string, folder = 'INBOX'): Promise<MailActionResult> {
+    const messages = await this.threadMessages(threadId, folder);
     return this.moveThread(threadId, messages, 'archive');
   }
 
   /** Delete every cached message in a conversation, with the same Undo rules. */
-  async removeThread(threadId: string): Promise<MailActionResult> {
-    const messages = await this.threadMessages(threadId);
+  async removeThread(threadId: string, folder = 'INBOX'): Promise<MailActionResult> {
+    const messages = await this.threadMessages(threadId, folder);
     return this.moveThread(threadId, messages, 'delete');
   }
 
@@ -568,21 +708,23 @@ export class MailSync {
     let operation: 'move' | 'delete' = 'move';
     let error: string | undefined;
 
-    if (this.mailbox && uids.length > 0) {
+    if (uids.length > 0) {
       try {
-        if (kind === 'archive') {
-          const destination = await this.resolveFolder('archive');
-          if (!destination) throw new Error('This server did not advertise an Archive folder.');
-          await this.mailbox.moveMessages(uids, destination);
-        } else {
-          const trash = await this.resolveFolder('trash');
-          if (trash) {
-            await this.mailbox.moveMessages(uids, trash);
+        await this.withMailbox(first.folder, false, async (mailbox) => {
+          if (kind === 'archive') {
+            const destination = await this.resolveFolder('archive');
+            if (!destination) throw new Error('This server did not advertise an Archive folder.');
+            await mailbox.moveMessages(uids, destination);
           } else {
-            await this.mailbox.deleteMessages(uids, false);
-            operation = 'delete';
+            const trash = await this.resolveFolder('trash');
+            if (trash) {
+              await mailbox.moveMessages(uids, trash);
+            } else {
+              await mailbox.deleteMessages(uids, false);
+              operation = 'delete';
+            }
           }
-        }
+        });
         serverChanged = true;
       } catch (err) {
         error = err instanceof Error ? err.message : String(err);
@@ -608,7 +750,7 @@ export class MailSync {
       undoPayload: {
         kind: 'mail_thread_restore',
         messages,
-        folder: 'INBOX',
+        folder: first.folder,
         operation,
       },
     });
@@ -627,11 +769,13 @@ export class MailSync {
     const uid = uidFromMessageId(id);
     let serverChanged = false;
     let error: string | undefined;
-    if (this.mailbox && Number.isFinite(uid)) {
+    if (Number.isFinite(uid)) {
       try {
-        const destination = await this.resolveFolder('archive');
-        if (!destination) throw new Error('This server did not advertise an Archive folder.');
-        await this.mailbox.moveMessages([uid], destination);
+        await this.withMailbox(message.folder, false, async (mailbox) => {
+          const destination = await this.resolveFolder('archive');
+          if (!destination) throw new Error('This server did not advertise an Archive folder.');
+          await mailbox.moveMessages([uid], destination);
+        });
         serverChanged = true;
       } catch (err) {
         error = err instanceof Error ? err.message : String(err);
@@ -653,7 +797,7 @@ export class MailSync {
       undoPayload: {
         kind: 'mail_restore',
         message,
-        folder: 'INBOX',
+        folder: message.folder,
         operation: 'move',
       },
     });
@@ -673,15 +817,17 @@ export class MailSync {
     let serverChanged = false;
     let operation: 'move' | 'delete' = 'move';
     let error: string | undefined;
-    if (this.mailbox && Number.isFinite(uid)) {
+    if (Number.isFinite(uid)) {
       try {
-        const trash = await this.resolveFolder('trash');
-        if (trash) {
-          await this.mailbox.moveMessages([uid], trash);
-        } else {
-          await this.mailbox.deleteMessages([uid], false);
-          operation = 'delete';
-        }
+        await this.withMailbox(message.folder, false, async (mailbox) => {
+          const trash = await this.resolveFolder('trash');
+          if (trash) {
+            await mailbox.moveMessages([uid], trash);
+          } else {
+            await mailbox.deleteMessages([uid], false);
+            operation = 'delete';
+          }
+        });
         serverChanged = true;
       } catch (err) {
         error = err instanceof Error ? err.message : String(err);
@@ -703,7 +849,7 @@ export class MailSync {
       undoPayload: {
         kind: 'mail_restore',
         message,
-        folder: 'INBOX',
+        folder: message.folder,
         operation,
       },
     });
@@ -733,48 +879,41 @@ export class MailSync {
   }
 
   /**
-   * Search the whole IMAP mailbox, not just the local cache.
+   * Search the selected IMAP mailbox, not just the local cache.
    *
    * IMAP SEARCH runs on the server, so it can find mail older than the
    * 180-day import window and matches inside message bodies. Header envelopes
    * for the first 40 UIDs are fetched one by one (the native API has no
    * UID-list fetch), persisted so the result is tappable, and returned newest
-   * first. IDLE owns the connection, so it is stopped and restarted around the
-   * search; the body queue serialises this with body fetches.
+   * first. Mailbox access is serialised with folder switches and body fetches.
    */
-  searchServer(query: string): Promise<Message[]> {
-    const task = this.bodyQueue.then(() => this.searchServerNow(query));
-    this.bodyQueue = task.catch(() => undefined);
-    return task;
+  searchServer(query: string, folder = 'INBOX'): Promise<Message[]> {
+    return this.searchServerNow(query, folder);
   }
 
-  private async searchServerNow(query: string): Promise<Message[]> {
+  private async searchServerNow(query: string, folder: string): Promise<Message[]> {
     const term = query.trim();
     if (term.length < 2) return [];
-    if (!this.mailbox) {
-      throw new Error('Connect an email account to search the whole mailbox.');
+    if (!this.account) {
+      throw new Error('Connect an email account to search this folder.');
     }
 
-    const stopIdle = this.stopIdle;
-    this.stopIdle = null;
-    stopIdle?.();
-    try {
-      const uids = await this.mailbox.search({ text: term });
+    const messages = await this.withMailbox(folder, false, async (mailbox) => {
+      const uids = await mailbox.search({ text: term });
       const unique = [...new Set(uids)].slice(0, 40);
-      const messages: Message[] = [];
+      const found: Message[] = [];
       for (const uid of unique) {
-        const headers = await this.mailbox.fetchHeaders({ uidRange: [uid, uid], limit: 1 });
+        const headers = await mailbox.fetchHeaders({ uidRange: [uid, uid], limit: 1 });
         const header = headers.find((item) => item.uid === uid);
-        if (header) messages.push(this.headerToMessage(header));
+        if (header) found.push(this.headerToMessage(header, folder));
       }
-      if (messages.length > 0) {
-        await upsertMessages(messages);
-        this.emit();
-      }
-      return messages.sort((a, b) => b.date.localeCompare(a.date));
-    } finally {
-      if (this.mailbox) this.startIdle();
+      return found;
+    });
+    if (messages.length > 0) {
+      await upsertMessages(messages);
+      this.emit();
     }
+    return messages.sort((a, b) => b.date.localeCompare(a.date));
   }
 
   /**
@@ -782,39 +921,32 @@ export class MailSync {
    *
    * Bodies are intentionally never persisted: the result lives in a session
    * map and is gone on restart, which keeps the storage invariant intact.
-   * IDLE owns the connection, so it is stopped around the fetch and restarted
-   * afterwards. Fetches are serialised for the same reason.
+   * Mailbox access is serialised so IDLE and folder switches cannot overlap.
    */
   fetchBody(id: string): Promise<{ text: string }> {
-    const task = this.bodyQueue.then(() => this.fetchBodyNow(id));
-    this.bodyQueue = task.catch(() => undefined);
-    return task;
+    return this.fetchBodyNow(id);
   }
 
   private async fetchBodyNow(id: string): Promise<{ text: string }> {
     const cached = this.bodyCache.get(id);
     if (cached) return cached;
-    if (!this.mailbox) throw new Error('Not connected — showing the cached preview.');
     const uid = uidFromMessageId(id);
     if (!Number.isInteger(uid) || uid <= 0) {
       throw new Error('This message has no IMAP UID to fetch.');
     }
-
-    const stopIdle = this.stopIdle;
-    this.stopIdle = null;
-    stopIdle?.();
-    try {
-      const msg = await this.mailbox.fetchMessage(uid);
-      const text =
-        (msg.textBody ?? '').trim() ||
-        htmlToText(msg.htmlBody ?? '') ||
-        '';
-      const result = { text };
-      if (text) this.bodyCache.set(id, result);
-      return result;
-    } finally {
-      if (this.mailbox) this.startIdle();
-    }
+    const message = await loadMessage(id);
+    const msg = await this.withMailbox(
+      message?.folder ?? 'INBOX',
+      true,
+      (mailbox) => mailbox.fetchMessage(uid),
+    );
+    const text =
+      (msg.textBody ?? '').trim() ||
+      htmlToText(msg.htmlBody ?? '') ||
+      '';
+    const result = { text };
+    if (text) this.bodyCache.set(id, result);
+    return result;
   }
 
   /** Send a message over SMTP. */

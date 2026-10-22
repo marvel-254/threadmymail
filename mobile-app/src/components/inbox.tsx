@@ -167,6 +167,107 @@ export function AccountChips({ accounts, value, onChange, unreadCounts }: Accoun
   );
 }
 
+/* ── Folder sheet ──────────────────────────────────────────────────────── */
+export type FolderOption = {
+  path: string;
+  name: string;
+  flags: string[];
+  exists?: number;
+  unseen?: number;
+};
+
+type FolderSheetProps = {
+  visible: boolean;
+  accounts: { id: string; email: string }[];
+  folders: Record<string, FolderOption[]>;
+  errors?: Record<string, string>;
+  loading: boolean;
+  currentAccountId: string;
+  currentPath: string;
+  onSelect: (accountId: string, folder: FolderOption) => void;
+  onClose: () => void;
+};
+
+function folderRank(folder: FolderOption): number {
+  const flags = folder.flags.map((flag) => flag.toLowerCase());
+  if (folder.path === 'INBOX' || flags.includes('\\inbox')) return 0;
+  if (flags.includes('\\sent')) return 1;
+  if (flags.includes('\\archive') || flags.includes('\\all')) return 2;
+  if (flags.includes('\\drafts')) return 3;
+  if (flags.includes('\\trash')) return 4;
+  if (flags.includes('\\junk') || flags.includes('\\spam')) return 5;
+  return 6;
+}
+
+export function FolderSheet({
+  visible,
+  accounts,
+  folders,
+  errors,
+  loading,
+  currentAccountId,
+  currentPath,
+  onSelect,
+  onClose,
+}: FolderSheetProps) {
+  return (
+    <BottomSheet visible={visible} onClose={onClose} title="Folders" scroll>
+      {loading && (
+        <Text style={styles.folderHint}>Loading folders…</Text>
+      )}
+      {!loading && accounts.length === 0 && (
+        <Text style={styles.folderHint}>Connect an account to browse folders.</Text>
+      )}
+      {accounts.map((account) => {
+        const list = [...(folders[account.id] ?? [])].sort((a, b) => (
+          folderRank(a) - folderRank(b) || a.name.localeCompare(b.name)
+        ));
+        const error = errors?.[account.id];
+        return (
+          <View key={account.id} style={styles.folderGroup}>
+            {accounts.length > 1 && (
+              <Text style={styles.folderAccount} numberOfLines={1}>{account.email}</Text>
+            )}
+            {error && <Text style={styles.folderError}>{error}</Text>}
+            {!error && !loading && list.length === 0 && (
+              <Text style={styles.folderHint}>No selectable folders.</Text>
+            )}
+            {list.map((folder) => {
+              const current = account.id === currentAccountId && folder.path === currentPath;
+              const unseen = folder.unseen ?? 0;
+              return (
+                <Pressable
+                  key={`${account.id}:${folder.path}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: current }}
+                  accessibilityLabel={`${folder.name}${unseen > 0 ? `, ${unseen} unread` : ''}`}
+                  onPress={() => onSelect(account.id, folder)}
+                  style={({ pressed }) => [
+                    styles.folderRow,
+                    current && styles.folderRowActive,
+                    pressed && styles.sheetItemPressed,
+                  ]}
+                >
+                  <Text
+                    style={[styles.folderName, current && styles.folderNameActive]}
+                    numberOfLines={1}
+                  >
+                    {folder.name}
+                  </Text>
+                  {unseen > 0 && (
+                    <Text style={styles.folderCount}>{unseen}</Text>
+                  )}
+                  {current && <IconCheck size={16} color={colors.primaryText} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        );
+      })}
+    </BottomSheet>
+  );
+}
+
 /* ── Recent searches ───────────────────────────────────────────────────── */
 type RecentSearchesProps = {
   items: string[];
@@ -631,6 +732,27 @@ const styles = themedStyles(() => ({
     maxWidth: 96,
   },
 
+  folderGroup: { gap: 2, marginBottom: spacing.md },
+  folderAccount: {
+    ...typography.label,
+    color: colors.textSubtle,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  folderHint: { ...typography.caption, color: colors.textMuted, padding: spacing.md },
+  folderError: { ...typography.caption, color: colors.dangerText, padding: spacing.sm },
+  folderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: touch.minTarget,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+  },
+  folderRowActive: { backgroundColor: colors.surfaceStrong },
+  folderName: { flex: 1, ...typography.bodySmall, color: colors.textMuted },
+  folderNameActive: { color: colors.text, fontWeight: '600' },
+  folderCount: { ...typography.label, color: colors.textSubtle },
   recentRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -39,6 +39,8 @@ export type Message = {
   id: string;
   /** Account that owns this message. */
   accountId: string;
+  /** IMAP mailbox path, e.g. INBOX or [Gmail]/Sent Mail. */
+  folder: string;
   threadId: string;
   from: string;
   fromAddress: string;
@@ -151,6 +153,7 @@ export function uidFromMessageId(id: string): number {
 export function toStoredMessage(raw: {
   id: string;
   accountId: string;
+  folder: string;
   threadId: string;
   from: string;
   fromAddress: string;
@@ -165,6 +168,7 @@ export function toStoredMessage(raw: {
   return {
     id: raw.id,
     accountId: raw.accountId,
+    folder: raw.folder,
     threadId: raw.threadId,
     from: raw.from,
     fromAddress: raw.fromAddress,

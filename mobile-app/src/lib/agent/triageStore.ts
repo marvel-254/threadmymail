@@ -180,6 +180,7 @@ export async function loadNeedsEye(limit = 20): Promise<NeedsEyeItem[]> {
       message: {
         id: String(row.result_message_id),
         accountId: String(row.account_id ?? 'legacy'),
+        folder: String(row.folder ?? 'INBOX'),
         threadId: String(row.thread_id),
         from: String(row.sender),
         fromAddress: String(row.sender_address),

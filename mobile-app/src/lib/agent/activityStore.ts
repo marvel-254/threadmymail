@@ -38,6 +38,8 @@ export type MailRestoreUndo = {
 
 export type MailThreadFlagsUndo = {
   kind: 'mail_thread_flags';
+  /** Folder the thread was in when the flags changed. */
+  folder?: string;
   items: Array<{
     messageId: string;
     unread?: boolean;

@@ -29,6 +29,7 @@ function openDb(): Promise<SQLite.SQLiteDatabase> {
         CREATE TABLE IF NOT EXISTS messages (
           id TEXT PRIMARY KEY NOT NULL,
           account_id TEXT NOT NULL DEFAULT 'legacy',
+          folder TEXT NOT NULL DEFAULT 'INBOX',
           thread_id TEXT NOT NULL,
           sender TEXT NOT NULL,
           sender_address TEXT NOT NULL,
@@ -42,13 +43,13 @@ function openDb(): Promise<SQLite.SQLiteDatabase> {
         );
         CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date DESC);
         CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
-        CREATE INDEX IF NOT EXISTS idx_messages_account_date ON messages(account_id, date DESC);
         CREATE TABLE IF NOT EXISTS mail_meta (
           key TEXT PRIMARY KEY NOT NULL,
           value TEXT NOT NULL
         );
       `);
       await ensureAccountColumn(db);
+      await ensureFolderColumn(db);
       await migrateThreadIds(db);
       return db;
     });
@@ -59,12 +60,26 @@ function openDb(): Promise<SQLite.SQLiteDatabase> {
 /** Add the account column for caches created before multi-account support. */
 async function ensureAccountColumn(db: SQLite.SQLiteDatabase): Promise<void> {
   const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(messages)');
-  if (columns.some((column) => column.name === 'account_id')) return;
-  await db.execAsync(
-    "ALTER TABLE messages ADD COLUMN account_id TEXT NOT NULL DEFAULT 'legacy'",
-  );
+  if (!columns.some((column) => column.name === 'account_id')) {
+    await db.execAsync(
+      "ALTER TABLE messages ADD COLUMN account_id TEXT NOT NULL DEFAULT 'legacy'",
+    );
+  }
   await db.execAsync(
     'CREATE INDEX IF NOT EXISTS idx_messages_account_date ON messages(account_id, date DESC)',
+  );
+}
+
+/** Add the folder column for caches created before folder browsing. */
+async function ensureFolderColumn(db: SQLite.SQLiteDatabase): Promise<void> {
+  const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(messages)');
+  if (!columns.some((column) => column.name === 'folder')) {
+    await db.execAsync(
+      "ALTER TABLE messages ADD COLUMN folder TEXT NOT NULL DEFAULT 'INBOX'",
+    );
+  }
+  await db.execAsync(
+    'CREATE INDEX IF NOT EXISTS idx_messages_folder_date ON messages(account_id, folder, date DESC)',
   );
 }
 
@@ -106,6 +121,7 @@ function toRow(m: Message): BindParams {
   return {
     id: m.id,
     account_id: m.accountId,
+    folder: m.folder,
     thread_id: m.threadId,
     sender: m.from,
     sender_address: m.fromAddress,
@@ -123,6 +139,7 @@ function fromRow(row: Record<string, unknown>): Message {
   return {
     id: String(row.id),
     accountId: String(row.account_id ?? 'legacy'),
+    folder: String(row.folder ?? 'INBOX'),
     threadId: String(row.thread_id),
     from: String(row.sender),
     fromAddress: String(row.sender_address),
@@ -143,10 +160,11 @@ export async function upsertMessages(messages: Message[]): Promise<{ cappedAt: n
     for (const m of messages) {
       const row = toRow(m);
       await db.runAsync(
-        `INSERT INTO messages (id, account_id, thread_id, sender, sender_address, subject, preview, date, unread, starred, needs_reply, has_attachment)
-         VALUES ($id, $account_id, $thread_id, $sender, $sender_address, $subject, $preview, $date, $unread, $starred, $needs_reply, $has_attachment)
+        `INSERT INTO messages (id, account_id, folder, thread_id, sender, sender_address, subject, preview, date, unread, starred, needs_reply, has_attachment)
+         VALUES ($id, $account_id, $folder, $thread_id, $sender, $sender_address, $subject, $preview, $date, $unread, $starred, $needs_reply, $has_attachment)
          ON CONFLICT(id) DO UPDATE SET
            account_id = excluded.account_id,
+           folder = excluded.folder,
            thread_id = excluded.thread_id,
            sender = excluded.sender,
            sender_address = excluded.sender_address,
@@ -177,16 +195,17 @@ export async function upsertMessages(messages: Message[]): Promise<{ cappedAt: n
   return { cappedAt: null };
 }
 
-/** Load cached messages for one account, or every account when omitted. */
-export async function loadMessages(accountId?: string): Promise<Message[]> {
+/** Load cached messages for one account and folder. Defaults to INBOX. */
+export async function loadMessages(accountId?: string, folder = 'INBOX'): Promise<Message[]> {
   const db = await openDb();
   const rows = accountId
     ? await db.getAllAsync<Record<string, unknown>>(
-      'SELECT * FROM messages WHERE account_id = $account_id ORDER BY date DESC',
-      { $account_id: accountId },
+      'SELECT * FROM messages WHERE account_id = $account_id AND folder = $folder ORDER BY date DESC',
+      { $account_id: accountId, $folder: folder },
     )
     : await db.getAllAsync<Record<string, unknown>>(
-      'SELECT * FROM messages ORDER BY date DESC',
+      'SELECT * FROM messages WHERE folder = $folder ORDER BY date DESC',
+      { $folder: folder },
     );
   return rows.map(fromRow);
 }
@@ -267,26 +286,32 @@ export async function countMessages(accountId?: string): Promise<number> {
   return row?.n ?? 0;
 }
 
-/** Unread cached count, used by the tab badge and launcher badge. */
-export async function countUnreadMessages(accountId?: string): Promise<number> {
+/** Unread cached count in one folder, used by the tab and launcher badges. */
+export async function countUnreadMessages(
+  accountId?: string,
+  folder = 'INBOX',
+): Promise<number> {
   const db = await openDb();
   const row = accountId
     ? await db.getFirstAsync<{ n: number }>(
-      'SELECT COUNT(*) AS n FROM messages WHERE unread = 1 AND account_id = $account_id',
-      { $account_id: accountId },
+      `SELECT COUNT(*) AS n FROM messages
+       WHERE unread = 1 AND account_id = $account_id AND folder = $folder`,
+      { $account_id: accountId, $folder: folder },
     )
     : await db.getFirstAsync<{ n: number }>(
-      'SELECT COUNT(*) AS n FROM messages WHERE unread = 1',
+      'SELECT COUNT(*) AS n FROM messages WHERE unread = 1 AND folder = $folder',
+      { $folder: folder },
     );
   return row?.n ?? 0;
 }
 
 /** Unread cached counts keyed by account id, for the account switcher. */
-export async function countUnreadByAccount(): Promise<Record<string, number>> {
+export async function countUnreadByAccount(folder = 'INBOX'): Promise<Record<string, number>> {
   const db = await openDb();
   const rows = await db.getAllAsync<{ account_id: string; n: number }>(
     `SELECT account_id, COUNT(*) AS n FROM messages
-     WHERE unread = 1 GROUP BY account_id`,
+     WHERE unread = 1 AND folder = $folder GROUP BY account_id`,
+    { $folder: folder },
   );
   return Object.fromEntries(rows.map((row) => [row.account_id, row.n]));
 }
