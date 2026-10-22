@@ -167,7 +167,7 @@ export async function loadNeedsEye(limit = 20): Promise<NeedsEyeItem[]> {
     const db = await openDb();
     const rows = await db.getAllAsync<Record<string, unknown>>(
       `SELECT r.message_id AS result_message_id, r.verdict, r.reason, r.run_id, r.created_at AS classified_at,
-              m.thread_id, m.sender, m.sender_address, m.subject, m.preview, m.date,
+              m.account_id, m.thread_id, m.sender, m.sender_address, m.subject, m.preview, m.date,
               m.unread, m.starred, m.needs_reply, m.has_attachment
        FROM triage_results r
        JOIN messages m ON m.id = r.message_id
@@ -179,6 +179,7 @@ export async function loadNeedsEye(limit = 20): Promise<NeedsEyeItem[]> {
     return rows.map((row) => ({
       message: {
         id: String(row.result_message_id),
+        accountId: String(row.account_id ?? 'legacy'),
         threadId: String(row.thread_id),
         from: String(row.sender),
         fromAddress: String(row.sender_address),

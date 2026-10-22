@@ -29,8 +29,8 @@ import { AgentScreen } from './screens/AgentScreen';
 import { ActivityScreen } from './screens/ActivityScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { Onboarding } from './screens/Onboarding';
-import { loadAccount } from './lib/accountStore';
-import { getMailSync } from './lib/mailSyncSingleton';
+import { loadAccounts } from './lib/accountStore';
+import { getMailSync, registerMailAccounts, subscribeAllMailSync } from './lib/mailSyncSingleton';
 import { countUnreadMessages } from './lib/mailStore';
 import {
   configureNotifications,
@@ -84,13 +84,14 @@ export function AppShell() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [flag, account] = await Promise.all([isOnboarded(), loadAccount(), loadGuardrails()]);
+      const [flag, accounts] = await Promise.all([isOnboarded(), loadAccounts(), loadGuardrails()]);
       if (cancelled) return;
       setOnboardedState(flag);
-      // Resume syncing for an already-configured account. Errors are surfaced
-      // by the engine's own state (MailScreen reads it), not thrown here.
-      if (account) {
-        void getMailSync().start({
+      registerMailAccounts(accounts);
+      // Resume every configured account independently. Errors are surfaced by
+      // each engine's state (MailScreen reads them), not thrown here.
+      for (const account of accounts) {
+        void getMailSync(account.id).start({
           imap: account.imap,
           smtp: account.smtp,
           auth: { user: account.email, password: account.password },
@@ -129,7 +130,7 @@ export function AppShell() {
       void setAppBadgeCount(next);
     };
     void refresh();
-    const unsubscribe = getMailSync().subscribe(() => {
+    const unsubscribe = subscribeAllMailSync(() => {
       void refresh();
     });
     return () => {
@@ -200,6 +201,17 @@ export function AppShell() {
   const finishOnboarding = () => {
     void setOnboarded(true);
     setOnboardedState(true);
+    void (async () => {
+      const accounts = await loadAccounts();
+      registerMailAccounts(accounts);
+      for (const account of accounts) {
+        void getMailSync(account.id).start({
+          imap: account.imap,
+          smtp: account.smtp,
+          auth: { user: account.email, password: account.password },
+        });
+      }
+    })();
   };
 
   if (onboarded === null) {

@@ -25,6 +25,7 @@ import { Button, ConfirmDialog, EmptyState, Toast } from '../components/ui';
 import { Composer, ThreadMessage } from '../components/mail';
 import { DraftCard } from '../components/drafts';
 import {
+  AccountChips,
   FilterChips,
   MailActionSheet,
   RecentSearches,
@@ -44,11 +45,15 @@ import {
   type SyncState,
   type Thread,
 } from '../lib/mail';
-import { loadMessages } from '../lib/mailStore';
+import { countUnreadByAccount, loadMessage, loadMessages } from '../lib/mailStore';
 import { addRecentSearch, clearRecentSearches, loadRecentSearches } from '../lib/searchHistory';
 import { undoActivity } from '../lib/agent/activityStore';
-import { loadAccount } from '../lib/accountStore';
-import { getMailSync } from '../lib/mailSyncSingleton';
+import { loadAccounts, type AccountConfig } from '../lib/accountStore';
+import {
+  getMailSync,
+  registerMailAccounts,
+  subscribeAllMailSync,
+} from '../lib/mailSyncSingleton';
 import { setKillSwitch, useGuardrails } from '../lib/guardrails';
 import {
   dismissDraftPrompt,
@@ -64,6 +69,10 @@ import {
   sendDraft as sendQueuedDraft,
 } from '../lib/agent/drafts';
 import { themedStyles, colors, radii, shadows, spacing, touch, typography } from '../theme/theme';
+
+function shortAccount(email?: string): string | undefined {
+  return email ? email.split('@')[0] : undefined;
+}
 
 type MailScreenProps = {
   onOpenAgent: () => void;
@@ -101,7 +110,11 @@ export function MailScreen({
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmKill, setConfirmKill] = useState(false);
   const { killSwitch: killEngaged, shadowMode } = useGuardrails();
-  const [sync, setSync] = useState<SyncState>(INITIAL_SYNC_STATE);
+  const [accounts, setAccounts] = useState<AccountConfig[]>([]);
+  const [accountFilter, setAccountFilter] = useState<string>('all');
+  const [unreadByAccount, setUnreadByAccount] = useState<Record<string, number>>({});
+  const [syncByAccount, setSyncByAccount] = useState<Record<string, SyncState>>({});
+  const [composeAccountId, setComposeAccountId] = useState<string | undefined>();
   const [threadDraft, setThreadDraft] = useState<Draft | null>(null);
   const [draftPromptDismissed, setDraftPromptDismissed] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
@@ -120,8 +133,13 @@ export function MailScreen({
   const handledThreadLink = useRef<string | undefined>(undefined);
 
   const reloadMessages = useCallback(async () => {
-    setMessages(await loadMessages());
-  }, []);
+    setMessages(await loadMessages(accountFilter === 'all' ? undefined : accountFilter));
+    setUnreadByAccount(await countUnreadByAccount());
+  }, [accountFilter]);
+  const reloadRef = useRef(reloadMessages);
+  useEffect(() => {
+    reloadRef.current = reloadMessages;
+  }, [reloadMessages]);
 
   const runServerSearch = useCallback(async (input = query) => {
     const term = input.trim();
@@ -129,20 +147,32 @@ export function MailScreen({
     setServerSearching(true);
     setServerMessage(null);
     setRecents(await addRecentSearch(term));
+    const targets = accountFilter === 'all'
+      ? accounts
+      : accounts.filter((account) => account.id === accountFilter);
     try {
-      const found = await getMailSync().searchServer(term);
+      const results = await Promise.allSettled(
+        (targets.length > 0 ? targets.map((account) => account.id) : [undefined])
+          .map((accountId) => getMailSync(accountId).searchServer(term)),
+      );
+      const found = results.reduce(
+        (sum, result) => sum + (result.status === 'fulfilled' ? result.value.length : 0),
+        0,
+      );
+      const failed = results.find((result) => result.status === 'rejected');
+      if (failed?.status === 'rejected' && found === 0) throw failed.reason;
       await reloadMessages();
       setServerMessage(
-        found.length === 0
+        found === 0
           ? 'No matches on the server.'
-          : `Added ${found.length} server match${found.length === 1 ? '' : 'es'}.`,
+          : `Added ${found} server match${found === 1 ? '' : 'es'}${failed ? ' — one account failed' : ''}.`,
       );
     } catch (err) {
       setServerMessage(err instanceof Error ? err.message : 'Server search failed.');
     } finally {
       setServerSearching(false);
     }
-  }, [query, reloadMessages, serverSearching]);
+  }, [accounts, accountFilter, query, reloadMessages, serverSearching]);
 
   const clearRecents = useCallback(async () => {
     await clearRecentSearches();
@@ -179,8 +209,9 @@ export function MailScreen({
     setComposeSubject('');
     setComposeBody('');
     setComposeDraftId(null);
+    setComposeAccountId(accounts.find((account) => account.primary)?.id ?? accounts[0]?.id);
     setView('compose');
-  }, [composeOnOpen]);
+  }, [accounts, composeOnOpen]);
 
   // Deep links may carry either a message id or a conversation id.
   useEffect(() => {
@@ -200,40 +231,67 @@ export function MailScreen({
   useEffect(() => {
     if (!draftId) return;
     let cancelled = false;
-    void getDraft(draftId).then((draft) => {
+    void (async () => {
+      const draft = await getDraft(draftId);
       if (cancelled || !draft || draft.status !== 'pending') return;
+      const message = draft.messageId ? await loadMessage(draft.messageId) : null;
+      if (cancelled) return;
       setComposeTo(draft.to);
       setComposeCc('');
       setComposeSubject(draft.subject);
       setComposeBody(draft.body);
       setComposeDraftId(draft.id);
+      setComposeAccountId(
+        message?.accountId
+        ?? accounts.find((account) => account.primary)?.id
+        ?? accounts[0]?.id,
+      );
       setView('compose');
-    });
+    })();
     return () => {
       cancelled = true;
     };
-  }, [draftId]);
+  }, [accounts, draftId]);
 
-  // Load persisted messages on mount, then subscribe to the sync engine.
   useEffect(() => {
     let mounted = true;
-    loadMessages().then((msgs) => {
-      if (mounted) setMessages(msgs);
-    });
-    const sync = getMailSync();
-    const unsub = sync.subscribe((state) => {
+    void loadAccounts().then((saved) => {
       if (!mounted) return;
-      setSync(state);
-      void loadMessages().then((rows) => {
-        if (mounted) setMessages(rows);
-      });
+      setAccounts(saved);
+      registerMailAccounts(saved);
+      setAccountFilter((current) => (
+        current !== 'all' && !saved.some((account) => account.id === current)
+          ? 'all'
+          : current
+      ));
+      setComposeAccountId((current) => (
+        current ?? saved.find((account) => account.primary)?.id ?? saved[0]?.id
+      ));
     });
-    setSync(sync.getState());
     return () => {
       mounted = false;
-      unsub();
     };
   }, []);
+
+  useEffect(() => {
+    void reloadMessages();
+  }, [reloadMessages]);
+
+  // Subscribe to every account so the unified list and per-account banners stay live.
+  useEffect(() => {
+    if (accounts.length === 0) return;
+    registerMailAccounts(accounts);
+    setSyncByAccount((previous) => {
+      const next = { ...previous };
+      for (const account of accounts) next[account.id] = getMailSync(account.id).getState();
+      return next;
+    });
+    const unsubscribe = subscribeAllMailSync((accountId, state) => {
+      setSyncByAccount((previous) => ({ ...previous, [accountId]: state }));
+      void reloadRef.current();
+    });
+    return unsubscribe;
+  }, [accounts]);
 
   const threads = useMemo(() => buildThreads(messages), [messages]);
 
@@ -262,6 +320,11 @@ export function MailScreen({
   const threadMessageKey = threadMessages.map((message) => message.id).join(',');
   const selected = threadMessages[threadMessages.length - 1] ?? null;
   const activeThreadId = selected?.threadId;
+
+  const engineForThread = (id: string) => {
+    const accountId = threads.find((thread) => thread.id === id)?.accountId;
+    return getMailSync(accountId);
+  };
 
   useEffect(() => {
     setBodyErrors({});
@@ -302,7 +365,7 @@ export function MailScreen({
     void Promise.all(threadMessages.map(async (message) => {
       if (bodies[message.id]) return;
       try {
-        const result = await getMailSync().fetchBody(message.id);
+        const result = await getMailSync(message.accountId).fetchBody(message.id);
         if (!cancelled) {
           setBodies((prev) => ({ ...prev, [message.id]: result.text }));
           setBodyErrors((prev) => {
@@ -337,7 +400,7 @@ export function MailScreen({
     setMessages((prev) => prev.map((m) => (
       m.threadId === id ? { ...m, unread: false } : m
     )));
-    void getMailSync().setThreadRead(id, true);
+    void engineForThread(id).setThreadRead(id, true);
   };
 
   const toggleStar = (id: string) => {
@@ -347,7 +410,7 @@ export function MailScreen({
     setMessages((prev) => prev.map((m) => (
       m.threadId === id ? { ...m, starred } : m
     )));
-    void getMailSync().toggleThreadStar(id);
+    void engineForThread(id).toggleThreadStar(id);
   };
 
   const toggleRead = (id: string) => {
@@ -357,7 +420,7 @@ export function MailScreen({
     setMessages((prev) => prev.map((m) => (
       m.threadId === id ? { ...m, unread } : m
     )));
-    void getMailSync()
+    void engineForThread(id)
       .toggleThreadRead(id)
       .then(() => showToast(unread ? 'Marked unread' : 'Marked read'))
       .catch(async (err) => {
@@ -368,7 +431,7 @@ export function MailScreen({
 
   const archiveThread = (id: string) => {
     setMessages((prev) => prev.filter((m) => m.threadId !== id));
-    void getMailSync()
+    void engineForThread(id)
       .archiveThread(id)
       .then((result) => {
         if (result.serverChanged) {
@@ -389,7 +452,7 @@ export function MailScreen({
 
   const removeThread = (id: string) => {
     setMessages((prev) => prev.filter((m) => m.threadId !== id));
-    void getMailSync()
+    void engineForThread(id)
       .removeThread(id)
       .then((result) => {
         if (result.serverChanged) {
@@ -485,20 +548,15 @@ export function MailScreen({
    */
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    const sync = getMailSync();
-    void loadAccount()
-      .then((account) => {
-        if (account) {
-          return sync.start({
-            imap: account.imap,
-            auth: { user: account.email, password: account.password },
-          });
-        }
-        setSync((s) => ({ ...s, phase: 'offline' }));
-        return undefined;
-      })
-      .finally(() => setRefreshing(false));
-  }, []);
+    const targets = accountFilter === 'all'
+      ? accounts
+      : accounts.filter((account) => account.id === accountFilter);
+    void Promise.all(targets.map((account) => getMailSync(account.id).start({
+      imap: account.imap,
+      smtp: account.smtp,
+      auth: { user: account.email, password: account.password },
+    }))).finally(() => setRefreshing(false));
+  }, [accountFilter, accounts]);
 
   const showToast = (text: string, ok = true, undoId?: string | null) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -526,7 +584,7 @@ export function MailScreen({
       return;
     }
     const subject = selected?.subject ?? 'New message';
-    void getMailSync()
+    void getMailSync(selected?.accountId)
       .send({ to: selected?.fromAddress ?? '', subject, text })
       .then(() => {
         showToast('Message sent');
@@ -543,6 +601,11 @@ export function MailScreen({
     setComposeSubject('');
     setComposeBody('');
     setComposeDraftId(null);
+    setComposeAccountId(
+      accountFilter === 'all'
+        ? accounts.find((account) => account.primary)?.id ?? accounts[0]?.id
+        : accountFilter,
+    );
     setView('compose');
   };
 
@@ -570,7 +633,7 @@ export function MailScreen({
     setSending(true);
     const editedDraftId = composeDraftId;
     try {
-      await getMailSync().send({
+      await getMailSync(composeAccountId ?? selected?.accountId).send({
         to,
         cc: cc.length > 0 ? cc : undefined,
         subject: composeSubject.trim() || '(no subject)',
@@ -649,6 +712,12 @@ export function MailScreen({
     return (
       <View style={styles.screen}>
         {header}
+        <AccountChips
+          accounts={accounts}
+          value={accountFilter}
+          onChange={setAccountFilter}
+          unreadCounts={unreadByAccount}
+        />
         <SearchBar
           value={query}
           onChangeText={setQuery}
@@ -681,19 +750,40 @@ export function MailScreen({
             {serverSearching ? ' · searching server…' : ''}
           </Text>
         )}
-        <SyncBanner
-          phase={sync.phase}
-          progress={sync.progress}
-          imported={sync.imported}
-          cappedAt={sync.cappedAt}
-          error={sync.error}
-        />
+        {(accountFilter === 'all'
+          ? accounts
+          : accounts.filter((account) => account.id === accountFilter)
+        ).map((account) => {
+          const state = syncByAccount[account.id] ?? INITIAL_SYNC_STATE;
+          const worthShowing = accountFilter !== 'all'
+            || (state.phase !== 'idle' && state.phase !== 'idle-watching')
+            || !!state.error
+            || state.cappedAt !== null;
+          if (!worthShowing) return null;
+          return (
+            <View key={account.id}>
+              {accounts.length > 1 && (
+                <Text style={styles.syncAccount} numberOfLines={1}>{account.email}</Text>
+              )}
+              <SyncBanner
+                phase={state.phase}
+                progress={state.progress}
+                imported={state.imported}
+                cappedAt={state.cappedAt}
+                error={state.error}
+              />
+            </View>
+          );
+        })}
         <FlatList
           data={visible}
           keyExtractor={(m) => m.id}
           renderItem={({ item }) => (
             <ThreadRow
               thread={item}
+              accountLabel={accounts.length > 1 && accountFilter === 'all'
+                ? shortAccount(accounts.find((account) => account.id === item.accountId)?.email)
+                : undefined}
               onPress={openThread}
               onToggleStar={toggleStar}
               onToggleRead={toggleRead}
@@ -959,6 +1049,12 @@ const styles = themedStyles(() => ({
     paddingTop: spacing.sm,
   },
   serverHint: { flex: 1, ...typography.caption, color: colors.textSubtle },
+  syncAccount: {
+    ...typography.label,
+    color: colors.textSubtle,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+  },
   resultCount: {
     ...typography.caption,
     color: colors.textMuted,

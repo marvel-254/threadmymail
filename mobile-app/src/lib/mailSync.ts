@@ -24,6 +24,7 @@ import {
   sinceDate,
   threadIdFor,
   toStoredMessage,
+  uidFromMessageId,
   type Message,
   type SyncState,
 } from './mail';
@@ -36,7 +37,7 @@ import {
   updateFlags,
   upsertMessages,
 } from './mailStore';
-import { logActivity, setMailUndoHandler } from './agent/activityStore';
+import { logActivity, type UndoPayload } from './agent/activityStore';
 import { notifyNewMessages } from './notifications';
 import type { BridgeAccount, BridgeMailbox, MailBridge } from './mailBridge';
 import type { MessageHeader } from 'react-native-mail-engine';
@@ -73,97 +74,103 @@ export class MailSync {
   /** Resolved once per connection: Archive/Trash paths from LIST special-use flags. */
   private folderCache: { archive?: string | null; trash?: string | null } = {};
 
-  constructor(bridge: MailBridge) {
+  constructor(
+    bridge: MailBridge,
+    /** Legacy keeps numeric ids/thread fallbacks so existing caches still match. */
+    readonly accountId = 'legacy',
+  ) {
     this.bridge = bridge;
-    // Undo restores the cached flags through mailStore, then best-effort on the
-    // server via the live mailbox. If no account is connected the local half
-    // still succeeds.
-    setMailUndoHandler(async (payload) => {
-      if (payload.kind === 'mail_restore') {
-        await upsertMessages([payload.message]);
-        const uid = Number(payload.message.id);
-        if (!this.mailbox || !Number.isFinite(uid)) return;
-        try {
-          if (payload.operation === 'move') {
-            await this.mailbox.moveMessages([uid], payload.folder);
-          } else {
-            await this.mailbox.removeFlags([uid], ['\\Deleted']);
-          }
-        } catch {
-          // Local Undo already succeeded; server Undo is best-effort.
-        }
-        return;
-      }
+  }
 
-      if (payload.kind === 'mail_thread_restore') {
-        await upsertMessages(payload.messages);
-        const uids = payload.messages
-          .map((message) => Number(message.id))
-          .filter((uid) => Number.isFinite(uid));
-        if (!this.mailbox || uids.length === 0) return;
-        try {
-          if (payload.operation === 'move') {
-            await this.mailbox.moveMessages(uids, payload.folder);
-          } else {
-            await this.mailbox.removeFlags(uids, ['\\Deleted']);
-          }
-        } catch {
-          // Local Undo already succeeded; server Undo is best-effort.
-        }
-        return;
-      }
-
-      if (payload.kind === 'mail_thread_flags') {
-        for (const item of payload.items) {
-          await updateFlags(item.messageId, {
-            unread: item.unread,
-            starred: item.starred,
-          });
-        }
-        if (!this.mailbox) return;
-        try {
-          for (const item of payload.items) {
-            const uid = Number(item.messageId);
-            if (!Number.isFinite(uid)) continue;
-            if (item.unread !== undefined) {
-              await this.mailbox.markSeen([uid], !item.unread);
-            }
-            if (item.starred !== undefined) {
-              if (item.starred) {
-                await this.mailbox.addFlags([uid], ['\\Flagged']);
-              } else {
-                await this.mailbox.removeFlags([uid], ['\\Flagged']);
-              }
-            }
-          }
-        } catch {
-          // Local Undo already succeeded; server Undo is best-effort.
-        }
-        return;
-      }
-
-      await updateFlags(payload.messageId, {
-        unread: payload.unread,
-        starred: payload.starred,
-        needsReply: payload.needsReply,
-      });
-      const uid = Number(payload.messageId);
+  /**
+   * Undo a logged mail action. Routes to this account's live mailbox when it
+   * is connected; the local half always succeeds through mailStore.
+   */
+  async restoreUndo(payload: UndoPayload): Promise<void> {
+    if (payload.kind === 'mail_restore') {
+      await upsertMessages([payload.message]);
+      const uid = uidFromMessageId(payload.message.id);
       if (!this.mailbox || !Number.isFinite(uid)) return;
       try {
-        if (payload.unread !== undefined) {
-          await this.mailbox.markSeen([uid], !payload.unread);
+        if (payload.operation === 'move') {
+          await this.mailbox.moveMessages([uid], payload.folder);
+        } else {
+          await this.mailbox.removeFlags([uid], ['\\Deleted']);
         }
-        if (payload.starred !== undefined) {
-          if (payload.starred) {
-            await this.mailbox.addFlags([uid], ['\\Flagged']);
-          } else {
-            await this.mailbox.removeFlags([uid], ['\\Flagged']);
+      } catch {
+        // Local Undo already succeeded; server Undo is best-effort.
+      }
+      return;
+    }
+
+    if (payload.kind === 'mail_thread_restore') {
+      await upsertMessages(payload.messages);
+      const uids = payload.messages
+        .map((message) => uidFromMessageId(message.id))
+        .filter((uid) => Number.isFinite(uid));
+      if (!this.mailbox || uids.length === 0) return;
+      try {
+        if (payload.operation === 'move') {
+          await this.mailbox.moveMessages(uids, payload.folder);
+        } else {
+          await this.mailbox.removeFlags(uids, ['\\Deleted']);
+        }
+      } catch {
+        // Local Undo already succeeded; server Undo is best-effort.
+      }
+      return;
+    }
+
+    if (payload.kind === 'mail_thread_flags') {
+      for (const item of payload.items) {
+        await updateFlags(item.messageId, {
+          unread: item.unread,
+          starred: item.starred,
+        });
+      }
+      if (!this.mailbox) return;
+      try {
+        for (const item of payload.items) {
+          const uid = uidFromMessageId(item.messageId);
+          if (!Number.isFinite(uid)) continue;
+          if (item.unread !== undefined) {
+            await this.mailbox.markSeen([uid], !item.unread);
+          }
+          if (item.starred !== undefined) {
+            if (item.starred) {
+              await this.mailbox.addFlags([uid], ['\\Flagged']);
+            } else {
+              await this.mailbox.removeFlags([uid], ['\\Flagged']);
+            }
           }
         }
       } catch {
-        // Local Undo already succeeded; server flags are best-effort.
+        // Local Undo already succeeded; server Undo is best-effort.
       }
+      return;
+    }
+
+    await updateFlags(payload.messageId, {
+      unread: payload.unread,
+      starred: payload.starred,
+      needsReply: payload.needsReply,
     });
+    const uid = uidFromMessageId(payload.messageId);
+    if (!this.mailbox || !Number.isFinite(uid)) return;
+    try {
+      if (payload.unread !== undefined) {
+        await this.mailbox.markSeen([uid], !payload.unread);
+      }
+      if (payload.starred !== undefined) {
+        if (payload.starred) {
+          await this.mailbox.addFlags([uid], ['\\Flagged']);
+        } else {
+          await this.mailbox.removeFlags([uid], ['\\Flagged']);
+        }
+      }
+    } catch {
+      // Local Undo already succeeded; server flags are best-effort.
+    }
   }
 
   /** Subscribe to state + message changes. Returns an unsubscribe fn. */
@@ -241,10 +248,15 @@ export class MailSync {
     }
   }
 
+  private messageId(uid: number): string {
+    return this.accountId === 'legacy' ? String(uid) : `${this.accountId}:${uid}`;
+  }
+
   /** Map an IMAP envelope to the header-only row the cache stores. */
   private headerToMessage(h: MessageHeader): Message {
     return toStoredMessage({
-      id: String(h.uid),
+      id: this.messageId(h.uid),
+      accountId: this.accountId,
       threadId: threadIdFor({
         messageId: h.messageId,
         inReplyTo: h.inReplyTo,
@@ -252,6 +264,7 @@ export class MailSync {
         subject: h.subject,
         fromAddress: h.from[0]?.email,
         date: h.date ? new Date(h.date).toISOString() : undefined,
+        accountId: this.accountId === 'legacy' ? undefined : this.accountId,
       }),
       from: h.from[0]?.name || h.from[0]?.email || 'Unknown',
       fromAddress: h.from[0]?.email ?? '',
@@ -355,7 +368,7 @@ export class MailSync {
   async markRead(id: string): Promise<void> {
     const before = await loadMessage(id);
     await markRead(id);
-    const uid = Number(id);
+    const uid = uidFromMessageId(id);
     if (this.mailbox && Number.isFinite(uid)) {
       try {
         await this.mailbox.markSeen([uid], true);
@@ -384,7 +397,7 @@ export class MailSync {
     if (!msg) return;
     const nextStarred = !msg.starred;
     await setStarred(id, nextStarred);
-    const uid = Number(id);
+    const uid = uidFromMessageId(id);
     if (this.mailbox && Number.isFinite(uid)) {
       try {
         if (nextStarred) {
@@ -414,7 +427,7 @@ export class MailSync {
     if (!before) return;
     const unread = !before.unread;
     await updateFlags(id, { unread });
-    const uid = Number(id);
+    const uid = uidFromMessageId(id);
     if (this.mailbox && Number.isFinite(uid)) {
       try {
         await this.mailbox.markSeen([uid], !unread);
@@ -448,7 +461,7 @@ export class MailSync {
       await updateFlags(message.id, { unread: !read });
     }
     const uids = changed
-      .map((message) => Number(message.id))
+      .map((message) => uidFromMessageId(message.id))
       .filter((uid) => Number.isFinite(uid));
     if (this.mailbox && uids.length > 0) {
       try {
@@ -493,7 +506,7 @@ export class MailSync {
       await updateFlags(message.id, { starred });
     }
     const uids = messages
-      .map((message) => Number(message.id))
+      .map((message) => uidFromMessageId(message.id))
       .filter((uid) => Number.isFinite(uid));
     if (this.mailbox && uids.length > 0) {
       try {
@@ -549,7 +562,7 @@ export class MailSync {
     if (!first) return { activityId: null, serverChanged: false, error: 'Conversation not found.' };
 
     const uids = messages
-      .map((message) => Number(message.id))
+      .map((message) => uidFromMessageId(message.id))
       .filter((uid) => Number.isFinite(uid));
     let serverChanged = false;
     let operation: 'move' | 'delete' = 'move';
@@ -611,7 +624,7 @@ export class MailSync {
     const message = await loadMessage(id);
     if (!message) return { activityId: null, serverChanged: false, error: 'Message not found.' };
 
-    const uid = Number(id);
+    const uid = uidFromMessageId(id);
     let serverChanged = false;
     let error: string | undefined;
     if (this.mailbox && Number.isFinite(uid)) {
@@ -656,7 +669,7 @@ export class MailSync {
     const message = await loadMessage(id);
     if (!message) return { activityId: null, serverChanged: false, error: 'Message not found.' };
 
-    const uid = Number(id);
+    const uid = uidFromMessageId(id);
     let serverChanged = false;
     let operation: 'move' | 'delete' = 'move';
     let error: string | undefined;
@@ -782,7 +795,7 @@ export class MailSync {
     const cached = this.bodyCache.get(id);
     if (cached) return cached;
     if (!this.mailbox) throw new Error('Not connected — showing the cached preview.');
-    const uid = Number(id);
+    const uid = uidFromMessageId(id);
     if (!Number.isInteger(uid) || uid <= 0) {
       throw new Error('This message has no IMAP UID to fetch.');
     }

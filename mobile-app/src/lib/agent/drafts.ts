@@ -12,6 +12,7 @@
 import { checkGuardrails, consumeAiCall } from '../guardrails';
 import { streamChat } from '../aiClient';
 import { getMailSync } from '../mailSyncSingleton';
+import { loadMessage } from '../mailStore';
 import type { Message } from '../mail';
 import { logActivity } from './activityStore';
 import {
@@ -252,7 +253,8 @@ export async function sendDraft(draft: Draft): Promise<DraftActionResult> {
   }
 
   try {
-    await getMailSync().send({
+    const message = draft.messageId ? await loadMessage(draft.messageId) : null;
+    await getMailSync(message?.accountId).send({
       to: draft.to,
       subject: draft.subject,
       text: draft.body,

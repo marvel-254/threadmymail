@@ -19,10 +19,14 @@ import {
   testProvider, maskKey, type SavedProvider,
 } from '../lib/providerStore';
 import {
-  EMAIL_PROVIDERS, clearAccount, loadAccount, saveAccount,
+  EMAIL_PROVIDERS, loadAccounts, removeAccount, saveAccount, setPrimaryAccount,
   type AccountConfig,
 } from '../lib/accountStore';
-import { getMailSync } from '../lib/mailSyncSingleton';
+import {
+  getMailSync,
+  registerMailAccounts,
+  removeMailSync,
+} from '../lib/mailSyncSingleton';
 import {
   DEFAULT_DAILY_ACTION_LIMIT,
   DEFAULT_DAILY_AI_CALL_LIMIT,
@@ -75,7 +79,7 @@ export function SettingsScreen() {
     setConfirm({ title, body, action });
 
   // ── Email account ───────────────────────────────────────────────────────
-  const [account, setAccount] = useState<AccountConfig | null>(null);
+  const [accounts, setAccounts] = useState<AccountConfig[]>([]);
   const [showConnect, setShowConnect] = useState(false);
   const [emailProviderId, setEmailProviderId] = useState(EMAIL_PROVIDERS[0].id);
   const [emailAddress, setEmailAddress] = useState('');
@@ -87,7 +91,12 @@ export function SettingsScreen() {
   const [connecting, setConnecting] = useState(false);
   const [connectResult, setConnectResult] = useState<{ ok: boolean; detail: string } | null>(null);
 
-  useEffect(() => { void loadAccount().then(setAccount); }, []);
+  useEffect(() => {
+    void loadAccounts().then((saved) => {
+      setAccounts(saved);
+      registerMailAccounts(saved);
+    });
+  }, []);
 
   const connectAccount = async () => {
     if (!emailAddress.trim() || !emailPassword) {
@@ -118,23 +127,39 @@ export function SettingsScreen() {
         customSmtpHost: emailProviderId === 'custom' ? customSmtpHost.trim() : undefined,
         customSmtpPort: emailProviderId === 'custom' ? Number(customSmtpPort) : undefined,
       });
-      setAccount(saved);
+      const next = await loadAccounts();
+      setAccounts(next);
+      registerMailAccounts(next);
       setShowConnect(false);
+      setEmailPassword('');
       toast('Email connected');
-      void getMailSync().start({ imap: saved.imap, smtp: saved.smtp, auth: { user: saved.email, password: saved.password } });
+      void getMailSync(saved.id).start({ imap: saved.imap, smtp: saved.smtp, auth: { user: saved.email, password: saved.password } });
     } catch (err) {
       setConnectResult({ ok: false, detail: err instanceof Error ? err.message : 'Could not save.' });
     } finally { setConnecting(false); }
   };
 
-  const disconnectAccount = () =>
-    ask('Disconnect email?', 'This removes the account from this device. Cached messages stay in the inbox.', async () => {
-      await clearAccount();
-      await getMailSync().stop();
-      setAccount(null);
-      setConfirm(null);
-      toast('Email disconnected');
-    });
+  const disconnectAccount = (account: AccountConfig) =>
+    ask(
+      `Disconnect ${account.email}?`,
+      'This removes the account from this device. Cached messages stay in the inbox.',
+      async () => {
+        await getMailSync(account.id).stop();
+        removeMailSync(account.id);
+        const next = await removeAccount(account.id);
+        setAccounts(next);
+        registerMailAccounts(next);
+        setConfirm(null);
+        toast('Email disconnected');
+      },
+    );
+
+  const makePrimary = async (account: AccountConfig) => {
+    const next = await setPrimaryAccount(account.id);
+    setAccounts(next);
+    registerMailAccounts(next);
+    toast(`${account.email} is now primary`);
+  };
 
   // ── AI providers ────────────────────────────────────────────────────────
   const [providers, setProviders] = useState<SavedProvider[]>([]);
@@ -392,28 +417,48 @@ export function SettingsScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Email account */}
-        <SectionLabel>Email account</SectionLabel>
-        {account ? (
+        <SectionLabel>Email accounts</SectionLabel>
+        {accounts.length === 0 && (
           <Card>
-            <Text style={styles.cardTitle}>{account.email}</Text>
+            <Text style={styles.cardTitle}>No account connected</Text>
+            <Text style={styles.cardSub}>180-day history import · Realtime IDLE sync</Text>
+          </Card>
+        )}
+        {accounts.map((account) => (
+          <Card key={account.id}>
+            <View style={styles.accountHead}>
+              <Text style={styles.cardTitle} numberOfLines={1}>{account.email}</Text>
+              {account.primary && (
+                <Text style={styles.primaryBadge}>Primary</Text>
+              )}
+            </View>
             <Text style={styles.cardSub}>
               {account.providerId === 'custom' ? 'Custom' : account.providerId}
               {' · IMAP '}{account.imap.host}:{account.imap.port}
               {' · SMTP '}{account.smtp.host}:{account.smtp.port}
             </Text>
             <View style={styles.cardActions}>
-              <Button label="Disconnect" variant="danger" onPress={disconnectAccount} />
+              {!account.primary && (
+                <Button
+                  label="Set primary"
+                  variant="secondary"
+                  onPress={() => void makePrimary(account)}
+                />
+              )}
+              <Button
+                label="Disconnect"
+                variant="danger"
+                onPress={() => disconnectAccount(account)}
+              />
             </View>
           </Card>
-        ) : (
-          <Card>
-            <Text style={styles.cardTitle}>No account connected</Text>
-            <Text style={styles.cardSub}>180-day history import · Realtime IDLE sync</Text>
-            <View style={styles.cardActions}>
-              <Button label="Connect" variant="secondary" onPress={() => setShowConnect(true)} />
-            </View>
-          </Card>
-        )}
+        ))}
+        <Button
+          label={accounts.length === 0 ? 'Connect account' : 'Add another account'}
+          variant="secondary"
+          onPress={() => setShowConnect(true)}
+          icon={<IconPlus size={18} color={colors.text} />}
+        />
 
         {/* Appearance */}
         <SectionLabel>Appearance</SectionLabel>
@@ -829,6 +874,16 @@ const styles = themedStyles(() => ({
   headerTitle: { ...typography.h3, color: colors.text },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl * 2 },
   cardTitle: { ...typography.body, color: colors.text, fontWeight: '600' },
+  accountHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  primaryBadge: {
+    ...typography.label,
+    fontSize: 9,
+    color: colors.textOnPrimary,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radii.pill,
+  },
   cardSub: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
   cardActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   setPrimaryBtn: { marginTop: spacing.sm, padding: spacing.md, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },

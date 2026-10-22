@@ -47,8 +47,12 @@ import {
 } from '../lib/agent/followUps';
 import { snoozeFollowUp } from '../lib/agent/followUpStore';
 import { loadSkills } from '../lib/skillsStore';
-import { loadAccount } from '../lib/accountStore';
-import { getMailSync } from '../lib/mailSyncSingleton';
+import { loadAccounts } from '../lib/accountStore';
+import {
+  getMailSync,
+  registerMailAccounts,
+  subscribeAllMailSync,
+} from '../lib/mailSyncSingleton';
 import {
   INITIAL_SYNC_STATE,
   type MailFilter,
@@ -128,9 +132,8 @@ export function TodayScreen({
       });
     };
     reload();
-    const engine = getMailSync();
-    setSync(engine.getState());
-    const unsubscribe = engine.subscribe((state) => {
+    setSync(getMailSync().getState());
+    const unsubscribe = subscribeAllMailSync((_accountId, state) => {
       if (!mounted) return;
       setSync(state);
       reload();
@@ -235,17 +238,18 @@ export function TodayScreen({
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    void loadAccount()
-      .then((account) => {
-        if (!account) {
+    void loadAccounts()
+      .then((accounts) => {
+        if (accounts.length === 0) {
           setSync((current) => ({ ...current, phase: 'offline' }));
           return undefined;
         }
-        return getMailSync().start({
+        registerMailAccounts(accounts);
+        return Promise.all(accounts.map((account) => getMailSync(account.id).start({
           imap: account.imap,
           smtp: account.smtp,
           auth: { user: account.email, password: account.password },
-        });
+        })));
       })
       .finally(() => setRefreshing(false));
   }, []);

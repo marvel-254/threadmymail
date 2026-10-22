@@ -35,7 +35,10 @@ export const MAX_IMPORT_BATCHES = 12; // 12 * 50 = 600 headers per run
 export type MailFilter = 'all' | 'unread' | 'needs_reply' | 'starred';
 
 export type Message = {
+  /** UID namespaced by account id for every account except the legacy one. */
   id: string;
+  /** Account that owns this message. */
+  accountId: string;
   threadId: string;
   from: string;
   fromAddress: string;
@@ -54,6 +57,7 @@ export type Message = {
 
 export type Thread = {
   id: string;
+  accountId: string;
   subject: string;
   participants: string[];
   lastDate: string;
@@ -85,17 +89,20 @@ export function threadIdFor(raw: {
   subject?: string | null;
   fromAddress?: string | null;
   date?: string | null;
+  /** Scope subject/fallback keys so equal subjects in two accounts never merge. */
+  accountId?: string | null;
 }): string {
   const cleanId = (value: string | null | undefined) =>
     value?.replace(/[<>]/g, '').trim() || null;
   const root = raw.references?.map(cleanId).find(Boolean)
     ?? cleanId(raw.inReplyTo)
     ?? cleanId(raw.messageId);
-  if (root) return `ref:${root}`;
+  const scope = raw.accountId ? `${raw.accountId}:` : '';
+  if (root) return `ref:${scope}${root}`;
 
   const subject = normalizeSubject(raw.subject ?? '').toLowerCase();
-  if (subject && subject !== '(no subject)') return `subj:${subject}`;
-  return `fallback:${(raw.fromAddress ?? '').toLowerCase()}:${(raw.date ?? '').slice(0, 10)}`;
+  if (subject && subject !== '(no subject)') return `subj:${scope}${subject}`;
+  return `fallback:${scope}${(raw.fromAddress ?? '').toLowerCase()}:${(raw.date ?? '').slice(0, 10)}`;
 }
 
 export type SyncState = {
@@ -124,6 +131,18 @@ export function sinceDate(days: number, now = new Date()): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Extract the owning account from a legacy numeric id or `accountId:uid`. */
+export function accountIdFromMessageId(id: string): string {
+  const separator = id.lastIndexOf(':');
+  return separator > 0 ? id.slice(0, separator) : 'legacy';
+}
+
+/** Extract the IMAP UID from a legacy numeric id or `accountId:uid`. */
+export function uidFromMessageId(id: string): number {
+  const tail = id.slice(id.lastIndexOf(':') + 1);
+  return Number(tail);
+}
+
 /**
  * Reduce a fetched message to what we are willing to store. This is the single
  * place where the bloat rule is enforced — if a field is not listed here, it
@@ -131,6 +150,7 @@ export function sinceDate(days: number, now = new Date()): string {
  */
 export function toStoredMessage(raw: {
   id: string;
+  accountId: string;
   threadId: string;
   from: string;
   fromAddress: string;
@@ -144,6 +164,7 @@ export function toStoredMessage(raw: {
 }): Message {
   return {
     id: raw.id,
+    accountId: raw.accountId,
     threadId: raw.threadId,
     from: raw.from,
     fromAddress: raw.fromAddress,
@@ -183,6 +204,7 @@ export function buildThreads(messages: Message[]): Thread[] {
       const sorted = [...msgs].sort((a, b) => b.date.localeCompare(a.date));
       return {
         id,
+        accountId: sorted[0].accountId,
         subject: sorted[0].subject,
         participants: [...new Set(sorted.map((m) => m.from))],
         lastDate: sorted[0].date,

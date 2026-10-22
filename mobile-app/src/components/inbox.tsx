@@ -105,6 +105,68 @@ export function FilterChips({ value, onChange, counts }: FilterChipsProps) {
   );
 }
 
+/* ── Account switcher ──────────────────────────────────────────────────── */
+type AccountOption = { id: string; email: string; primary: boolean };
+
+type AccountChipsProps = {
+  accounts: AccountOption[];
+  value: string;
+  onChange: (accountId: string) => void;
+  unreadCounts: Record<string, number>;
+};
+
+export function AccountChips({ accounts, value, onChange, unreadCounts }: AccountChipsProps) {
+  if (accounts.length === 0) return null;
+  const totalUnread = accounts.reduce(
+    (sum, account) => sum + (unreadCounts[account.id] ?? 0),
+    0,
+  );
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.accountScroll}
+      contentContainerStyle={styles.accountRow}
+    >
+      {accounts.length > 1 && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ selected: value === 'all' }}
+          onPress={() => onChange('all')}
+          style={[styles.accountChip, value === 'all' && styles.accountChipActive]}
+        >
+          <Text style={[styles.accountChipText, value === 'all' && styles.accountChipTextActive]}>
+            All accounts{totalUnread > 0 ? ` ${totalUnread}` : ''}
+          </Text>
+        </Pressable>
+      )}
+      {accounts.map((account) => {
+        const active = value === account.id || (accounts.length === 1 && value === 'all');
+        const unread = unreadCounts[account.id] ?? 0;
+        return (
+          <Pressable
+            key={account.id}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={`${account.email}${unread > 0 ? `, ${unread} unread` : ''}`}
+            onPress={() => onChange(account.id)}
+            style={[styles.accountChip, active && styles.accountChipActive]}
+          >
+            {account.primary && <View style={styles.accountDot} />}
+            <Text
+              style={[styles.accountChipText, active && styles.accountChipTextActive]}
+              numberOfLines={1}
+            >
+              {account.email}
+              {unread > 0 ? ` ${unread}` : ''}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 /* ── Recent searches ───────────────────────────────────────────────────── */
 type RecentSearchesProps = {
   items: string[];
@@ -154,6 +216,7 @@ const SWIPE_TRIGGER = 64;
 
 type ThreadRowProps = {
   thread: Thread;
+  accountLabel?: string;
   onPress: (threadId: string) => void;
   onToggleStar: (threadId: string) => void;
   onToggleRead: (threadId: string) => void;
@@ -176,6 +239,7 @@ export function ThreadRow({
   onArchive,
   onDelete,
   onShowActions,
+  accountLabel,
 }: ThreadRowProps) {
   const translateX = useRef(new Animated.Value(0)).current;
   const opened = useRef(false);
@@ -324,6 +388,9 @@ export function ThreadRow({
               >
                 {participantLabel(thread.participants)}
               </Text>
+              {accountLabel ? (
+                <Text style={styles.accountTag} numberOfLines={1}>{accountLabel}</Text>
+              ) : null}
               <Text style={styles.rowDate}>{formatListTime(thread.lastDate)}</Text>
             </View>
 
@@ -528,6 +595,41 @@ const styles = themedStyles(() => ({
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { ...typography.caption, color: colors.textMuted },
   chipTextActive: { color: colors.textOnPrimary, fontWeight: '600' },
+
+  accountScroll: { flexGrow: 0 },
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  accountChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: 220,
+    minHeight: 32,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  accountChipActive: { borderColor: colors.primary, backgroundColor: colors.surfaceStrong },
+  accountChipText: { ...typography.caption, color: colors.textMuted },
+  accountChipTextActive: { color: colors.primaryText, fontWeight: '600' },
+  accountDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
+  accountTag: {
+    ...typography.label,
+    fontSize: 9,
+    color: colors.accent,
+    backgroundColor: colors.accentBg,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: radii.sm,
+    maxWidth: 96,
+  },
 
   recentRow: {
     flexDirection: 'row',

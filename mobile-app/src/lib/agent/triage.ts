@@ -15,7 +15,7 @@
  * daily scheduler cannot retry in a loop.
  */
 import { useEffect, useState } from 'react';
-import { loadAccount } from '../accountStore';
+import { loadAccounts } from '../accountStore';
 import { streamChat } from '../aiClient';
 import { consumeAiCall, consumeTriageRun } from '../guardrails';
 import { loadMessages, markRead, setNeedsReply, setStarred } from '../mailStore';
@@ -138,16 +138,16 @@ async function skipRun(
 }
 
 async function candidates(): Promise<Message[]> {
-  const [messages, account, classified] = await Promise.all([
+  const [messages, accounts, classified] = await Promise.all([
     loadMessages(),
-    loadAccount(),
+    loadAccounts(),
     loadClassifiedMessageIds(),
   ]);
-  const ownAddress = account?.email.toLowerCase() ?? '';
+  const ownAddresses = new Set(accounts.map((account) => account.email.toLowerCase()));
   return messages
     .filter((m) => (
       m.unread
-      && m.fromAddress.toLowerCase() !== ownAddress
+      && !ownAddresses.has(m.fromAddress.toLowerCase())
       && !classified.has(m.id)
     ))
     .sort((a, b) => b.date.localeCompare(a.date))

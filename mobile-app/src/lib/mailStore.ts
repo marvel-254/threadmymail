@@ -28,6 +28,7 @@ function openDb(): Promise<SQLite.SQLiteDatabase> {
         PRAGMA journal_mode = WAL;
         CREATE TABLE IF NOT EXISTS messages (
           id TEXT PRIMARY KEY NOT NULL,
+          account_id TEXT NOT NULL DEFAULT 'legacy',
           thread_id TEXT NOT NULL,
           sender TEXT NOT NULL,
           sender_address TEXT NOT NULL,
@@ -41,16 +42,30 @@ function openDb(): Promise<SQLite.SQLiteDatabase> {
         );
         CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date DESC);
         CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
+        CREATE INDEX IF NOT EXISTS idx_messages_account_date ON messages(account_id, date DESC);
         CREATE TABLE IF NOT EXISTS mail_meta (
           key TEXT PRIMARY KEY NOT NULL,
           value TEXT NOT NULL
         );
       `);
+      await ensureAccountColumn(db);
       await migrateThreadIds(db);
       return db;
     });
   }
   return dbPromise;
+}
+
+/** Add the account column for caches created before multi-account support. */
+async function ensureAccountColumn(db: SQLite.SQLiteDatabase): Promise<void> {
+  const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(messages)');
+  if (columns.some((column) => column.name === 'account_id')) return;
+  await db.execAsync(
+    "ALTER TABLE messages ADD COLUMN account_id TEXT NOT NULL DEFAULT 'legacy'",
+  );
+  await db.execAsync(
+    'CREATE INDEX IF NOT EXISTS idx_messages_account_date ON messages(account_id, date DESC)',
+  );
 }
 
 /**
@@ -90,6 +105,7 @@ async function migrateThreadIds(db: SQLite.SQLiteDatabase): Promise<void> {
 function toRow(m: Message): BindParams {
   return {
     id: m.id,
+    account_id: m.accountId,
     thread_id: m.threadId,
     sender: m.from,
     sender_address: m.fromAddress,
@@ -106,6 +122,7 @@ function toRow(m: Message): BindParams {
 function fromRow(row: Record<string, unknown>): Message {
   return {
     id: String(row.id),
+    accountId: String(row.account_id ?? 'legacy'),
     threadId: String(row.thread_id),
     from: String(row.sender),
     fromAddress: String(row.sender_address),
@@ -126,9 +143,10 @@ export async function upsertMessages(messages: Message[]): Promise<{ cappedAt: n
     for (const m of messages) {
       const row = toRow(m);
       await db.runAsync(
-        `INSERT INTO messages (id, thread_id, sender, sender_address, subject, preview, date, unread, starred, needs_reply, has_attachment)
-         VALUES ($id, $thread_id, $sender, $sender_address, $subject, $preview, $date, $unread, $starred, $needs_reply, $has_attachment)
+        `INSERT INTO messages (id, account_id, thread_id, sender, sender_address, subject, preview, date, unread, starred, needs_reply, has_attachment)
+         VALUES ($id, $account_id, $thread_id, $sender, $sender_address, $subject, $preview, $date, $unread, $starred, $needs_reply, $has_attachment)
          ON CONFLICT(id) DO UPDATE SET
+           account_id = excluded.account_id,
            thread_id = excluded.thread_id,
            sender = excluded.sender,
            sender_address = excluded.sender_address,
@@ -159,12 +177,17 @@ export async function upsertMessages(messages: Message[]): Promise<{ cappedAt: n
   return { cappedAt: null };
 }
 
-/** Load all cached messages, newest first. */
-export async function loadMessages(): Promise<Message[]> {
+/** Load cached messages for one account, or every account when omitted. */
+export async function loadMessages(accountId?: string): Promise<Message[]> {
   const db = await openDb();
-  const rows = await db.getAllAsync<Record<string, unknown>>(
-    'SELECT * FROM messages ORDER BY date DESC',
-  );
+  const rows = accountId
+    ? await db.getAllAsync<Record<string, unknown>>(
+      'SELECT * FROM messages WHERE account_id = $account_id ORDER BY date DESC',
+      { $account_id: accountId },
+    )
+    : await db.getAllAsync<Record<string, unknown>>(
+      'SELECT * FROM messages ORDER BY date DESC',
+    );
   return rows.map(fromRow);
 }
 
@@ -232,18 +255,38 @@ export async function updateFlags(
   await db.runAsync(`UPDATE messages SET ${assignments.join(', ')} WHERE id = $id`, params);
 }
 
-/** Total cached count. */
-export async function countMessages(): Promise<number> {
+/** Total cached count, optionally for one account. */
+export async function countMessages(accountId?: string): Promise<number> {
   const db = await openDb();
-  const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM messages');
+  const row = accountId
+    ? await db.getFirstAsync<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM messages WHERE account_id = $account_id',
+      { $account_id: accountId },
+    )
+    : await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM messages');
   return row?.n ?? 0;
 }
 
 /** Unread cached count, used by the tab badge and launcher badge. */
-export async function countUnreadMessages(): Promise<number> {
+export async function countUnreadMessages(accountId?: string): Promise<number> {
   const db = await openDb();
-  const row = await db.getFirstAsync<{ n: number }>(
-    'SELECT COUNT(*) AS n FROM messages WHERE unread = 1',
-  );
+  const row = accountId
+    ? await db.getFirstAsync<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM messages WHERE unread = 1 AND account_id = $account_id',
+      { $account_id: accountId },
+    )
+    : await db.getFirstAsync<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM messages WHERE unread = 1',
+    );
   return row?.n ?? 0;
+}
+
+/** Unread cached counts keyed by account id, for the account switcher. */
+export async function countUnreadByAccount(): Promise<Record<string, number>> {
+  const db = await openDb();
+  const rows = await db.getAllAsync<{ account_id: string; n: number }>(
+    `SELECT account_id, COUNT(*) AS n FROM messages
+     WHERE unread = 1 GROUP BY account_id`,
+  );
+  return Object.fromEntries(rows.map((row) => [row.account_id, row.n]));
 }
