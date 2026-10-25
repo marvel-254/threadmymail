@@ -333,6 +333,7 @@ export default function Landing() {
           <MilloMark size={18} />
           <span style={{ fontWeight: 700 }}>ThreadMyMail</span>
           <div className="spacer" />
+          <Link to="/changelog">Changelog</Link>
           <a href="https://github.com/marvel-254/threadmymail/releases/latest/download/app-release.apk" download>Download</a>
           <Link to="/system">System</Link>
           <Link to="/docs">Docs</Link>

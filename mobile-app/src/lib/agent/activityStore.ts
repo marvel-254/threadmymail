@@ -40,11 +40,11 @@ export type MailThreadFlagsUndo = {
   kind: 'mail_thread_flags';
   /** Folder the thread was in when the flags changed. */
   folder?: string;
-  items: Array<{
+  items: {
     messageId: string;
     unread?: boolean;
     starred?: boolean;
-  }>;
+  }[];
 };
 
 export type MailThreadRestoreUndo = {
@@ -91,7 +91,7 @@ export type ActivityEntry = {
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
-function openDb(): Promise<SQLite.SQLiteDatabase> {
+export function openDb(): Promise<SQLite.SQLiteDatabase> {
   if (!dbPromise) {
     dbPromise = SQLite.openDatabaseAsync(DB_NAME).then(async (db) => {
       await db.execAsync(`
@@ -123,7 +123,7 @@ function openDb(): Promise<SQLite.SQLiteDatabase> {
 async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
   const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(agent_activity)');
   const names = new Set(columns.map((column) => column.name));
-  const additions: Array<[string, string]> = [
+  const additions: [string, string][] = [
     ['target_type', 'TEXT'],
     ['target_id', 'TEXT'],
     ['undo_payload', 'TEXT'],

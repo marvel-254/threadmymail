@@ -19,10 +19,13 @@
  */
 import { useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { File, Paths } from 'expo-file-system';
 
 const KILL_SWITCH_KEY = 'threadmymail.guardrails.killSwitch.v1';
 const SHADOW_MODE_KEY = 'threadmymail.guardrails.shadowMode.v1';
 const CONFIG_KEY = 'threadmymail.guardrails.config.v1';
+/** Shared with the Android Quick Settings tile and home-screen widget. */
+const KILL_SWITCH_FILE = 'kill-switch';
 
 export type GuardrailAction = 'outward' | 'ai_call' | 'notification' | 'scheduled' | 'manual';
 
@@ -142,6 +145,57 @@ export function getGuardrails(): GuardrailsState {
   return state;
 }
 
+function killSwitchFile(): File {
+  return new File(Paths.document, KILL_SWITCH_FILE);
+}
+
+/** Read the tile/widget copy of the kill switch, or null when it is unset. */
+function readSharedKillSwitch(): boolean | null {
+  try {
+    const file = killSwitchFile();
+    if (!file.exists) return null;
+    return file.textSync().trim() === '1';
+  } catch {
+    return null;
+  }
+}
+
+function writeSharedKillSwitch(value: boolean): void {
+  try {
+    const file = killSwitchFile();
+    if (!file.exists) file.create({ overwrite: true });
+    file.write(value ? '1' : '0');
+  } catch {
+    // Non-fatal: SecureStore remains the app's persisted copy.
+  }
+}
+
+async function persistKillSwitch(value: boolean): Promise<void> {
+  writeSharedKillSwitch(value);
+  try {
+    if (value) {
+      await SecureStore.setItemAsync(KILL_SWITCH_KEY, '1');
+    } else {
+      await SecureStore.deleteItemAsync(KILL_SWITCH_KEY);
+    }
+  } catch {
+    // Non-fatal: the in-memory state still gates this session.
+  }
+}
+
+/**
+ * Adopt a kill-switch change made by the Quick Settings tile while the app was
+ * in the background. Returns true when the in-app state changed.
+ */
+export function syncKillSwitchFromSharedFile(): boolean {
+  const shared = readSharedKillSwitch();
+  if (shared === null || shared === state.killSwitch) return false;
+  state = { ...state, killSwitch: shared };
+  emit();
+  void persistKillSwitch(shared);
+  return true;
+}
+
 export function subscribeGuardrails(listener: (next: GuardrailsState) => void): () => void {
   listeners.add(listener);
   return () => {
@@ -222,13 +276,17 @@ export function loadGuardrails(): Promise<void> {
       } catch {
         config = normalizeConfig(null);
       }
+      const sharedKill = readSharedKillSwitch();
+      const effectiveKill = sharedKill ?? kill === '1';
       state = {
         ...state,
         ...config,
-        killSwitch: kill === '1',
+        killSwitch: effectiveKill,
         shadowMode: shadow === '1',
         loaded: true,
       };
+      // Seed the shared file on first run so the tile has a state to show.
+      if (sharedKill === null) writeSharedKillSwitch(effectiveKill);
       if (resetBudgetIfNewDay()) void persistConfig();
     } catch {
       // Fail closed: `loaded` stays false so the gates refuse to act, and the
@@ -243,16 +301,9 @@ export function loadGuardrails(): Promise<void> {
 
 export async function setKillSwitch(value: boolean): Promise<void> {
   state = { ...state, killSwitch: value };
+  writeSharedKillSwitch(value);
   emit();
-  try {
-    if (value) {
-      await SecureStore.setItemAsync(KILL_SWITCH_KEY, '1');
-    } else {
-      await SecureStore.deleteItemAsync(KILL_SWITCH_KEY);
-    }
-  } catch {
-    // Non-fatal: the in-memory state still gates this session.
-  }
+  await persistKillSwitch(value);
 }
 
 export async function setShadowMode(value: boolean): Promise<void> {

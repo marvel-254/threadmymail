@@ -21,7 +21,7 @@ const DB_NAME = 'threadmymail.db';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
-function openDb(): Promise<SQLite.SQLiteDatabase> {
+export function openDb(): Promise<SQLite.SQLiteDatabase> {
   if (!dbPromise) {
     dbPromise = SQLite.openDatabaseAsync(DB_NAME).then(async (db) => {
       await db.execAsync(`

@@ -6,11 +6,8 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
+    "scheme": "threadmymail",
     "backgroundColor": "#0B1326",
-    "splash": {
-      "backgroundColor": "#0B1326",
-      "resizeMode": "contain"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.threadmymail.app"
@@ -33,11 +30,37 @@
       "expo-sqlite",
       "expo-secure-store",
       "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0B1326",
+          "resizeMode": "contain"
+        }
+      ],
       "react-native-mail-engine",
       "./plugins/withMailEngineLink",
       "./plugins/withAndroidReleaseSigning",
       "expo-video",
-      "./plugins/withAndroidPackagingPickFirsts"
+      "./plugins/withAndroidPackagingPickFirsts",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "Millo",
+              "label": "Millo",
+              "description": "Unread and needs-your-eye counts, one-tap triage, and the kill switch.",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ],
+      "./plugins/withKillSwitchTile",
+      "expo-splash-screen"
     ]
   }
 }

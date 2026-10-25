@@ -28,7 +28,7 @@ const PAGE_SIZE = 50;
 
 type Filter = 'all' | 'agent' | 'errors';
 
-const FILTERS: Array<{ id: Filter; label: string }> = [
+const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'agent', label: 'Agent' },
   { id: 'errors', label: 'Errors' },

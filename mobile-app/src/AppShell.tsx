@@ -14,6 +14,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
+  Linking,
   Text,
   View,
 } from 'react-native';
@@ -38,7 +40,11 @@ import {
   loadNotificationPrefs,
   setAppBadgeCount,
 } from './lib/notifications';
-import { loadGuardrails, useGuardrails } from './lib/guardrails';
+import {
+  loadGuardrails,
+  syncKillSwitchFromSharedFile,
+  useGuardrails,
+} from './lib/guardrails';
 import {
   startTriageScheduler,
   stopTriageScheduler,
@@ -48,6 +54,7 @@ import {
   stopFollowUpScheduler,
 } from './lib/agent/followUpScheduler';
 import { isOnboarded, setOnboarded } from './lib/prefs';
+import { refreshMilloWidget } from './widgets/widgetSync';
 import type { MailFilter } from './lib/mail';
 import { themedStyles, colors, typography } from './theme/theme';
 
@@ -113,6 +120,15 @@ export function AppShell() {
     };
   }, [onboarded]);
 
+  // The Quick Settings tile writes the same kill-switch state to a shared file
+  // while the app is in the background. Adopt it when the app comes forward.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') syncKillSwitchFromSharedFile();
+    });
+    return () => subscription.remove();
+  }, []);
+
   // Keep the tab badge and launcher badge in step with the cached unread count.
   // MailSync emits after imports, IDLE pushes, and local read/star/delete actions.
   useEffect(() => {
@@ -138,6 +154,24 @@ export function AppShell() {
       unsubscribe();
     };
   }, [onboarded]);
+
+  // Keep the home-screen widget's counts and pause state current.
+  useEffect(() => {
+    if (!onboarded) return;
+    void refreshMilloWidget();
+  }, [onboarded, unreadCount, guardrails.killSwitch, guardrails.shadowMode]);
+
+  // Widget taps use threadmymail:// deep links so they can land on Today even
+  // when the app was not running.
+  useEffect(() => {
+    const openUrl = (url: string | null) => {
+      if (!url || !url.startsWith('threadmymail://today')) return;
+      setTab('today');
+    };
+    void Linking.getInitialURL().then(openUrl);
+    const subscription = Linking.addEventListener('url', (event) => openUrl(event.url));
+    return () => subscription.remove();
+  }, []);
 
   // Ask for the OS notification permission once the app is configured. The
   // first-run prompt is the only reliable moment before mail starts arriving.

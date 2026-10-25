@@ -17,7 +17,7 @@
 import { useEffect, useState } from 'react';
 import { loadAccounts } from '../accountStore';
 import { streamChat } from '../aiClient';
-import { consumeAiCall, consumeTriageRun } from '../guardrails';
+import { consumeAiCall, consumeTriageRun, isQuietHours, loadGuardrails } from '../guardrails';
 import { loadMessages, markRead, setNeedsReply, setStarred } from '../mailStore';
 import { getEnabledSkillIds } from '../skillsStore';
 import type { Message } from '../mail';
@@ -348,6 +348,18 @@ function summarize(input: {
     ? ` Stopped early: ${input.error}`
     : '';
   return `${prefix}${base}${tail}${stopped}`;
+}
+
+/**
+ * A home-screen widget tap is still a deliberate request, but it should not
+ * wake the classifier during quiet hours the way an in-app tap can.
+ */
+export async function runTriageFromWidget(): Promise<TriageRunResult> {
+  await loadGuardrails();
+  if (isQuietHours()) {
+    return skipRun('manual', 'Quiet hours are active.');
+  }
+  return runTriage({ trigger: 'manual' });
 }
 
 export async function runTriage(

@@ -136,7 +136,7 @@ export async function finishTriageRun(input: {
 
 export async function saveTriageResults(
   runId: string,
-  results: Array<{ messageId: string; verdict: TriageVerdict; reason: string }>,
+  results: { messageId: string; verdict: TriageVerdict; reason: string }[],
 ): Promise<void> {
   if (results.length === 0) return;
   const db = await openDb();

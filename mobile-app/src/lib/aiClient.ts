@@ -86,7 +86,7 @@ function buildBody(
   // Anthropic requires the system prompt separate from the turn list and
   // alternating user/assistant roles. Merge any consecutive same-role turns.
   const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
-  const turns: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  const turns: { role: 'user' | 'assistant'; content: string }[] = [];
   for (const message of messages) {
     if (message.role === 'system') continue;
     const role = message.role === 'assistant' ? 'assistant' : 'user';
@@ -166,7 +166,7 @@ type TokenSink = (token: string) => void;
 function extractToken(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return '';
   const obj = payload as {
-    choices?: Array<{ delta?: { content?: string | null }; text?: string }>;
+    choices?: { delta?: { content?: string | null }; text?: string }[];
     delta?: { text?: string };
     type?: string;
   };
@@ -182,8 +182,8 @@ function extractToken(payload: unknown): string {
 function extractMessageText(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return '';
   const obj = payload as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-    content?: Array<{ type?: string; text?: string }>;
+    choices?: { message?: { content?: string | null } }[];
+    content?: { type?: string; text?: string }[];
   };
   const openAi = obj.choices?.[0]?.message?.content;
   if (typeof openAi === 'string') return openAi;

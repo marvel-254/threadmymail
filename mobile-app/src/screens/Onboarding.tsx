@@ -12,8 +12,7 @@ import {
   Switch,
   Text,
   View,
-} from 'react-native';
-import { ImageBackground } from 'react-native';
+ ImageBackground } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Button } from '../components/ui';
 import { Field } from '../components/settings';

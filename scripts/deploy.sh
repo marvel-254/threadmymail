@@ -209,9 +209,9 @@ if [ "$SKIP_FRONTEND" = 0 ]; then
   else
     fail "CORS does not allow $origin (got '${acao:-<none>}') — the published frontend cannot call the API"
   fi
-  code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' "$origin/app")"
-  [ "$code" = "200" ] || fail "$origin/app returned $code"
-  echo "  frontend /app 200 ✓"
+  code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' "$APP_ORIGIN/changelog")"
+  [ "$code" = "200" ] || fail "$APP_ORIGIN/changelog returned $code"
+  echo "  custom-domain /changelog 200 ✓"
   custom_code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' "$APP_ORIGIN/privacy")"
   [ "$custom_code" = "200" ] || fail "$APP_ORIGIN/privacy returned $custom_code"
   echo "  custom-domain privacy page 200 ✓"
@@ -246,7 +246,7 @@ if [ "$SKIP_FRONTEND" = 0 ]; then
 fi
 
 printf '\n\033[32mDeployed and verified.\033[0m  %s\n' "$API_ORIGIN"
-echo "App: ${APP_ORIGIN}/app"
+echo "App: ${APP_ORIGIN}/changelog"
 echo
 echo "Note: database migrations are not run by this script."
 echo "      node apps/worker/scripts/db-push.mjs <file.sql> --dry-run   # inspect first"

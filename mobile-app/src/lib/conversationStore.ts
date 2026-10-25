@@ -139,7 +139,7 @@ export async function saveMessage(message: Omit<Message, 'createdAt'> & { create
   await db.runAsync('UPDATE conversations SET updated_at = ? WHERE id = ?', [createdAt, message.conversationId]);
 }
 
-export async function saveMessages(messages: Array<Omit<Message, 'createdAt'> & { createdAt?: number }>): Promise<void> {
+export async function saveMessages(messages: (Omit<Message, 'createdAt'> & { createdAt?: number })[]): Promise<void> {
   const db = await getConversationDb();
   await db.withTransactionAsync(async () => {
     for (const msg of messages) {
