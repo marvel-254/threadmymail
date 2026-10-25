@@ -238,6 +238,51 @@ Append here after any session that changes code or docs. Keep it short: what
 changed, how it was verified, what is left. This is how the next agent picks up
 without re-deriving anything.
 
+### 2026-10-25 — widget + kill-switch tile shipped, APK v3.0.1 artifact built
+
+**Started from:** the post-v3.0.0 working tree (handoff 2026-10-21). This
+session finished, verified, and shipped the widget / kill-switch / changelog
+work.
+
+**Shipped:**
+- **Home-screen Millo widget** (`mobile-app/src/widgets/`) — unread and
+  needs-your-eye counts, one-tap triage, kill-switch toggle — via
+  `react-native-android-widget`; taps deep-link back to Today. The widget's
+  triage path (`runTriageFromWidget`) respects quiet hours.
+- **Quick Settings kill-switch tile** (`plugins/withKillSwitchTile.js`) —
+  TileService toggles a `kill-switch` flag file shared with
+  `guardrails.ts` (expo-file-system); the app adopts tile changes on
+  foreground. `loadGuardrails` seeds the file on first run.
+- **Frontend `/changelog`** — records the real v1.0.0/v3.0.0 releases
+  (the draft said v1.0.0 only). Route + nav link shipped.
+- Removed the unwired superseded `scheduler.ts` prototype (conflicting
+  comment block, broken `*/15` cron parse; the live schedulers are
+  `triageScheduler` + `followUpScheduler`).
+
+**Fixed along the way:**
+- `app.json`: stray `"scheme"` keys in `splash`/`adaptiveIcon` removed;
+  legacy root `splash` migrated to the `expo-splash-screen` config plugin.
+  First workflow run failed on `drawable/splashscreen_logo not found`
+  because the plugin config had no `image`; adding
+  `"image": "./assets/splash-icon.png"` fixed it and is local-verified.
+- Patch drift: expo → 57.0.31, expo-notifications → 57.0.24; new
+  `eslint.config.js` (expo flat). Mechanical lint fixes applied; the
+  compiler-era `react-hooks/refs|static-components|set-state-in-effect`
+  rules downgraded to warnings (46+9+9 hits across working screens —
+  refactor pending, tracked here).
+
+**Verified:** `tsc --noEmit` clean; `expo lint` 0 errors (67 warnings);
+`expo-doctor` 21/21; frontend build clean. Android release APK built and
+signed by the GitHub workflow (run 40194124850, artifact
+`ThreadMyMail-release`; "APK is properly signed (release keystore)").
+Worker redeployed and `/health` OK; frontend deployed;
+`threadmymail.omixsystems.store/changelog` → 200 (SPA shell).
+
+**Left:** real-device test with a Gmail app-password account (needs the
+user's phone); a Robo-test pass on the new APK; local Android SDK on this
+machine was half-installed — completed platform-tools, android-36,
+build-tools 36.0.0 and NDK via Gradle-auto.
+
 ### 2026-09-29 — the app is published
 
 **Started from:** `3ef4b35`. `ENCRYPTION_KEY` was provisioned in production

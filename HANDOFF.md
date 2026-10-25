@@ -1,4 +1,4 @@
-# Handoff — 2026-10-21
+# Handoff — 2026-10-21 (updated 2026-10-25)
 
 > **The product is the Android APK.** ThreadMyMail (Millo) is a self-contained
 > **on-device AI email agent harness** (BYOK AI + SMTP/IMAP app-password email,
@@ -9,6 +9,51 @@
 ---
 
 ## Live right now
+
+| | |
+|---|---|
+| **Latest APK build** | GitHub Actions run [40194124850](https://github.com/marvel-254/threadmymail/actions/runs/40194124850) — signed, artifact `ThreadMyMail-release` |
+| **v3.0.0 release** (latest published) | https://github.com/marvel-254/threadmymail/releases/tag/v3.0.0 |
+| Landing page | https://threadmymail.omixsystems.store (download buttons → GitHub release, `/changelog` live) |
+| Pages fallback | https://threadmymail.pages.dev/app |
+| Worker (legacy, still live) | https://threadmymail-worker.twistedoliver211fs.workers.dev |
+
+---
+
+## What was done this session (2026-10-25)
+
+### Home-screen widget + kill-switch tile shipped ✅
+
+- **Millo home-screen widget** (`mobile-app/src/widgets/`) — unread +
+  needs-your-eye counts, one-tap triage (quiet-hours aware), kill-switch
+  toggle, deep link back to Today. Configured in `app.json` via
+  `react-native-android-widget`.
+- **Quick Settings kill-switch tile** (`plugins/withKillSwitchTile.js`) —
+  native TileService toggles a `kill-switch` flag file shared with
+  `guardrails.ts`; the app adopts changes on foreground. Seeded on first run.
+- **Frontend `/changelog`** — real v1.0.0/v3.0.0 entries, nav link, deployed.
+
+### Hygiene fixed this session ✅
+
+- Removed the unwired `scheduler.ts` prototype (superseded by
+  `triageScheduler` + `followUpScheduler`, which are the live schedulers).
+- `app.json`: stray `scheme` keys removed; legacy root `splash` migrated to
+  the `expo-splash-screen` plugin with `"image": "./assets/splash-icon.png"`
+  (missing image broke resource linking in CI once — plugin needs an image).
+- Patch updates: expo 57.0.31, expo-notifications 57.0.24; `expo-doctor`
+  21/21. `tsc --noEmit` clean, `expo lint` 0 errors (67 warnings — the
+  compiler-era `react-hooks/refs|static-components|set-state-in-effect`
+  rules are downgraded to warnings; refactor tracked in
+  IMPLEMENTATION_SUMMARY.md).
+- This machine's Android SDK completed: platform-tools, android-36,
+  build-tools 36.0.0 (`~/Android/Sdk`, `sdk.dir` in
+  `mobile-app/android/local.properties` — never commit local.properties).
+
+**Verified builds:** Android Build workflow run 40194124850 → distributed
+release-keystore-signed APK. Worker redeployed (`/health` ok) and frontend
+published via `scripts/deploy.sh`.
+
+## Live right now (older, kept for context)
 
 | | |
 |---|---|
