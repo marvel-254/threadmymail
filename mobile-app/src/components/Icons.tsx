@@ -155,7 +155,7 @@ export const IconSearch = ({ size = 18, color = colors.textSubtle, strokeWidth =
   </Svg>
 );
 
-export const IconTest = ({ size = 18, color = colors.accent, strokeWidth = 2 }: IconProps) => (
+export const IconTest = ({ size = 18, color = colors.primary, strokeWidth = 2 }: IconProps) => (
   <Svg {...base(size, color, strokeWidth)}>
     <Path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
     <Polyline points="22 4 12 14.01 9 11.01" />

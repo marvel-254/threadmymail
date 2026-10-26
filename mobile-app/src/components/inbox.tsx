@@ -615,87 +615,81 @@ type SyncBannerProps = {
 
 export function SyncBanner({ phase, progress, imported, cappedAt, error }: SyncBannerProps) {
   if (phase === 'idle' && !cappedAt && !error) return null;
+  if (phase === 'idle-watching' && !cappedAt && !error) return null;
+  if (phase === 'offline' && !cappedAt && !error) return null;
+
+  if (phase === 'error' || error) {
+    return (
+      <View style={[styles.banner, styles.bannerError]}>
+        <Text style={[styles.bannerText, { color: colors.dangerText }]}>{error ?? 'Sync error'}</Text>
+      </View>
+    );
+  }
 
   if (phase === 'importing') {
     return (
       <View style={styles.banner}>
-        <Text style={styles.bannerText}>
-          Importing history… {Math.round(progress * 100)}% · {imported} messages
-        </Text>
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
+          <Animated.View style={[styles.progressFill, { width: `${progress}%` }]} />
         </View>
+        <Text style={styles.bannerText}>
+          {imported > 0 ? `Imported ${imported} messages` : 'Syncing…'}
+          {cappedAt ? ` (capped at ${cappedAt})` : ''}
+        </Text>
       </View>
     );
   }
 
-  if (phase === 'error') {
-    return (
-      <View style={[styles.banner, styles.bannerError]}>
-        <Text style={styles.bannerText}>{error ?? 'Sync failed'}</Text>
-      </View>
-    );
-  }
-
-  if (phase === 'offline') {
-    return (
-      <View style={styles.banner}>
-        <Text style={styles.bannerText}>Offline — showing what was last synced.</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.banner}>
-      <Text style={styles.bannerText}>
-        {cappedAt
-          ? `Showing the most recent ${cappedAt.toLocaleString()} messages. Older mail is fetched when you open it.`
-          : 'Watching for new mail.'}
-      </Text>
-    </View>
-  );
+  return null;
 }
 
 const styles = themedStyles(() => ({
-  searchWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  searchWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surface,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
     minHeight: touch.minTarget,
   },
   searchInput: {
     flex: 1,
-    ...typography.bodySmall,
+    ...typography.body,
     color: colors.text,
-    paddingVertical: spacing.sm,
   },
-  searchClear: { minWidth: touch.minTarget, minHeight: touch.minTarget, alignItems: 'center', justifyContent: 'center' },
-
-  chipScroll: { flexGrow: 0 },
-  chipRow: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-  },
-  chip: {
-    paddingHorizontal: spacing.md,
-    minHeight: 36,
+  searchClear: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  chipScroll: { flexGrow: 0, paddingHorizontal: spacing.lg },
+  chipRow: { flexDirection: 'row', gap: spacing.xs, paddingVertical: spacing.xs },
+  chip: {
+    minHeight: touch.minTarget - 8,
+    paddingHorizontal: spacing.md,
     borderRadius: radii.pill,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderWidth: 1,
     borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { ...typography.caption, color: colors.textMuted },
-  chipTextActive: { color: colors.textOnPrimary, fontWeight: '600' },
+  chipActive: {
+    backgroundColor: colors.primaryBg,
+    borderColor: colors.borderPrimary,
+  },
+  chipText: { ...typography.bodySmall, color: colors.text },
+  chipTextActive: { color: colors.primaryText, fontWeight: '600' },
 
   accountScroll: { flexGrow: 0 },
   accountRow: {
@@ -715,17 +709,17 @@ const styles = themedStyles(() => ({
     borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
   },
-  accountChipActive: { borderColor: colors.primary, backgroundColor: colors.surfaceStrong },
+  accountChipActive: { borderColor: colors.primary, backgroundColor: colors.bgSurfaceHover },
   accountChipText: { ...typography.caption, color: colors.textMuted },
   accountChipTextActive: { color: colors.primaryText, fontWeight: '600' },
   accountDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
   accountTag: {
     ...typography.label,
     fontSize: 9,
-    color: colors.accent,
-    backgroundColor: colors.accentBg,
+    color: colors.secondary,
+    backgroundColor: 'rgba(197, 90, 18, 0.1)',
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: radii.sm,
@@ -749,7 +743,7 @@ const styles = themedStyles(() => ({
     paddingHorizontal: spacing.md,
     borderRadius: radii.md,
   },
-  folderRowActive: { backgroundColor: colors.surfaceStrong },
+  folderRowActive: { backgroundColor: colors.bgSurfaceHover },
   folderName: { flex: 1, ...typography.bodySmall, color: colors.textMuted },
   folderNameActive: { color: colors.text, fontWeight: '600' },
   folderCount: { ...typography.label, color: colors.textSubtle },
@@ -770,7 +764,7 @@ const styles = themedStyles(() => ({
     borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
   },
   recentChipText: { ...typography.caption, color: colors.textMuted },
   recentClear: { paddingHorizontal: spacing.xs, minHeight: touch.minTarget, justifyContent: 'center' },
@@ -805,7 +799,7 @@ const styles = themedStyles(() => ({
     minHeight: 72,
     backgroundColor: colors.bg,
   },
-  rowPressed: { backgroundColor: colors.surfaceHover },
+  rowPressed: { backgroundColor: colors.bgSurfaceHover },
   rowGutter: { width: 10, alignItems: 'center', paddingTop: 6 },
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary },
   rowMain: { flex: 1, gap: 2 },
@@ -823,7 +817,7 @@ const styles = themedStyles(() => ({
     height: 22,
     borderRadius: 11,
     paddingHorizontal: 6,
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.bgSurfaceHover,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
@@ -834,10 +828,10 @@ const styles = themedStyles(() => ({
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: radii.sm,
-    backgroundColor: colors.accentBg,
+    backgroundColor: colors.primaryBg,
     alignSelf: 'center',
   },
-  needsReplyText: { ...typography.label, fontSize: 9, color: colors.accent },
+  needsReplyText: { ...typography.label, fontSize: 9, color: colors.primaryText },
 
   starBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
 
@@ -854,7 +848,7 @@ const styles = themedStyles(() => ({
     paddingHorizontal: spacing.sm,
     borderRadius: radii.md,
   },
-  sheetItemPressed: { backgroundColor: colors.surfaceHover },
+  sheetItemPressed: { backgroundColor: colors.bgSurfaceHover },
   sheetItemText: { ...typography.body, color: colors.text },
   sheetItemDanger: { color: colors.dangerText },
   sheetCancel: {
@@ -873,7 +867,7 @@ const styles = themedStyles(() => ({
     marginBottom: spacing.sm,
     padding: spacing.md,
     borderRadius: radii.md,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderWidth: 1,
     borderColor: colors.border,
     gap: spacing.sm,
@@ -883,7 +877,7 @@ const styles = themedStyles(() => ({
   progressTrack: {
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.bgSurfaceHover,
     overflow: 'hidden',
   },
   progressFill: { height: 4, backgroundColor: colors.primary },

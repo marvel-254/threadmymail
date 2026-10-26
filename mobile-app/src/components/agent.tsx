@@ -1,7 +1,6 @@
 /**
  * Agent-specific components — AgentBubble, ToolChip, EscalationCard, StatusStrip.
- * DB: Streaming (token-by-token), Disclaimer (the agent is named, not anonymous),
- * Feedback Loop (thumbs), Typing indicators, Contextual Live Badge.
+ * Nordic design: clean surfaces, accent-primary actions, ≥48dp touch targets.
  */
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -201,11 +200,11 @@ export function StatusStrip({
 
 const styles = themedStyles(() => ({
   typingRow: { flexDirection: 'row', gap: 4, marginTop: 6 },
-  typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textMuted },
+  typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textSubtle },
   bubbleWrap: { alignSelf: 'flex-start', maxWidth: '85%', gap: 4 },
   agentLabel: { ...typography.label, color: colors.textSubtle, fontSize: 10, marginLeft: 4 },
   bubble: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.lg,
     borderTopLeftRadius: radii.sm,
     paddingHorizontal: spacing.md,
@@ -218,7 +217,7 @@ const styles = themedStyles(() => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.bgSurfaceHover,
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -231,7 +230,7 @@ const styles = themedStyles(() => ({
   toolArgs: { ...typography.mono, color: colors.textMuted, flexShrink: 1 },
   toolLatency: { ...typography.caption, color: colors.textSubtle },
   escalation: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.borderPrimary,
@@ -246,7 +245,7 @@ const styles = themedStyles(() => ({
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.bgSurfaceHover,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -258,7 +257,7 @@ const styles = themedStyles(() => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,

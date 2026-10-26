@@ -1,5 +1,14 @@
 import { FlexWidget, TextWidget } from 'react-native-android-widget';
 
+/**
+ * Home-screen widget. Uses static colors (hardcoded here) because Android
+ * widgets are rendered by the system outside the app process — they cannot
+ * read the JS palette proxy. These values mirror the Nordic tokens in
+ * theme.ts.
+ *
+ * Note on secrets: no credentials, no PII, only counts + status.
+ */
+
 export type MilloWidgetData = {
   unread: number;
   needsEye: number;
@@ -24,11 +33,14 @@ export function MilloWidget({
       : shadowMode
         ? 'SHADOW'
         : 'WATCHING';
+
+  // Nordic status colors — warm, distinctive palette to match the app.
   const statusColor = busy || killSwitch
-    ? '#FCA5A5'
+    ? '#FFCDD2'    // dangerText on dark
     : shadowMode
-      ? '#FCD34D'
-      : '#67E8F9';
+      ? '#FFE0B2'  // warnText
+      : '#A7F3D0'; // successText
+
   return (
     <FlexWidget
       style={{
@@ -36,7 +48,7 @@ export function MilloWidget({
         height: 'match_parent',
         flexDirection: 'column',
         justifyContent: 'space-between',
-        backgroundColor: '#0B1326',
+        backgroundColor: '#000000', // pure OLED black
         borderRadius: 20,
         padding: 14,
       }}
@@ -51,7 +63,7 @@ export function MilloWidget({
       >
         <TextWidget
           text="MILLO"
-          style={{ fontSize: 13, fontWeight: '700', color: '#A78BFA' }}
+          style={{ fontSize: 13, fontWeight: '700', color: '#FFB4A8' }}
         />
         <TextWidget
           text={status}
@@ -67,11 +79,11 @@ export function MilloWidget({
         >
           <TextWidget
             text={String(needsEye)}
-            style={{ fontSize: 32, fontWeight: '700', color: '#F8FAFC' }}
+            style={{ fontSize: 32, fontWeight: '700', color: '#F2F2F2' }}
           />
           <TextWidget
             text="need your eye"
-            style={{ fontSize: 11, color: '#94A3B8' }}
+            style={{ fontSize: 11, color: '#A0A0A0' }}
           />
         </FlexWidget>
         <FlexWidget
@@ -80,11 +92,11 @@ export function MilloWidget({
         >
           <TextWidget
             text={String(unread)}
-            style={{ fontSize: 32, fontWeight: '700', color: '#F8FAFC' }}
+            style={{ fontSize: 32, fontWeight: '700', color: '#F2F2F2' }}
           />
           <TextWidget
             text="unread"
-            style={{ fontSize: 11, color: '#94A3B8' }}
+            style={{ fontSize: 11, color: '#A0A0A0' }}
           />
         </FlexWidget>
       </FlexWidget>
@@ -96,7 +108,7 @@ export function MilloWidget({
             paddingHorizontal: 12,
             paddingVertical: 7,
             borderRadius: 10,
-            backgroundColor: '#7C3AED',
+            backgroundColor: '#EA2B16', // Nordic flame primary accent
           }}
         >
           <TextWidget
@@ -111,7 +123,7 @@ export function MilloWidget({
             paddingVertical: 7,
             borderRadius: 10,
             borderWidth: 1,
-            borderColor: killSwitch ? '#FCA5A5' : '#334155',
+            borderColor: killSwitch ? '#FFCDD2' : '#3A3A3A',
           }}
         >
           <TextWidget
@@ -119,7 +131,7 @@ export function MilloWidget({
             style={{
               fontSize: 12,
               fontWeight: '600',
-              color: killSwitch ? '#FCA5A5' : '#CBD5E1',
+              color: killSwitch ? '#FFCDD2' : '#F2F2F2',
             }}
           />
         </FlexWidget>
@@ -129,7 +141,7 @@ export function MilloWidget({
           text={summary}
           maxLines={1}
           truncate="END"
-          style={{ fontSize: 10, color: '#94A3B8', width: 'match_parent' }}
+          style={{ fontSize: 10, color: '#A0A0A0', width: 'match_parent' }}
         />
       ) : null}
     </FlexWidget>

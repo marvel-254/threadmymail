@@ -1,10 +1,6 @@
 /**
  * Activity — the audit log (trust surface).
- * MVP-UI §4.4 · DB: Confirmation Messages (no silent actions), Undo.
- *
- * Every agent decision, send, and sync event is written by `activityStore`.
- * This screen is a read-only projection of that table, grouped by day, with
- * working Undo for entries that carry an inverse payload.
+ * Nordic design: clean surfaces, clear hierarchy, ≥48dp touch targets.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -203,7 +199,7 @@ export function ActivityScreen() {
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
               onPress={() => setFilter(item.id)}
-              style={[styles.chip, active && styles.chipActive]}
+              style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && { opacity: 0.8 }]}
             >
               <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.label}</Text>
             </Pressable>
@@ -269,7 +265,7 @@ export function ActivityScreen() {
                             accessibilityLabel={`Undo ${actionLabel(entry.type)}`}
                             disabled={undoing === entry.id}
                             onPress={() => void handleUndo(entry)}
-                            style={styles.undoBtn}
+                            style={({ pressed }) => [styles.undoBtn, pressed && { opacity: 0.8 }]}
                           >
                             <Text style={styles.undoText}>
                               {undoing === entry.id ? '…' : 'Undo'}
@@ -353,6 +349,7 @@ const styles = themedStyles(() => ({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.bgSurface,
     justifyContent: 'center',
   },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
@@ -386,18 +383,18 @@ const styles = themedStyles(() => ({
   runId: { ...typography.mono, color: colors.textSubtle },
   rowActions: { alignItems: 'flex-end', paddingVertical: spacing.md, gap: spacing.xs },
   undoBtn: {
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.bgSurfaceHover,
     borderRadius: radii.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     minHeight: 32,
     justifyContent: 'center',
   },
-  undoText: { ...typography.caption, color: colors.accent, fontWeight: '600' },
+  undoText: { ...typography.caption, color: colors.primaryText, fontWeight: '600' },
   undoneTag: { ...typography.caption, color: colors.textSubtle },
   irreversibleTag: { ...typography.caption, color: colors.warnText },
   expanded: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.md,
     padding: spacing.md,
     gap: spacing.xs,
@@ -414,8 +411,9 @@ const styles = themedStyles(() => ({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.bgSurface,
     justifyContent: 'center',
   },
-  loadMorePressed: { backgroundColor: colors.surfaceStrong },
+  loadMorePressed: { backgroundColor: colors.bgSurfaceHover },
   loadMoreText: { ...typography.bodySmall, color: colors.text },
 }));

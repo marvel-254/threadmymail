@@ -342,9 +342,9 @@ export function AgentScreen({
                     key={ref.threadId}
                     onPress={() => onOpenMailThread?.(ref.threadId)}
                     style={styles.emailRefChip}
-                    android_ripple={{ color: colors.surfaceHover }}
+                    android_ripple={{ color: colors.bgSurfaceHover }}
                   >
-                    <IconMail size={14} color={colors.accent} />
+                    <IconMail size={14} color={colors.primary} />
                     <Text style={styles.emailRefText} numberOfLines={1}>
                       {ref.subject}
                     </Text>
@@ -367,9 +367,9 @@ export function AgentScreen({
                     key={ref.threadId}
                     onPress={() => onOpenMailThread?.(ref.threadId)}
                     style={styles.emailRefChip}
-                    android_ripple={{ color: colors.surfaceHover }}
+                    android_ripple={{ color: colors.bgSurfaceHover }}
                   >
-                    <IconMail size={14} color={colors.accent} />
+                    <IconMail size={14} color={colors.primary} />
                     <Text style={styles.emailRefText} numberOfLines={1}>
                       {ref.subject}
                     </Text>
@@ -572,7 +572,7 @@ return (
                 key={index}
                 onPress={item.onPress}
                 style={styles.overflowItem}
-                android_ripple={{ color: colors.surfaceHover }}
+                android_ripple={{ color: colors.bgSurfaceHover }}
               >
                 <Text style={styles.overflowItemText}>{item.label}</Text>
               </Pressable>
@@ -591,7 +591,7 @@ return (
         <Pressable
           onPress={handleCopyText}
           style={styles.sheetItem}
-          android_ripple={{ color: colors.surfaceHover }}
+          android_ripple={{ color: colors.bgSurfaceHover }}
         >
           <IconCopy size={20} color={colors.text} />
           <Text style={styles.sheetItemText}>Copy text</Text>
@@ -705,7 +705,7 @@ const styles = themedStyles(() => ({
   notice: {
     alignSelf: 'flex-start',
     maxWidth: '85%',
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.bgSurfaceHover,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -719,7 +719,7 @@ const styles = themedStyles(() => ({
     minHeight: touch.minTarget,
     justifyContent: 'center',
   },
-  noticeRetryText: { ...typography.bodySmall, color: colors.accent, fontWeight: '600' },
+  noticeRetryText: { ...typography.bodySmall, color: colors.primaryText, fontWeight: '600' },
   composerBar: {
     padding: spacing.md,
     borderTopWidth: 1,
@@ -752,7 +752,7 @@ const styles = themedStyles(() => ({
     marginTop: spacing.md,
   },
   emptyActionBtn: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -773,7 +773,7 @@ const styles = themedStyles(() => ({
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
@@ -791,7 +791,7 @@ const styles = themedStyles(() => ({
   },
   overflowMenu: {
     marginRight: spacing.md,
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.bgSurfaceHover,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -812,7 +812,7 @@ const styles = themedStyles(() => ({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.bgSurfaceHover,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
     borderWidth: 1,
@@ -847,7 +847,7 @@ const styles = themedStyles(() => ({
   renameCard: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.bgSurfaceHover,
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.border,
@@ -860,7 +860,7 @@ const styles = themedStyles(() => ({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     paddingHorizontal: spacing.md,
     ...typography.body,
     color: colors.text,

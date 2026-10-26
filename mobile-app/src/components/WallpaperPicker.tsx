@@ -171,7 +171,7 @@ const styles = themedStyles(() => ({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  closeText: { ...typography.body, color: colors.accent },
+  closeText: { ...typography.body, color: colors.primary },
   preview: {
     height: 180,
     borderRadius: radii.lg,
@@ -211,7 +211,7 @@ const styles = themedStyles(() => ({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radii.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
   },
   dimOptionActive: {
     backgroundColor: colors.primary,
@@ -229,7 +229,7 @@ const styles = themedStyles(() => ({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
   },
   presetImg: {
     width: 96,

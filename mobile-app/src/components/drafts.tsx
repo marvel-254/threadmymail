@@ -73,7 +73,7 @@ export function DraftCard({ draft, shadow, busy = false, onSend, onEdit, onDisca
 
 const styles = themedStyles(() => ({
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderWidth: 1,
     borderColor: colors.borderPrimary,
     borderRadius: radii.lg,
@@ -81,7 +81,7 @@ const styles = themedStyles(() => ({
     gap: spacing.xs,
   },
   top: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  label: { ...typography.label, color: colors.accent, flex: 1 },
+  label: { ...typography.label, color: colors.primaryText, flex: 1 },
   to: { ...typography.caption, color: colors.textMuted, flexShrink: 1 },
   subject: { ...typography.body, color: colors.text, fontWeight: '600' },
   body: { ...typography.caption, color: colors.textMuted },

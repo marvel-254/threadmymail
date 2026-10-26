@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { BottomSheet, Button, Card, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
+import { BottomSheet, Button, Card, ConfirmDialog, EmptyState, SectionHeader, Toast } from '../components/ui';
 import { Field, ProviderCard } from '../components/settings';
 import { PROVIDER_PRESETS, CUSTOM_PROVIDER_ID } from '../lib/providers';
 import {
@@ -402,7 +402,7 @@ export function SettingsScreen() {
         <Text style={styles.guardrailDesc}>{description}</Text>
       </View>
       <Switch value={value} onValueChange={onChange}
-        trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
+        trackColor={{ false: colors.bgSurfaceHover, true: colors.primary }}
         thumbColor={colors.textOnPrimary} />
     </View>
   );
@@ -417,7 +417,7 @@ export function SettingsScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Email account */}
-        <SectionLabel>Email accounts</SectionLabel>
+        <SectionHeader>Email accounts</SectionHeader>
         {accounts.length === 0 && (
           <Card>
             <Text style={styles.cardTitle}>No account connected</Text>
@@ -461,7 +461,7 @@ export function SettingsScreen() {
         />
 
         {/* Appearance */}
-        <SectionLabel>Appearance</SectionLabel>
+        <SectionHeader>Appearance</SectionHeader>
         <Card>
           <Text style={styles.cardTitle}>Theme</Text>
           <Text style={styles.cardSub}>Follow the system automatically, or pin the app to dark or light.</Text>
@@ -486,7 +486,7 @@ export function SettingsScreen() {
         </Card>
 
         {/* AI providers */}
-        <SectionLabel>AI providers</SectionLabel>
+        <SectionHeader>AI providers</SectionHeader>
         {providers.length === 0 && (
           <EmptyState title="No providers yet" body="Add one so Millo can think. Your key stays on this device." />
         )}
@@ -513,7 +513,7 @@ export function SettingsScreen() {
           icon={<IconPlus size={18} color={colors.text} />} />
 
         {/* Memory */}
-        <SectionLabel>Memory</SectionLabel>
+        <SectionHeader>Memory</SectionHeader>
         <Card>
           <Text style={styles.cardTitle}>On-device memory</Text>
           <Text style={styles.cardSub}>Stored locally, never sent anywhere</Text>
@@ -524,7 +524,7 @@ export function SettingsScreen() {
         </Card>
 
         {/* Guardrails */}
-        <SectionLabel>Guardrails</SectionLabel>
+        <SectionHeader>Guardrails</SectionHeader>
         <Card>
           <GuardrailRow label="Kill switch" description="Stop autonomous actions. Manual runs stay available." value={killSwitch} onChange={changeKillSwitch} />
           <View style={styles.guardrailRow}>
@@ -533,7 +533,7 @@ export function SettingsScreen() {
               <Text style={styles.guardrailDesc}>All actions logged, nothing sent or changed.</Text>
             </View>
             <Switch value={shadowMode} onValueChange={changeShadowMode}
-              trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
+              trackColor={{ false: colors.bgSurfaceHover, true: colors.primary }}
               thumbColor={colors.textOnPrimary} />
           </View>
           <View style={styles.guardrailRow}>
@@ -574,7 +574,7 @@ export function SettingsScreen() {
             <Switch
               value={guardrails.quietHoursEnabled}
               onValueChange={changeQuietHours}
-              trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
+              trackColor={{ false: colors.bgSurfaceHover, true: colors.primary }}
               thumbColor={colors.textOnPrimary}
             />
           </View>
@@ -616,7 +616,7 @@ export function SettingsScreen() {
             <Switch
               value={guardrails.dailyTriageEnabled}
               onValueChange={changeDailyTriage}
-              trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
+              trackColor={{ false: colors.bgSurfaceHover, true: colors.primary }}
               thumbColor={colors.textOnPrimary}
             />
           </View>
@@ -645,7 +645,7 @@ export function SettingsScreen() {
         </Card>
 
         {/* Notifications */}
-        <SectionLabel>Notifications</SectionLabel>
+        <SectionHeader>Notifications</SectionHeader>
         <Card>
           <GuardrailRow
             label="New-mail notifications"
@@ -704,7 +704,7 @@ export function SettingsScreen() {
         </Card>
 
         {/* Follow-ups */}
-        <SectionLabel>Follow-ups</SectionLabel>
+        <SectionHeader>Follow-ups</SectionHeader>
         <Card>
           <GuardrailRow
             label="Follow-up reminders"
@@ -757,7 +757,7 @@ export function SettingsScreen() {
         </Card>
 
         {/* Skills */}
-        <SectionLabel>Skills</SectionLabel>
+        <SectionHeader>Skills</SectionHeader>
         <Card>
           {SKILL_DEFINITIONS.map((skill) => (
             <View key={skill.id} style={styles.guardrailRow}>
@@ -768,7 +768,7 @@ export function SettingsScreen() {
               <Switch
                 value={skills[skill.id]}
                 onValueChange={(value) => changeSkill(skill.id, value)}
-                trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
+                trackColor={{ false: colors.bgSurfaceHover, true: colors.primary }}
                 thumbColor={colors.textOnPrimary}
               />
             </View>
@@ -779,7 +779,7 @@ export function SettingsScreen() {
         </Card>
 
         {/* About */}
-        <SectionLabel>About</SectionLabel>
+        <SectionHeader>About</SectionHeader>
         <Card>
           <Text style={styles.cardTitle}>ThreadMyMail</Text>
           <Text style={styles.cardSub}>Version 1.0.0 · Open source · No account required</Text>
@@ -898,7 +898,7 @@ const styles = themedStyles(() => ({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     ...typography.body,
     color: colors.text,
   },
@@ -910,7 +910,7 @@ const styles = themedStyles(() => ({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     paddingHorizontal: spacing.md,
     ...typography.body,
     color: colors.text,
@@ -934,7 +934,7 @@ const styles = themedStyles(() => ({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     ...typography.body,
     color: colors.text,
   },
@@ -948,16 +948,16 @@ const styles = themedStyles(() => ({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     paddingHorizontal: spacing.sm,
   },
-  appearanceOptionActive: { borderColor: colors.primary, backgroundColor: colors.surfaceStrong },
+  appearanceOptionActive: { borderColor: colors.primary, backgroundColor: colors.bgSurfaceHover },
   appearanceText: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center' },
   appearanceTextActive: { color: colors.primaryText, fontWeight: '600' },
   pickerWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   pickerItem: {
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderRadius: radii.pill,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.bgSurface, borderWidth: 1, borderColor: colors.border,
     minHeight: touch.minTarget, justifyContent: 'center',
   },
   pickerItemActive: { backgroundColor: colors.primary, borderColor: colors.primary },

@@ -1,118 +1,168 @@
 /**
- * ThreadMyMail Mobile — Design Tokens (Expo / React Native)
+ * ThreadMyMail Android — Design Tokens
  * =========================================================
- * Source of truth for the Android harness UI. Dark-first per MVP-UI.md §1.
- * Palette derived from the UI/UX Pro Max design database (AI-Native UI):
- *   primary #7C3AED · secondary #A78BFA · accent #0891B2
- * Typography: Inter 300–700 (single-family precision system).
+ * Nordic-inspired dark-first theme with pure-black OLED support.
  *
- * Usage: import { colors, typography, spacing, radii, shadows } from './theme';
+ * Design Principals:
+ * - Pure black (#000000) for OLED dark theme, pure white (#FFFFFF) for light
+ * - Nordic palette: warm neutrals with expressive, restrained accents
+ * - System fonts: native iOS (SF Pro) / Android (Roboto/system-ui)
+ * - Minimal chrome, content-first, clean surfaces
+ * - No decorative gradients, no glassmorphism by default
+ *
+ * Colors:
+ * - Dark: #000000 (ocean black) base
+ * - Light: #FFFFFF (pure white) base
+ * - Surface layers at #0F0F0F (dark) / #F5F5F5 (light) for depth
+ * - Expressive accent: BT Nordic flame (#EA2B16) — warm and distinctive
+ *
+ * Usage: import { colors, typography, spacing, radii } from './theme';
  *        const styles = themedStyles(() => ({ ... }));
  * Do NOT hardcode hex values in components — always reference these tokens.
  */
 
 import { StyleSheet, type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
 
+/* ── COLOR PALETTE ─────────────────────────────────────────────────────────── */
+
 /**
- * Semantic palettes. Components never branch on the theme — they read the same
- * token names, and the active palette is swapped underneath them.
+ * Nordic-inspired palette.
+ *
+ * Dark theme uses pure-black OLED (#000000) for maximum battery efficiency.
+ * Light theme uses pure-white (#FFFFFF) for maximum vibrancy.
+ *
+ * Expressive accent: BT Nordic flame (#EA2B16) — a warm, distinctive red that
+ * provides just enough contrast without feeling generic startup color.
+ *
+ * Neutral text scales are engineered for the specific base colors:
+ * - On pure white: needs darker grays for readability
+ * - On pure black: needs lighter grays to avoid eye strain
  */
+
 export const darkPalette = {
-  // ── Backgrounds (dark cockpit — MVP-UI.md §1) ──────────────────────────
-  bg: '#0B1326',            // app background
-  bgDeep: '#060E20',        // deepest layer (gradient end)
-  surface: 'rgba(255,255,255,0.06)',   // cards, sheets
-  surfaceStrong: 'rgba(255,255,255,0.10)', // elevated surfaces
-  surfaceHover: 'rgba(255,255,255,0.12)',  // pressed/hover states
+  // ── Backgrounds (OLED black for dark mode) ─────────────────────────────────
+  bg: '#000000',           // ocean black — pure OLED black
+  bgDeep: '#050505',       // deepest layer — subtle gradient end
+  bgSurface: '#0F0F0F',    // main card/surface layer
+  bgSurfaceHover: '#141414', // pressed/hover state
 
-  // ── Text ────────────────────────────────────────────────────────────────
-  text: '#F1F5F9',          // primary text
-  textMuted: '#94A3B8',     // secondary text
-  textSubtle: '#8A9AB0',    // tertiary / captions
-  textOnPrimary: '#FFFFFF', // text on primary buttons
-  textOnAccent: '#000000',  // text on accent (cyan) buttons
+  // ── Text (warm gray scales, crafted for pure black) ───────────────────────
+  text: '#F2F2F2',         // primary text — warm white
+  textMuted: '#A0A0A0',    // secondary text
+  textSubtle: '#707070',   // tertiary / captions
+  textOnAccent: '#FFFFFF', // text on accent buttons
+  textOnPrimary: '#FFFFFF', // text on primary surfaces
 
-  // ── Brand (AI-Native palette) ───────────────────────────────────────────
-  primary: '#7C3AED',       // AI actions, active tab, primary buttons
-  primaryText: '#A78BFA',   // primary-colored text/icons on dark surfaces
-  primaryDark: '#6D28D9',   // pressed state
-  secondary: '#A78BFA',     // secondary actions, highlights
-  accent: '#0891B2',        // CTA, links, "needs your eye" items
-  accentDark: '#0E7490',    // pressed state
-  accentBg: 'rgba(8,145,178,0.14)',
-  primaryBg: 'rgba(124,58,237,0.14)',
+  // ── Primary (expressive accent) ───────────────────────────────────────────
+  primary: '#EA2B16',      // BT Nordic flame — warm, distinctive, not generic
+  primaryText: '#FFD1D1',  // primary-colored text on dark surfaces
+  primaryDark: '#C41C11',  // pressed state
+  primaryBg: 'rgba(234, 42, 22, 0.12)',
 
-  // ── Semantic states ─────────────────────────────────────────────────────
-  danger: '#DC2626',        // kill switch, destructive, errors
-  dangerText: '#F87171',    // readable danger text/icons on dark surfaces
-  dangerBg: 'rgba(220,38,38,0.12)',
-  success: '#16A34A',       // live / connected / done
-  successText: '#4ADE80',   // readable success text/icons on dark surfaces
-  successBg: 'rgba(22,163,74,0.12)',
-  warn: '#D97706',          // warnings, quiet hours
-  warnText: '#FBBF24',      // readable warning text/icons on dark surfaces
-  warnBg: 'rgba(217,119,6,0.12)',
+  // ── Secondary (darker warm signal) ────────────────────────────────────────
+  secondary: '#C55A12',    // darker warm signal
 
-  // ── Borders ─────────────────────────────────────────────────────────────
-  border: 'rgba(255,255,255,0.10)',
-  borderStrong: 'rgba(255,255,255,0.18)',
-  borderPrimary: 'rgba(124,58,237,0.35)', // focus ring / active outlines
+  // ── Semantic states ───────────────────────────────────────────────────────
+  danger: '#FF3B30',       // stop/delete — native red, highly recognizable
+  dangerText: '#FFCDD2',   // readable danger text on dark surfaces
+  dangerBg: 'rgba(255, 59, 48, 0.12)',
 
-  // ── Overlays ────────────────────────────────────────────────────────────
-  overlay: 'rgba(6,14,32,0.72)',   // modal backdrop
-  scrim: 'rgba(6,14,32,0.55)',     // bottom-sheet scrim
-  dimRgb: '6,14,32',               // wallpaper dim overlay base (RGB triplet)
+  success: '#34C759',      // enabled/connected/success — native green
+  successText: '#A7F3D0',   // readable success text on dark surfaces
+  successBg: 'rgba(52, 199, 89, 0.12)',
+
+  warn: '#FF9500',         // warnings, notifications
+  warnText: '#FFE0B2',     // readable warning text on dark surfaces
+  warnBg: 'rgba(255, 149, 0, 0.12)',
+
+  // ── Tertiary (utility colors) ─────────────────────────────────────────────
+  info: '#007AFF',         // informational
+  infoText: '#B8E0FF',
+  infoBg: 'rgba(0, 122, 255, 0.12)',
+
+  // ── Borders ───────────────────────────────────────────────────────────────
+  border: 'rgba(255,255,255,0.08)',
+  borderStrong: 'rgba(255,255,255,0.12)',
+  borderPrimary: 'rgba(234, 42, 22, 0.5)', // accent border/outline
+
+  // ── Overlays ──────────────────────────────────────────────────────────────
+  overlay: 'rgba(0,0,0,0.75)', // modal backdrop (darker for OLED: black base)
+  scrim: 'rgba(0,0,0,0.55)',   // bottom-sheet scrim
+
+  // ── Decorative (minimal use) ─────────────────────────────────────────────
+  sparkle: '#FFD700',      // subtle star, cautionary per use
+
+  // ── Overlay dim RGB triplet (for wallpaper dim overlay) ─────────────────
+  dimRgb: '0,0,0',
 };
 
 export type ColorPalette = typeof darkPalette;
 
 /**
- * Light palette: same semantic roles, tuned for daylight. Body and label colors
- * meet WCAG AA on `bg`/`surface`; brand hues are darkened where the dark values
- * would fail (primary, accent, semantic states).
+ * Light theme — same semantic roles, adapted for white base.
+ *
+ * On pure white, text needs to be darker to meet WCAG AA.
  */
 export const lightPalette: ColorPalette = {
-  bg: '#F6F7FB',
-  bgDeep: '#FFFFFF',
-  surface: 'rgba(15,23,42,0.04)',
-  surfaceStrong: 'rgba(15,23,42,0.07)',
-  surfaceHover: 'rgba(15,23,42,0.10)',
+  // ── Backgrounds (pure white) ─────────────────────────────────────────────
+  bg: '#FFFFFF',
+  bgDeep: '#FFFFFF',       // gradient end
+  bgSurface: '#F5F5F5',    // warmed white for surface layers
+  bgSurfaceHover: '#EFEFEF',
 
-  text: '#0F172A',
-  textMuted: '#475569',
-  textSubtle: '#526276',
-  textOnPrimary: '#FFFFFF',
+  // ── Text (darker grays, crafted for white base) ───────────────────────────
+  text: '#1A1A1A',         // primary text — deep charcoal
+  textMuted: '#666666',    // secondary text
+  textSubtle: '#999999',   // tertiary / captions
   textOnAccent: '#FFFFFF',
+  textOnPrimary: '#FFFFFF',
 
-  primary: '#6D28D9',
-  primaryText: '#6D28D9',
-  primaryDark: '#5B21B6',
-  secondary: '#7C3AED',
-  accent: '#0E7490',
-  accentDark: '#155E75',
-  accentBg: 'rgba(14,116,144,0.12)',
-  primaryBg: 'rgba(109,40,217,0.10)',
+  // ── Primary (accent edge-colored for light mode) ──────────────────────────
+  primary: '#D32F2F',      // darker red for legibility on white
+  primaryText: '#FFCDD2',  // primary-colored text on surfaces
+  primaryDark: '#B71C1C',  // pressed state
+  primaryBg: 'rgba(197, 66, 18, 0.10)',
 
-  danger: '#B91C1C',
-  dangerText: '#B91C1C',
-  dangerBg: 'rgba(185,28,28,0.10)',
-  success: '#15803D',
-  successText: '#15803D',
-  successBg: 'rgba(21,128,61,0.10)',
-  warn: '#B45309',
-  warnText: '#B45309',
-  warnBg: 'rgba(180,83,9,0.10)',
+  // ── Secondary ──────────────────────────────────────────────────────────────
+  secondary: '#C55A12',    // warmer version for expressiveness on white
 
-  border: 'rgba(15,23,42,0.12)',
-  borderStrong: 'rgba(15,23,42,0.22)',
-  borderPrimary: 'rgba(109,40,217,0.35)',
+  // ── Semantic states ───────────────────────────────────────────────────────
+  danger: '#DC2626',       // stop/delete
+  dangerText: '#FCA5A5',
+  dangerBg: 'rgba(220, 38, 38, 0.10)',
 
-  overlay: 'rgba(15,23,42,0.35)',
-  scrim: 'rgba(15,23,42,0.30)',
-  dimRgb: '15,23,42',
+  success: '#16A34A',      // enabled/connected
+  successText: '#86EFAC',
+  successBg: 'rgba(22, 163, 74, 0.10)',
+
+  warn: '#F97316',         // warnings
+  warnText: '#FDBA74',
+  warnBg: 'rgba(249, 115, 22, 0.10)',
+
+  // ── Tertiary ─────────────────────────────────────────────────────────────
+  info: '#0066CC',         // informational
+  infoText: '#BFDBFE',
+  infoBg: 'rgba(0, 102, 204, 0.10)',
+
+  // ── Borders ───────────────────────────────────────────────────────────────
+  border: 'rgba(0,0,0,0.08)',
+  borderStrong: 'rgba(0,0,0,0.12)',
+  borderPrimary: 'rgba(211, 47, 47, 0.4)',
+
+  // ── Overlays ──────────────────────────────────────────────────────────────
+  overlay: 'rgba(0,0,0,0.4)', // lighter for white base
+  scrim: 'rgba(0,0,0,0.3)',
+
+  // ── Decorative (minimized on light) ───────────────────────────────────────
+  sparkle: '#FFA500',
+
+  // ── Overlay dim RGB triplet (for wallpaper dim overlay) ─────────────────
+  dimRgb: '255,255,255',
 };
 
 export const palettes = { dark: darkPalette, light: lightPalette };
+
+// ── THEME STATE ────────────────────────────────────────────────────────────
 
 let activePalette: ColorPalette = darkPalette;
 
@@ -148,47 +198,60 @@ export const colors: ColorPalette = new Proxy(darkPalette, {
 
 export type ColorToken = keyof ColorPalette;
 
-type NamedStyles<T> = { [P in keyof T]: ViewStyle | TextStyle | ImageStyle };
+/* ── TYPOGRAPHY (system fonts) ───────────────────────────────────────────── */
 
 /**
- * Theme-aware `StyleSheet.create`: the factory runs lazily the first time a
- * style is read and is rebuilt whenever the active palette changes. This keeps
- * module-level `const styles = themedStyles(() => ({...}))` declarations while
- * making every color token live.
+ * System fonts: native iOS (SF Pro) / Android (Roboto/system-ui).
+ *
+ * No custom font families — this keeps the app lightweight and ensures
+ * native feel across both platforms without additional downloads.
+ *
+ * Hierarchy:
+ * - Display: Large bold headings, tight tracking
+ * - H1: Main screen titles
+ * - H2: Section headers
+ * - H3: Subsection headers
+ * - Body: Secondary text, descriptions
+ * - BodySmall: Fine print, captions
+ * - Label: Uppercase, disciplined 1.2 tracking
+ * - Caption: Tiny utility text
+ * - Mono: IDs, SHAs, tool outputs
  */
-export function themedStyles<T extends NamedStyles<T>>(factory: () => T): T {
-  let cachedPalette: ColorPalette | null = null;
-  let cached: T | null = null;
-  return new Proxy({} as T, {
-    get(_target, key: string | symbol) {
-      if (!cached || cachedPalette !== activePalette) {
-        cachedPalette = activePalette;
-        cached = StyleSheet.create(factory()) as unknown as T;
-      }
-      return (cached as Record<string | symbol, unknown>)[key];
-    },
-  });
-}
-
 export const typography = {
-  // Inter — single family, precision system (DB: Modern Dark Cinema)
-  fontFamily: 'Inter',
-  // Display / hero
+  // System fonts using native stack
+  fontFamily: 'system-ui',
+
+  // ── Display ────────────────────────────────────────────────────────────────
   display: { fontSize: 34, fontWeight: '700', letterSpacing: -1.5 },
-  // Headings
+
+  // ── Headings ───────────────────────────────────────────────────────────────
   h1: { fontSize: 28, fontWeight: '600', letterSpacing: -0.5 },
-  h2: { fontSize: 22, fontWeight: '600', letterSpacing: -0.5 },
-  h3: { fontSize: 18, fontWeight: '600', letterSpacing: -0.3 },
-  // Body
+  h2: { fontSize: 22, fontWeight: '600', letterSpacing: -0.3 },
+  h3: { fontSize: 18, fontWeight: '600', letterSpacing: -0.2 },
+
+  // ── Body ────────────────────────────────────────────────────────────────────
   body: { fontSize: 16, fontWeight: '400', letterSpacing: 0 },
   bodySmall: { fontSize: 14, fontWeight: '400', letterSpacing: 0 },
-  // Labels / captions (uppercase +1.2 tracking)
-  label: { fontSize: 12, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase' },
-  caption: { fontSize: 12, fontWeight: '400', letterSpacing: 0 },
-  // Mono (run IDs, SHAs, tool args)
-  mono: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12 },
+
+  // ── Labels ──────────────────────────────────────────────────────────────────
+  label: { fontSize: 11, fontWeight: '500', letterSpacing: 1.25, textTransform: 'uppercase' },
+  caption: { fontSize: 11, fontWeight: '400', letterSpacing: 0 },
+
+  // ── Mono (technical output) ─────────────────────────────────────────────────
+  mono: { fontFamily: 'SF Mono, ui-monospace, Menlo, monospace', fontSize: 12 },
 } as const;
 
+/* ── SPACING ───────────────────────────────────────────────────────────────── */
+
+/**
+ * Responsive spacing scale (8-point grid).
+ *
+ * Measurements in pixels.
+ * - Scale: 4, 8, 12, 16, 24, 32 — all multiples of 4
+ * - Screen gutters: 16px (conservative for OLED)
+ * - Bottom nav: 56px (safe area + touch target)
+ * - Top bar: 56px
+ */
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -199,51 +262,197 @@ export const spacing = {
   // Screen gutters
   screen: 16,
   // Bottom nav height
-  tabBar: 64,
+  tabBar: 56,
   // Top bar height
   header: 56,
+  // Safe area padding (will be added dynamically with useSafeAreaInsets)
+  safeTop: 8,
+  safeBottom: 8,
 } as const;
 
+/* ── RADIUS ───────────────────────────────────────────────────────────────── */
+
+/**
+ * Corner radius rules — restrained, not pill-shaped.
+ *
+ * Measurements scaled across platforms while maintaining relative ratios.
+ * - sm: 8px (buttons, items)
+ * - md: 12px (cards, lists)
+ * - lg: 16px (elevated surfaces)
+ * - xl: 20px (sheet top corners)
+ * - pill: 999px (horizontal scroll pills, badges)
+ */
 export const radii = {
   sm: 8,
   md: 12,
   lg: 16,
-  xl: 20,     // cards, sheets (matches web --radius)
+  xl: 20,
   pill: 999,
 } as const;
 
+/* ── SHADOWS (Emission-based) ─────────────────────────────────────────────── */
+
+/**
+ * Subtle emission-based shadows.
+ *
+ * Shadows on OLED: non-transparent glow from content, not spread.
+ * Used sparingly for surface elevation indicators.
+ */
 export const shadows = {
-  // Subtle elevation for cards (dark mode: subtle/none per DB)
+  // Subtle elevation for cards (no spread, just emission)
   card: {
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  },
+  // Floating elements (FAB, raised actions)
+  float: {
+    shadowColor: colors.primary,
+    shadowOpacity: 0.15,
     shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
-  // Floating elements (bottom nav, FAB)
-  float: {
+  // Inset/GUI shadows (divider lines, placeholders)
+  inset: {
     shadowColor: '#000',
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 0,
   },
 } as const;
 
-/** Touch target minimums (Android 48dp, 8px gap — DB UX rule). */
+/* ── TOUCH TARGETS ─────────────────────────────────────────────────────────── */
+
+/**
+ * Touch target minimums (Android 48dp standard).
+ *
+ * - minTarget: 48 (minimum touch target)
+ * - gap: 8 (comfortable spacing between targets)
+ * - Computed: minHeight = miniTarget, iPad/bypass friendly
+ */
 export const touch = {
   minTarget: 48,
   gap: 8,
 } as const;
 
-/** Motion durations (DB: 150–300ms; reduced-motion respected). */
+/* ── MOTION ────────────────────────────────────────────────────────────────── */
+
+/**
+ * Motion durations — native-feeling, not exaggerated.
+ *
+ * - fast: 100-150ms (micro-turns, presses)
+ * - base: 200-250ms (standard transitions)
+ * - slow: 300-400ms (bigger flows)
+ *
+ * Reduced-motion: 300ms baseline should be respected.
+ */
 export const motion = {
   fast: 150,
   base: 200,
   slow: 300,
 } as const;
 
-/** The complete theme object for a single import. */
-export const theme = { colors, typography, spacing, radii, shadows, touch, motion };
+/* ── ICON SIZES ───────────────────────────────────────────────────────────── */
+
+/**
+ * Icon sizes for common usages.
+ *
+ * - buttons: 24px (primary actions)
+ * - icons: 20px (tab icons, contextual actions)
+ * - controls: 18px (optional controls, secondary actions)
+ * - decorative: 16px (micro-decorations)
+ */
+export const icon = {
+  button: 24,
+  icon: 20,
+  control: 18,
+  decorative: 16,
+} as const;
+
+/* ── LAYOUT GUIDELINES ───────────────────────────────────────────────────── */
+
+/**
+ * Base screen dimensions (common Android sizes).
+ */
+export const screen = {
+  small: 360,  // Small phone (Pixel 3a, etc.)
+  medium: 393, // Standard (Pixel 4a, etc.)
+  large: 430,  // Large (Pixel 5, etc.)
+  extraLarge: 480, // Foldables, large phablets
+} as const;
+
+/**
+ * Safe area aware portrait orientation.
+ */
+export const orientation = {
+  portrait: {
+    small: { width: screen.small, height: 693 },
+    medium: { width: screen.medium, height: 852 },
+    large: { width: screen.large, height: 932 },
+  },
+  landscape: {
+    small: { width: 693, height: screen.small },
+    medium: { width: 852, height: screen.medium },
+    large: { width: 932, height: screen.large },
+  },
+} as const;
+
+/* ── COMPLETE THEME OBJECT ─────────────────────────────────────────────────── */
+
+/**
+ * The complete theme object for a single import.
+ */
+export const theme = {
+  colors,
+  typography,
+  spacing,
+  radii,
+  shadows,
+  touch,
+  motion,
+  icon,
+  screen,
+  orientation,
+} as const;
+
 export default theme;
+
+/* ── THEMED STYLES FACTORY ───────────────────────────────────────────────── */
+
+/**
+ * Theme-aware StyleSheet.create: the factory runs lazily the first time a style
+ * is read and is rebuilt whenever the active palette changes. This keeps module
+ * level `const styles = themedStyles(() => ({...}))` declarations while making
+ * every color token live.
+ *
+ * @example
+ * const styles = themedStyles(() => ({
+ *   card: {
+ *     backgroundColor: colors.bgSurface,
+ *     borderRadius: radii.md,
+ *     padding: spacing.lg,
+ *   },
+ * }));
+ *
+ * @returns A Proxy that resolves tokens against the active palette
+ */
+export function themedStyles<T extends { [P in keyof T]: ViewStyle | TextStyle | ImageStyle }>(
+  factory: () => T
+): T {
+  let cachedPalette: ColorPalette | null = null;
+  let cached: T | null = null;
+
+  return new Proxy({} as T, {
+    get(_target, key: string | symbol) {
+      if (!cached || cachedPalette !== activePalette) {
+        cachedPalette = activePalette;
+        cached = StyleSheet.create(factory()) as unknown as T;
+      }
+      return (cached as Record<string | symbol, unknown>)[key];
+    },
+  });
+}

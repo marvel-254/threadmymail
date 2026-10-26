@@ -166,7 +166,7 @@ export function Drawer({
                     styles.conversationItem,
                     conv.id === activeConversationId && styles.conversationItemActive,
                   ]}
-                  android_ripple={{ color: colors.surfaceHover }}
+                  android_ripple={{ color: colors.bgSurfaceHover }}
                 >
                   <IconAgent size={20} color={conv.id === activeConversationId ? colors.primary : colors.textMuted} />
                   <Text
@@ -195,7 +195,7 @@ export function Drawer({
             Alert.alert('Search', 'Not yet implemented');
           }}
           style={styles.destItem}
-          android_ripple={{ color: colors.surfaceHover }}
+          android_ripple={{ color: colors.bgSurfaceHover }}
         >
           <IconSearch size={22} color={colors.textMuted} />
           <Text style={styles.destText}>Search</Text>
@@ -208,7 +208,7 @@ export function Drawer({
         <Pressable
           onPress={() => { onOpenInbox(); onClose(); }}
           style={styles.destItem}
-          android_ripple={{ color: colors.surfaceHover }}
+          android_ripple={{ color: colors.bgSurfaceHover }}
         >
           <IconMail size={22} color={colors.textMuted} />
           <Text style={styles.destText}>Inbox</Text>
@@ -217,7 +217,7 @@ export function Drawer({
         <Pressable
           onPress={() => { onOpenActions(); onClose(); }}
           style={styles.destItem}
-          android_ripple={{ color: colors.surfaceHover }}
+          android_ripple={{ color: colors.bgSurfaceHover }}
         >
           <IconActivity size={22} color={colors.textMuted} />
           <Text style={styles.destText}>Actions</Text>
@@ -226,7 +226,7 @@ export function Drawer({
         <Pressable
           onPress={() => { onOpenSettings(); onClose(); }}
           style={styles.destItem}
-          android_ripple={{ color: colors.surfaceHover }}
+          android_ripple={{ color: colors.bgSurfaceHover }}
         >
           <IconSettings size={22} color={colors.textMuted} />
           <Text style={styles.destText}>Settings</Text>
@@ -316,7 +316,7 @@ const styles = themedStyles(() => ({
     borderRadius: radii.md,
   },
   conversationItemActive: {
-    backgroundColor: colors.surfaceHover,
+    backgroundColor: colors.bgSurfaceHover,
   },
   conversationTitle: {
     ...typography.body,

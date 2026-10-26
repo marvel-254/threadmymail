@@ -233,7 +233,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
   );
 
   return (
-    <ImageBackground source={require('../assets/app-background.png')} style={styles.screen} resizeMode="cover">
+    <View style={styles.screen}>
       {/* ── Header bar ─────────────────────────────────────────────── */}
       <View style={styles.header}>
         <View style={styles.headerBtn}>
@@ -388,7 +388,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
                 <Switch
                   value={skills[skill.id]}
                   onValueChange={(v) => setSkills((prev) => ({ ...prev, [skill.id]: v }))}
-                  trackColor={{ false: colors.surfaceStrong, true: colors.primary }}
+                  trackColor={{ false: colors.bgSurfaceHover, true: colors.primary }}
                   thumbColor={colors.textOnPrimary}
                 />
               </View>
@@ -440,7 +440,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
           <Button label={step === 3 ? 'Done' : 'Continue'} onPress={next} fullWidth />
         )}
       </View>
-    </ImageBackground>
+    </View>
   );
 }
 
@@ -462,7 +462,7 @@ const styles = themedStyles(() => ({
     justifyContent: 'center',
   },
   stepCount: { ...typography.caption, color: colors.textSubtle },
-  skipText: { ...typography.bodySmall, color: colors.accent, fontWeight: '600' },
+  skipText: { ...typography.bodySmall, color: colors.primaryText, fontWeight: '600' },
   content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxl * 2 },
   welcome: { alignItems: 'center', gap: spacing.md, paddingTop: spacing.xl * 1.5 },
   videoContainer: {
@@ -470,7 +470,7 @@ const styles = themedStyles(() => ({
     height: 220,
     borderRadius: radii.xl,
     overflow: 'hidden',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
   },
   video: {
     width: '100%',
@@ -480,7 +480,7 @@ const styles = themedStyles(() => ({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.bgSurfaceHover,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -495,7 +495,7 @@ const styles = themedStyles(() => ({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: radii.pill,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderWidth: 1,
     borderColor: colors.border,
     minHeight: touch.minTarget,
@@ -518,7 +518,7 @@ const styles = themedStyles(() => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,

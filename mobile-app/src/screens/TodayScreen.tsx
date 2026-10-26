@@ -1,5 +1,6 @@
 /**
  * Today — the agent's daily briefing (home screen).
+ * Nordic design: calm, information-first briefing with one primary CTA.
  * MVP-UI §4.1 · DB: AI-Native (conversational briefing), Empty States,
  * Contextual Live Badge (status as atomic message).
  *
@@ -9,13 +10,14 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Pressable,
   RefreshControl,
   ScrollView,
   Text,
   View,
 } from 'react-native';
-import { Button, ConfirmDialog, EmptyState, SectionLabel, Toast } from '../components/ui';
+import { Button, ConfirmDialog, EmptyState, Toast, SectionHeader } from '../components/ui';
 import { StatusStrip } from '../components/agent';
 import { DraftCard } from '../components/drafts';
 import { SyncBanner } from '../components/inbox';
@@ -35,7 +37,7 @@ import {
 } from '../lib/guardrails';
 import { cancelTriage, runTriage, useTriage } from '../lib/agent/triage';
 import { loadLatestTriageRun, loadNeedsEye, type NeedsEyeItem } from '../lib/agent/triageStore';
-import { usePendingDrafts } from '../lib/agent/draftStore';
+import { usePendingDrafts, type Draft } from '../lib/agent/draftStore';
 import {
   discardDraft,
   generateFollowUpDraft,
@@ -62,15 +64,6 @@ import {
 import { loadMessages } from '../lib/mailStore';
 import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
 
-type TodayScreenProps = {
-  onOpenDrawer: () => void;
-  onOpenMail: (messageId?: string) => void;
-  onOpenMailFilter: (filter: MailFilter) => void;
-  onCompose: () => void;
-  onOpenAgent: () => void;
-  onEditDraft: (draftId: string) => void;
-};
-
 const VERDICT_LABEL = {
   'needs-reply': 'Needs reply',
   'action-required': 'Action required',
@@ -93,6 +86,15 @@ function syncedLabel(iso: string | null): string {
   if (hours < 24) return `${hours}h ago`;
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
+
+type AttentionItem = {
+  id: string;
+  type: 'draft' | 'followup' | 'needsEye';
+  priority: number; // lower = more urgent
+  draft?: Draft;
+  followUp?: FollowUp;
+  needsEye?: NeedsEyeItem;
+};
 
 export function TodayScreen({
   onOpenDrawer,
@@ -236,6 +238,33 @@ export function TodayScreen({
 
   const visibleNeedsEye = needsEye.length > 0 ? needsEye : fallbackNeedsEye;
 
+  // Build unified attention list (priority: drafts → followups → needsEye)
+  const attentionItems = useMemo<AttentionItem[]>(() => {
+    const items: AttentionItem[] = [];
+    // Drafts are most actionable
+    pendingDrafts.forEach((d, i) => items.push({
+      id: `draft-${d.id}`,
+      type: 'draft',
+      priority: i,
+      draft: d,
+    }));
+    // Follow-ups next
+    followUps.forEach((f, i) => items.push({
+      id: `followup-${f.thread.id}`,
+      type: 'followup',
+      priority: 100 + i,
+      followUp: f,
+    }));
+    // Needs-eye last (classified items)
+    visibleNeedsEye.forEach((n, i) => items.push({
+      id: `eyes-${n.message.id}`,
+      type: 'needsEye',
+      priority: 200 + i,
+      needsEye: n,
+    }));
+    return items.sort((a, b) => a.priority - b.priority);
+  }, [pendingDrafts, followUps, visibleNeedsEye]);
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     void loadAccounts()
@@ -342,84 +371,51 @@ export function TodayScreen({
           />
         }
       >
-        <Text style={styles.greeting}>{greeting()}</Text>
-        <Text style={styles.dateLine}>{dateLine}</Text>
-
-        <View style={styles.statRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`${stats.unread} unread messages`}
-            onPress={() => onOpenMailFilter('unread')}
-            style={({ pressed }) => [styles.stat, pressed && styles.pressed]}
-          >
-            <Text style={styles.statValue}>{stats.unread}</Text>
-            <Text style={styles.statLabel}>Unread</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`${stats.needsReply} messages need a reply`}
-            onPress={() => onOpenMailFilter('needs_reply')}
-            style={({ pressed }) => [styles.stat, pressed && styles.pressed]}
-          >
-            <Text style={styles.statValue}>{stats.needsReply}</Text>
-            <Text style={styles.statLabel}>Needs reply</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`${stats.starred} starred messages`}
-            onPress={() => onOpenMailFilter('starred')}
-            style={({ pressed }) => [styles.stat, pressed && styles.pressed]}
-          >
-            <Text style={styles.statValue}>{stats.starred}</Text>
-            <Text style={styles.statLabel}>Starred</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Last synced ${syncedLabel(sync.lastSyncedAt)}`}
-            onPress={() => onOpenMailFilter('all')}
-            style={({ pressed }) => [styles.stat, pressed && styles.pressed]}
-          >
-            <Text style={styles.statTime}>{syncedLabel(sync.lastSyncedAt)}</Text>
-            <Text style={styles.statLabel}>Last sync</Text>
-          </Pressable>
+        {/* Greeting + context */}
+        <View style={styles.greetingSection}>
+          <Text style={styles.greeting}>{greeting()}</Text>
+          <Text style={styles.dateLine}>{dateLine}</Text>
         </View>
 
-        <SectionLabel>Sync</SectionLabel>
-        <View style={styles.syncCard}>
-          {sync.phase === 'idle' ? (
-            <Text style={styles.syncIdle}>
-              {sync.lastSyncedAt
-                ? `Last synced ${syncedLabel(sync.lastSyncedAt)}. Pull down to sync again.`
-                : 'Not syncing yet. Pull down to connect or add an account in Settings.'}
-            </Text>
-          ) : (
-            <SyncBanner
-              phase={sync.phase}
-              progress={sync.progress}
-              imported={sync.imported}
-              cappedAt={sync.cappedAt}
-              error={sync.error}
-            />
+        {/* Primary CTA — one prominent action */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={triage.running ? 'Cancel triage' : 'Run morning triage'}
+          onPress={handleRunTriage}
+          style={({ pressed }) => [styles.primaryCTA, pressed && styles.pressed]}
+        >
+          <IconSparkle size={20} color={colors.textOnPrimary} />
+          <Text style={styles.primaryCTAText}>
+            {triage.running ? 'Cancel triage' : 'Run morning triage'}
+          </Text>
+        </Pressable>
+
+        {/* Sync status — inline, honest */}
+        <View style={styles.syncBar}>
+          <View style={styles.syncDot} />
+          <Text style={styles.syncText}>
+            {sync.phase === 'importing'
+              ? `Syncing… ${sync.imported} imported`
+              : sync.phase === 'error'
+                ? `Sync error`
+                : sync.lastSyncedAt
+                  ? `Last synced ${syncedLabel(sync.lastSyncedAt)}`
+                  : 'Not yet synced'}
+          </Text>
+          {sync.phase === 'importing' && sync.progress > 0 && (
+            <View style={styles.syncProgressTrack}>
+              <Animated.View style={[styles.syncProgressFill, { width: `${sync.progress}%` }]} />
+            </View>
           )}
         </View>
 
+        {/* Quick actions row — secondary */}
         <View style={styles.quickRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={triage.running ? 'Cancel triage' : 'Run morning triage'}
-            onPress={handleRunTriage}
-            style={({ pressed }) => [styles.quick, styles.quickPrimary, pressed && styles.pressed]}
-          >
-            <IconSparkle size={18} color={colors.textOnPrimary} />
-            <Text style={[styles.quickText, styles.quickTextPrimary]}>
-              {triage.running ? 'Cancel' : 'Triage'}
-            </Text>
-          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Compose email"
             onPress={onCompose}
-            style={({ pressed }) => [styles.quick, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.quick, pressed && styles.quickPressed]}
           >
             <IconSend size={18} color={colors.text} />
             <Text style={styles.quickText}>Compose</Text>
@@ -428,114 +424,143 @@ export function TodayScreen({
             accessibilityRole="button"
             accessibilityLabel="Ask Millo"
             onPress={onOpenAgent}
-            style={({ pressed }) => [styles.quick, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.quick, pressed && styles.quickPressed]}
           >
             <IconAgent size={18} color={colors.text} />
             <Text style={styles.quickText}>Ask Millo</Text>
           </Pressable>
         </View>
 
-        {pendingDrafts.length > 0 && (
-          <>
-            <SectionLabel>Drafts ({pendingDrafts.length})</SectionLabel>
-            {pendingDrafts.map((draft) => (
-              <DraftCard
-                key={draft.id}
-                draft={draft}
-                shadow={guardrails.shadowMode}
-                busy={draftBusy === draft.id}
-                onSend={() => void handleSendDraft(draft)}
-                onEdit={() => onEditDraft(draft.id)}
-                onDiscard={() => void handleDiscardDraft(draft)}
-              />
-            ))}
-          </>
-        )}
+        {/* Compact metrics — one line, no KPI tiles */}
+        <View style={styles.metricsRow}>
+          {stats.unread > 0 && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${stats.unread} unread messages`}
+              onPress={() => onOpenMailFilter('unread')}
+              style={styles.metricChip}
+            >
+              <Text style={styles.metricValue}>{stats.unread}</Text>
+              <Text style={styles.metricLabel}>Unread</Text>
+            </Pressable>
+          )}
+          {stats.needsReply > 0 && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${stats.needsReply} need reply`}
+              onPress={() => onOpenMailFilter('needs_reply')}
+              style={styles.metricChip}
+            >
+              <Text style={styles.metricValue}>{stats.needsReply}</Text>
+              <Text style={styles.metricLabel}>Need reply</Text>
+            </Pressable>
+          )}
+          {stats.starred > 0 && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${stats.starred} starred`}
+              onPress={() => onOpenMailFilter('starred')}
+              style={styles.metricChip}
+            >
+              <Text style={styles.metricValue}>{stats.starred}</Text>
+              <Text style={styles.metricLabel}>Starred</Text>
+            </Pressable>
+          )}
+        </View>
 
-        {followUpsOn && (
-          <>
-            <SectionLabel>Follow-ups ({followUps.length})</SectionLabel>
-            {followUps.length === 0 ? (
-              <Text style={styles.followEmpty}>
-                No cold threads. Millo will flag conversations that have waited too long.
-              </Text>
-            ) : (
-              followUps.map((item) => (
-                <View key={item.thread.id} style={styles.eyeCard}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Follow up with ${item.thread.latest.from}: ${item.thread.subject}`}
-                    onPress={() => onOpenMail(item.thread.latest.id)}
-                    style={({ pressed }) => [styles.followBody, pressed && styles.pressed]}
-                  >
-                    <View style={styles.eyeTop}>
-                      <Text style={styles.eyeSender} numberOfLines={1}>{item.thread.latest.from}</Text>
-                      <View style={[styles.verdictBadge, styles.followBadge]}>
-                        <Text style={styles.followBadgeText}>{item.daysCold}d cold</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.eyeSubject} numberOfLines={1}>{item.thread.subject}</Text>
-                    <Text style={styles.eyeReason} numberOfLines={2}>
-                      {item.waitingOn === 'reply'
-                        ? 'Waiting on your reply'
-                        : 'Waiting on them'}
-                      {' · '}
-                      {item.thread.messageCount} message{item.thread.messageCount === 1 ? '' : 's'}
-                    </Text>
-                  </Pressable>
-                  <View style={styles.followActions}>
-                    <Button
-                      label="Draft nudge"
-                      loading={followBusy === item.thread.id}
-                      onPress={() => void handleNudge(item)}
-                    />
-                    <Button
-                      label="Snooze 2d"
-                      variant="secondary"
-                      disabled={followBusy === item.thread.id}
-                      onPress={() => void handleSnooze(item)}
-                    />
-                  </View>
-                </View>
-              ))
-            )}
-          </>
-        )}
-
-        <SectionLabel>Needs your eye</SectionLabel>
-        {visibleNeedsEye.length === 0 ? (
-          <EmptyState
-            icon={<IconToday size={48} color={colors.textSubtle} />}
-            title="Nothing needs you"
-            body="Millo will surface anything that needs a decision."
-          />
+        {/* Unified attention list */}
+        {attentionItems.length === 0 ? (
+          <View style={styles.emptyAttention}>
+            <IconToday size={48} color={colors.textSubtle} />
+            <Text style={styles.emptyAttentionTitle}>All caught up</Text>
+            <Text style={styles.emptyAttentionBody}>
+              Millo will surface anything that needs a decision.
+            </Text>
+          </View>
         ) : (
-          visibleNeedsEye.map((item) => {
-            const dangerous = item.verdict === 'action-required';
-            return (
-              <Pressable
-                key={item.message.id}
-                accessibilityRole="button"
-                accessibilityLabel={`${VERDICT_LABEL[item.verdict]}: ${item.message.subject} from ${item.message.from}`}
-                onPress={() => onOpenMail(item.message.id)}
-                style={({ pressed }) => [styles.eyeCard, pressed && styles.eyeCardPressed]}
-              >
-                <View style={styles.eyeTop}>
-                  <Text style={styles.eyeSender} numberOfLines={1}>{item.message.from}</Text>
-                  <View style={[styles.verdictBadge, dangerous ? styles.verdictDanger : styles.verdictPrimary]}>
-                    <Text style={[styles.verdictText, dangerous && styles.verdictTextDanger]}>
-                      {VERDICT_LABEL[item.verdict]}
-                    </Text>
+          <>
+            {attentionItems.map((item) => {
+              if (item.type === 'draft') {
+                const d = item.draft!;
+                return (
+                  <DraftCard
+                    key={item.id}
+                    draft={d}
+                    shadow={guardrails.shadowMode}
+                    busy={draftBusy === d.id}
+                    onSend={() => void handleSendDraft(d)}
+                    onEdit={() => onEditDraft(d.id)}
+                    onDiscard={() => void handleDiscardDraft(d)}
+                  />
+                );
+              }
+              if (item.type === 'followup') {
+                const f = item.followUp!;
+                return (
+                  <View key={item.id} style={styles.attentionCard}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Follow up with ${f.thread.latest.from}: ${f.thread.subject}`}
+                      onPress={() => onOpenMail(f.thread.latest.id)}
+                      style={({ pressed }) => [styles.attentionBody, pressed && styles.pressed]}
+                    >
+                      <View style={styles.attentionTop}>
+                        <Text style={styles.attentionSender} numberOfLines={1}>{f.thread.latest.from}</Text>
+                        <View style={styles.attentionBadge}>
+                          <Text style={styles.attentionBadgeText}>{f.daysCold}d cold</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.attentionSubject} numberOfLines={1}>{f.thread.subject}</Text>
+                      <Text style={styles.attentionReason} numberOfLines={2}>
+                        {f.waitingOn === 'reply' ? 'Waiting on your reply' : 'Waiting on them'}
+                        {' · '}
+                        {f.thread.messageCount} message{f.thread.messageCount === 1 ? '' : 's'}
+                      </Text>
+                    </Pressable>
+                    <View style={styles.attentionActions}>
+                      <Button
+                        label="Draft nudge"
+                        loading={followBusy === f.thread.id}
+                        onPress={() => void handleNudge(f)}
+                      />
+                      <Button
+                        label="Snooze 2d"
+                        variant="secondary"
+                        disabled={followBusy === f.thread.id}
+                        onPress={() => void handleSnooze(f)}
+                      />
+                    </View>
                   </View>
-                </View>
-                <Text style={styles.eyeSubject} numberOfLines={1}>{item.message.subject}</Text>
-                <Text style={styles.eyeReason} numberOfLines={2}>{item.reason}</Text>
-              </Pressable>
-            );
-          })
+                );
+              }
+              // needsEye
+              const n = item.needsEye!;
+              const dangerous = n.verdict === 'action-required';
+              return (
+                <Pressable
+                  key={item.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${VERDICT_LABEL[n.verdict]}: ${n.message.subject} from ${n.message.from}`}
+                  onPress={() => onOpenMail(n.message.id)}
+                  style={({ pressed }) => [styles.attentionCard, pressed && styles.pressed]}
+                >
+                  <View style={styles.attentionTop}>
+                    <Text style={styles.attentionSender} numberOfLines={1}>{n.message.from}</Text>
+                    <View style={[styles.attentionBadge, dangerous && styles.attentionBadgeDanger]}>
+                      <Text style={styles.attentionBadgeText}>
+                        {VERDICT_LABEL[n.verdict]}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.attentionSubject} numberOfLines={1}>{n.message.subject}</Text>
+                  <Text style={styles.attentionReason} numberOfLines={2}>{n.reason}</Text>
+                </Pressable>
+              );
+            })}
+          </>
         )}
 
-        <SectionLabel>Agent status</SectionLabel>
+        {/* Agent status */}
         <StatusStrip
           status={killEngaged || quietNow ? 'quiet' : triage.running ? 'running' : 'idle'}
           actionsUsed={guardrails.actionsUsed}
@@ -562,6 +587,15 @@ export function TodayScreen({
   );
 }
 
+type TodayScreenProps = {
+  onOpenDrawer: () => void;
+  onOpenMail: (messageId?: string) => void;
+  onOpenMailFilter: (filter: MailFilter) => void;
+  onCompose: () => void;
+  onOpenAgent: () => void;
+  onEditDraft: (draftId: string) => void;
+};
+
 const styles = themedStyles(() => ({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: {
@@ -581,75 +615,113 @@ const styles = themedStyles(() => ({
   },
   killEngaged: { backgroundColor: colors.dangerBg },
   headerTitle: { ...typography.h3, color: colors.text },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.lg },
+  greetingSection: { gap: spacing.xs },
   greeting: { ...typography.h1, color: colors.text },
-  dateLine: { ...typography.caption, color: colors.textMuted, marginTop: -spacing.sm },
-  statRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  stat: {
-    flexGrow: 1,
-    flexBasis: '46%',
-    minHeight: 72,
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+  dateLine: { ...typography.caption, color: colors.textMuted, marginTop: -spacing.xs },
+
+  // Primary CTA
+  primaryCTA: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
-  },
-  statValue: { ...typography.h2, color: colors.text },
-  statTime: { ...typography.h3, color: colors.text },
-  statLabel: { ...typography.caption, color: colors.textMuted },
-  syncCard: {
-    backgroundColor: colors.surface,
+    gap: spacing.sm,
+    minHeight: 56,
+    backgroundColor: colors.primary,
     borderRadius: radii.lg,
+    paddingHorizontal: spacing.xl,
+  },
+  primaryCTAText: { ...typography.body, color: colors.textOnPrimary, fontWeight: '600' },
+
+  // Sync bar
+  syncBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
   },
-  syncIdle: { ...typography.bodySmall, color: colors.textMuted },
+  syncDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary },
+  syncText: { ...typography.bodySmall, color: colors.textMuted, flex: 1 },
+  syncProgressTrack: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: colors.border,
+    borderBottomLeftRadius: radii.md,
+    borderBottomRightRadius: radii.md,
+    overflow: 'hidden',
+  },
+  syncProgressFill: { height: 3, backgroundColor: colors.primary },
+
+  // Quick actions
   quickRow: { flexDirection: 'row', gap: spacing.sm },
   quick: {
     flex: 1,
-    minHeight: 56,
-    borderRadius: radii.lg,
+    minHeight: 48,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
   },
-  quickPrimary: { backgroundColor: colors.primary, borderColor: colors.primary },
+  quickPressed: { opacity: 0.85 },
   quickText: { ...typography.caption, color: colors.text, fontWeight: '600' },
-  quickTextPrimary: { color: colors.textOnPrimary },
-  pressed: { opacity: 0.82 },
-  eyeCard: {
-    backgroundColor: colors.surface,
+
+  // Compact metrics
+  metricsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  metricChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.border,
+    minHeight: 36,
+  },
+  metricValue: { ...typography.h3, color: colors.text, fontWeight: '600' },
+  metricLabel: { ...typography.caption, color: colors.textMuted },
+
+  // Attention items
+  emptyAttention: { alignItems: 'center', padding: spacing.xl, gap: spacing.md },
+  emptyAttentionTitle: { ...typography.h3, color: colors.text, textAlign: 'center' },
+  emptyAttentionBody: { ...typography.bodySmall, color: colors.textMuted, textAlign: 'center', maxWidth: 280 },
+
+  attentionCard: {
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: spacing.md,
     gap: spacing.xs,
-    minHeight: touch.minTarget,
   },
-  eyeCardPressed: { opacity: 0.85 },
-  eyeTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  eyeSender: { ...typography.caption, color: colors.textMuted, flex: 1 },
-  verdictBadge: {
+  attentionTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  attentionSender: { ...typography.caption, color: colors.textMuted, flex: 1 },
+  attentionBadge: {
+    backgroundColor: colors.primaryBg,
     borderRadius: 999,
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
   },
-  verdictPrimary: { backgroundColor: colors.accentBg },
-  verdictDanger: { backgroundColor: colors.dangerBg },
-  verdictText: { ...typography.caption, color: colors.accent, fontWeight: '600' },
-  verdictTextDanger: { color: colors.dangerText },
-  eyeSubject: { ...typography.body, color: colors.text, fontWeight: '600' },
-  eyeReason: { ...typography.caption, color: colors.textMuted },
-  followEmpty: { ...typography.caption, color: colors.textMuted },
-  followBody: { gap: spacing.xs },
-  followBadge: { backgroundColor: colors.dangerBg },
-  followBadgeText: { ...typography.caption, color: colors.dangerText, fontWeight: '600' },
-  followActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  attentionBadgeDanger: { backgroundColor: colors.dangerBg },
+  attentionBadgeText: { ...typography.caption, color: colors.primaryText, fontWeight: '600' },
+  attentionSubject: { ...typography.body, color: colors.text, fontWeight: '600', marginTop: spacing.xs },
+  attentionReason: { ...typography.caption, color: colors.textMuted },
+  attentionBody: { gap: spacing.xs },
+  attentionActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+
+  pressed: { opacity: 0.85 },
 }));
+
+export default TodayScreen;

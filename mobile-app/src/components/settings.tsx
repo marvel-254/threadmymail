@@ -1,6 +1,6 @@
 /**
  * Settings components — ProviderCard and Field (form input).
- * DB: Confirmation Dialogs (remove/clear), Submit Feedback (test connection).
+ * Nordic design: clean surfaces, accent-primary actions, ≥48dp touch targets.
  */
 import { useState } from 'react';
 import {
@@ -55,7 +55,7 @@ export function ProviderCard({ provider, onTest, onRemove }: ProviderCardProps) 
           }}
           style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7 }]}
         >
-          <IconTest size={18} color={testing ? colors.primary : colors.accent} />
+          <IconTest size={18} color={testing ? colors.primary : colors.primary} />
         </Pressable>
         <Pressable
           accessibilityLabel={`Remove ${provider.name}`}
@@ -105,7 +105,7 @@ const styles = themedStyles(() => ({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -136,7 +136,7 @@ const styles = themedStyles(() => ({
   fieldInput: {
     ...typography.body,
     color: colors.text,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,

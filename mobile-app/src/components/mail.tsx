@@ -1,6 +1,6 @@
 /**
  * Mail components — ThreadMessage and Composer.
- * DB: Touch targets ≥48dp, color-not-only-indicator (unread = dot + bold).
+ * Nordic design: clean surfaces, accent-primary actions, ≥48dp touch targets.
  */
 import { useState } from 'react';
 import {
@@ -99,7 +99,7 @@ export function Composer({ placeholder = 'type a message…', disabled = false, 
             onPress={onAskAgent}
             style={({ pressed }) => [styles.askBtn, pressed && { opacity: 0.8 }]}
           >
-            <IconSparkle size={18} color={colors.accent} />
+            <IconSparkle size={18} color={colors.primary} />
           </Pressable>
         )}
         <Pressable
@@ -124,7 +124,7 @@ export function Composer({ placeholder = 'type a message…', disabled = false, 
 
 const styles = themedStyles(() => ({
   threadCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.lg,
     padding: spacing.lg,
     gap: spacing.xs,
@@ -146,7 +146,7 @@ const styles = themedStyles(() => ({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: spacing.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.border,
@@ -176,5 +176,5 @@ const styles = themedStyles(() => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendBtnDisabled: { backgroundColor: colors.surfaceStrong },
+  sendBtnDisabled: { backgroundColor: colors.bgSurfaceHover },
 }));

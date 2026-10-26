@@ -79,7 +79,7 @@ export function BottomTabBar({ active, onSelect, unreadCount = 0 }: BottomTabBar
                   : TAB_LABELS[id]
               }
               onPress={() => onSelect(id)}
-              android_ripple={{ color: colors.surfaceHover, borderless: false }}
+              android_ripple={{ color: colors.bgSurfaceHover, borderless: false }}
               style={({ pressed }) => [
                 styles.slot,
                 index > 0 && styles.slotDivider,
@@ -121,7 +121,7 @@ export function BottomTabBar({ active, onSelect, unreadCount = 0 }: BottomTabBar
 
 const styles = themedStyles(() => ({
   wrapper: {
-    backgroundColor: colors.bgDeep,
+    backgroundColor: colors.bg,
     justifyContent: 'center',
   },
   topRule: {
@@ -157,7 +157,7 @@ const styles = themedStyles(() => ({
     justifyContent: 'center',
   },
   iconSlotActive: {
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.bgSurfaceHover,
   },
   badge: {
     position: 'absolute',
@@ -169,7 +169,7 @@ const styles = themedStyles(() => ({
     paddingHorizontal: 4,
     backgroundColor: colors.primary,
     borderWidth: 1,
-    borderColor: colors.bgDeep,
+    borderColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -185,7 +185,7 @@ const styles = themedStyles(() => ({
     width: 50,
     height: 32,
     borderRadius: radii.pill,
-    backgroundColor: colors.surfaceStrong,
+    backgroundColor: colors.bgSurfaceHover,
     borderWidth: 1,
     borderColor: colors.borderPrimary,
     marginTop: -8,
@@ -199,11 +199,11 @@ const styles = themedStyles(() => ({
     color: colors.textSubtle,
   },
   labelActive: {
-    color: colors.primaryText,
+    color: colors.primary,
     fontWeight: '600',
   },
   labelMillo: {
-    color: colors.secondary,
+    color: colors.primary,
     fontWeight: '600',
   },
 }));
