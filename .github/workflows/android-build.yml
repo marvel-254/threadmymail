@@ -131,11 +131,18 @@ jobs:
           TAG="${{ env.TAG }}"
           APK="mobile-app/android/app/build/outputs/apk/release/app-release.apk"
 
-          # Create tag + release if they don't exist
-          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
-            git tag "$TAG"
-            git push origin "$TAG"
-          fi
+          # Try to create the tag; if it already exists (e.g. created out-of-band),
+          # that's fine — release creation proceeds either way.
+          git tag "$TAG" 2>/dev/null || echo "Tag $TAG already exists, continuing..."
+          git push origin "$TAG" 2>/dev/null || echo "Tag $TAG push skipped/already on remote, continuing..."
 
-          gh release create "$TAG" "$APK"             --title "ThreadMyMail $TAG"             --notes "Release $TAG. Download the APK and install it on your Android device. Requires an app password for your email provider and your own AI model key."
-          echo "✓ Release $TAG created at https://github.com/$GITHUB_REPOSITORY/releases/$TAG"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — updating assets."
+            gh release upload "$TAG" "$APK" --repo "$GITHUB_REPOSITORY" --clobber || true
+          else
+            gh release create "$TAG" "$APK" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "ThreadMyMail $TAG" \
+              --notes "Release $TAG. Download the APK and install it on your Android device. Requires an app password for your email provider and your own AI model key."
+          fi
+          echo "✓ Release $TAG ready at https://github.com/$GITHUB_REPOSITORY/releases/$TAG"
