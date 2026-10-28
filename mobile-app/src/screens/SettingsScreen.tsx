@@ -515,11 +515,14 @@ export function SettingsScreen() {
         {/* Memory */}
         <SectionHeader>Memory</SectionHeader>
         <Card>
-          <Text style={styles.cardTitle}>On-device memory</Text>
-          <Text style={styles.cardSub}>Stored locally, never sent anywhere</Text>
-          <View style={styles.cardActions}>
-            <Button label="Clear" variant="danger" disabled
-              onPress={() => ask('Clear memory?', 'This cannot be undone.', async () => { setConfirm(null); toast('Memory cleared'); })} />
+          <Text style={styles.cardTitle}>What Millo knows</Text>
+          <Text style={styles.cardSub}>
+            An on-device memory engine is under development (Issue #31).
+            Once enabled, you will see a smart list of facts, preferences,
+            commitments, and people the agent has learned about you.
+          </Text>
+          <View style={styles.comingSoonPill}>
+            <Text style={styles.comingSoonText}>COMING SOON</Text>
           </View>
         </Card>
 
@@ -970,4 +973,13 @@ const styles = themedStyles(() => ({
   resultTextOk: { color: colors.successText },
   resultTextErr: { color: colors.dangerText },
   sheetActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.md, paddingVertical: spacing.sm },
+  comingSoonPill: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+    backgroundColor: colors.primaryBg,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  comingSoonText: { ...typography.label, color: colors.primaryText, fontWeight: '600' },
 }));
