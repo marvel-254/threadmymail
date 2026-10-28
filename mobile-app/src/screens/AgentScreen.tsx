@@ -56,7 +56,12 @@ import {
   type Conversation,
   type StreamItem,
 } from '../lib/conversationStore';
-import { streamChat, type ChatMessage } from '../lib/aiClient';
+import {
+  buildSystemPrompt,
+  streamChat,
+  type ChatMessage,
+} from '../lib/aiClient';
+import { withMemoryContext } from '../lib/agent/memoryPrompt';
 import {
   DEFAULT_WALLPAPER,
   resolveWallpaper,
@@ -198,8 +203,15 @@ export function AgentScreen({
     stopGenerationRef.current = abort;
     streamCleanup.current = abort;
 
+    const system = await withMemoryContext(
+      buildSystemPrompt(),
+      `${prompt} memory`,
+      6,
+    ).catch(() => buildSystemPrompt());
+
     const result = await streamChat({
       messages: [...history, { role: 'user', content: prompt }],
+      system,
       signal: controller.signal,
       onToken: (token) => {
         setItems((prev) => prev.map((item) =>

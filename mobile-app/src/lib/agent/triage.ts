@@ -22,6 +22,7 @@ import { loadMessages, markRead, setNeedsReply, setStarred } from '../mailStore'
 import { getEnabledSkillIds } from '../skillsStore';
 import type { Message } from '../mail';
 import { logActivity } from './activityStore';
+import { distillFromRun, type DistillResult } from './distill';
 import {
   createTriageRun,
   finishTriageRun,
@@ -426,6 +427,10 @@ export async function runTriage(
   let status: TriageRunStatus = 'completed';
   let error: string | null = null;
 
+  // Track classified items so distillation runs over the same signal the
+  // classifier saw (best-effort, and only for non-shadow runs).
+  const distilled: DistillResult = { remembered: 0, skipped: 0, reason: null };
+
   try {
     for (let offset = 0; offset < backlog.length; offset += CLASSIFY_BATCH_SIZE) {
       if (controller.signal.aborted) {
@@ -449,6 +454,41 @@ export async function runTriage(
       await applyVerdicts(outcome.results, shadow, batch);
       for (const result of outcome.results) counts[result.verdict] += 1;
       classified += outcome.results.length;
+
+      // Best-effort distillation over each classified batch (skipped in
+      // shadow mode: we do not learn from decisions that were only suggested).
+      if (!shadow) {
+        void distillFromRun(
+          outcome.results.map((result) => {
+            const message = batch.find((m) => m.id === result.messageId);
+            return message
+              ? {
+                  from: message.from,
+                  fromAddress: message.fromAddress,
+                  subject: message.subject,
+                  date: message.date,
+                  preview: message.preview,
+                  verdict: result.verdict,
+                  reason: result.reason,
+                }
+              : {
+                  from: '',
+                  fromAddress: '',
+                  subject: '',
+                  date: '',
+                  preview: '',
+                  verdict: result.verdict,
+                  reason: result.reason,
+                };
+          }),
+          `triage:${runId}`,
+        )
+          .then((res) => {
+            distilled.remembered += res.remembered;
+            distilled.skipped += res.skipped;
+            return res.reason;
+          });
+      }
     }
   } catch (err) {
     status = 'error';

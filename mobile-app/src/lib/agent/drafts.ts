@@ -15,6 +15,8 @@ import { getMailSync } from '../mailSyncSingleton';
 import { loadMessage } from '../mailStore';
 import type { Message } from '../mail';
 import { logActivity } from './activityStore';
+import { withMemoryContext } from './memoryPrompt';
+import { deriveVoiceFromSamples } from './memoryStore';
 import {
   addVoiceSample,
   createDraft,
@@ -99,8 +101,9 @@ export async function generateDraft(
   }
 
   const samples = await loadVoiceSamples(3);
+  const system = await withMemoryContext(DRAFT_SYSTEM, `${message.from} ${message.subject} reply`, 6);
   const response = await streamChat({
-    system: DRAFT_SYSTEM,
+    system,
     messages: [{ role: 'user', content: buildPrompt(message, body, samples) }],
     maxTokens: 800,
   });
@@ -174,6 +177,7 @@ export async function generateFollowUpDraft(
   }
 
   const samples = await loadVoiceSamples(3);
+  const system = await withMemoryContext(FOLLOW_UP_SYSTEM, `${message.from} ${message.subject} follow-up`, 6);
   const voice = samples.length
     ? `\n\nRecent replies the user approved (match this voice, do not copy facts):\n${samples
         .map((sample, index) => `--- sample ${index + 1} ---\n${clip(sample, 1_200)}`)
@@ -193,7 +197,7 @@ export async function generateFollowUpDraft(
   ].join('\n');
 
   const response = await streamChat({
-    system: FOLLOW_UP_SYSTEM,
+    system,
     messages: [{ role: 'user', content: prompt }],
     maxTokens: 500,
   });
@@ -268,6 +272,7 @@ export async function sendDraft(draft: Draft): Promise<DraftActionResult> {
 
   await setDraftStatus(draft.id, 'sent');
   await addVoiceSample(draft.body);
+  await deriveVoiceFromSamples(await loadVoiceSamples(5));
   await logActivity({
     type: 'draft_sent',
     outcome: 'ok',
