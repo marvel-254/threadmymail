@@ -129,7 +129,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ env.TAG }}"
-          APK="mobile-app/android/app/build/outputs/apk/release/app-release.apk"
+          APK="android/app/build/outputs/apk/release/app-release.apk"
 
           # Try to create the tag; if it already exists (e.g. created out-of-band),
           # that's fine — release creation proceeds either way.
