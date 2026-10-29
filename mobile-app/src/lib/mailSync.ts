@@ -38,6 +38,7 @@ import {
   upsertMessages,
 } from './mailStore';
 import { logActivity, type UndoPayload } from './agent/activityStore';
+import { emit, TriggerEvents } from './agent/triggerBus';
 import { notifyNewMessages } from './notifications';
 import type {
   BridgeAccount,
@@ -465,6 +466,8 @@ export class MailSync {
       const messages: Message[] = headers.map((h) => this.headerToMessage(h));
       await upsertMessages(messages);
       void notifyNewMessages(messages);
+      // Trigger bus: new mail arriving via IDLE finally has a consumer.
+      void emit(TriggerEvents.MAIL_NEW, messages);
       this.setState({ lastSyncedAt: new Date().toISOString() });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

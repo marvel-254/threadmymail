@@ -52,6 +52,8 @@ import {
 } from '../lib/skillsStore';
 import { testImap } from '../lib/emailTest';
 import { runFollowUps } from '../lib/agent/followUps';
+import { setJobEnabled as setStoreJobEnabled, listJobs as listSchedulerJobs, type Job as SchedulerJob } from '../lib/agent/schedulerStore';
+import { refreshNextRuns as refreshScheduler } from '../lib/agent/scheduler';
 import {
   configureNotifications,
   muteSender,
@@ -65,6 +67,32 @@ import { useTheme, type ThemeMode } from '../theme/ThemeProvider';
 
 // ── Confirm helper ────────────────────────────────────────────────────────
 type Confirm = { title: string; body: string; action: () => void } | null;
+
+function describeTrigger(trigger: SchedulerJob['trigger']): string {
+  if (trigger.type === 'cron') return `Schedule ${trigger.expression}`;
+  if (trigger.type === 'interval') return `Every ${trigger.minutes} min`;
+  if (trigger.type === 'event') return `On ${trigger.event}`;
+  return 'Manual';
+}
+
+function formatWhen(epochMs: number): string {
+  try {
+    return new Date(epochMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  } catch {
+    return `${Math.max(0, Math.round((epochMs - Date.now()) / 60_000))}m ago`;
+  }
+}
+
+const JOB_LABELS: Record<string, string> = {
+  triage_inbox: 'Triage Inbox',
+  follow_up_chaser: 'Follow-up Chaser',
+  morning_briefing: 'Morning Briefing',
+  weekly_review: 'Weekly Review',
+};
+
+function labelForJob(id: string): string {
+  return JOB_LABELS[id] ?? id;
+}
 
 export function SettingsScreen() {
   const [confirm, setConfirm] = useState<Confirm>(null);
@@ -201,6 +229,28 @@ export function SettingsScreen() {
   // ── Guardrails ─────────────────────────────────────────────────────────
   const guardrails = useGuardrails();
   const { killSwitch, shadowMode } = guardrails;
+
+  // ── Automation (scheduler jobs) ───────────────────────────────────────────
+  const [jobs, setJobs] = useState<SchedulerJob[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listSchedulerJobs().then((next) => {
+      if (!cancelled) setJobs(next);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const refreshJobs = async () => {
+    await refreshScheduler();
+    setJobs(await listSchedulerJobs());
+  };
+
+  const toggleJob = async (id: string, enabled: boolean) => {
+    await setStoreJobEnabled(id, enabled);
+    setJobs(await listSchedulerJobs());
+    toast(enabled ? `${labelForJob(id)} enabled` : `${labelForJob(id)} paused`, true);
+  };
 
   // ── Notifications ──────────────────────────────────────────────────────
   const notifications = useNotificationPrefs();
@@ -645,6 +695,41 @@ export function SettingsScreen() {
             {guardrails.aiCallsUsed}/{guardrails.dailyAiCallLimit} AI calls used today.
             Manual actions stay available during quiet hours.
           </Text>
+        </Card>
+
+        {/* Automation */}
+        <SectionHeader>Automation</SectionHeader>
+        <Card>
+          <Text style={styles.cardSub}>
+            The on-device scheduler fires jobs on a heartbeat while the app is
+            open, and catches up (or logs a skip) after a restart. Each run honors
+            the kill switch, quiet hours, and your daily budgets.
+          </Text>
+          {jobs.map((job) => (
+            <View key={job.id} style={styles.guardrailRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.guardrailLabel}>{job.name}</Text>
+                <Text style={styles.guardrailDesc}>
+                  {describeTrigger(job.trigger)}
+                  {job.lastRunAt ? ` · Last run ${formatWhen(job.lastRunAt)}` : ' · Never run'}
+                  {job.lastOutcome ? ` · ${job.lastOutcome}` : ''}
+                </Text>
+              </View>
+              <Switch
+                value={job.enabled}
+                onValueChange={(v) => void toggleJob(job.id, v)}
+                trackColor={{ false: colors.bgSurfaceHover, true: colors.primary }}
+                thumbColor={colors.textOnPrimary}
+              />
+            </View>
+          ))}
+          <View style={styles.cardActions}>
+            <Button
+              label="Refresh schedule"
+              variant="secondary"
+              onPress={() => { void refreshJobs(); toast('Schedule refreshed'); }}
+            />
+          </View>
         </Card>
 
         {/* Notifications */}

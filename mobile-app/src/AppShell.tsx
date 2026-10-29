@@ -46,13 +46,9 @@ import {
   useGuardrails,
 } from './lib/guardrails';
 import {
-  startTriageScheduler,
-  stopTriageScheduler,
-} from './lib/agent/triageScheduler';
-import {
-  startFollowUpScheduler,
-  stopFollowUpScheduler,
-} from './lib/agent/followUpScheduler';
+  startScheduler,
+  stopScheduler,
+} from './lib/agent/scheduler';
 import { isOnboarded, setOnboarded } from './lib/prefs';
 import { refreshMilloWidget } from './widgets/widgetSync';
 import type { MailFilter } from './lib/mail';
@@ -112,11 +108,12 @@ export function AppShell() {
 
   useEffect(() => {
     if (!onboarded) return;
-    void startTriageScheduler();
-    void startFollowUpScheduler();
+    // The unified scheduler owns all cadence (triage, follow-ups, briefing,
+    // weekly review). The feature-specific schedulers have been superseded by
+    // `scheduler.ts` jobs; leave them off to avoid duplicate runs.
+    void startScheduler();
     return () => {
-      stopTriageScheduler();
-      stopFollowUpScheduler();
+      stopScheduler();
     };
   }, [onboarded]);
 
