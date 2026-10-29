@@ -40,6 +40,7 @@
       ],
       "react-native-mail-engine",
       "./plugins/withMailEngineLink",
+      "./plugins/withMailEngineOnLoad",
       "./plugins/withAndroidReleaseSigning",
       "expo-video",
       "./plugins/withAndroidPackagingPickFirsts",

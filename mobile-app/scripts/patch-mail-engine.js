@@ -93,7 +93,113 @@ const jniOk = patchFile(
   'JMailOutgoingAttachment.hpp',
 );
 
-if (!sharedOk || !jniOk) {
+// ---------------------------------------------------------------------------
+// Nitro registration fix (JNI_OnLoad)
+// ---------------------------------------------------------------------------
+// The published package never calls `registerAllNatives()`: its CMake project
+// compiles only the nitrogen-generated sources, and nothing provides the
+// `JNI_OnLoad` entry point that Nitro requires (nitro.margelo.com → "call the
+// C++/JNI registerAllNatives() function inside your library's JNI_OnLoad(...)
+// entry point, often in cpp-adapter.cpp"). Nothing loads libMailEngine.so
+// either (the module ships no *Package class), so the "MailEngine"
+// HybridObject never lands in Nitro's HybridObjectRegistry and every mail
+// operation fails at runtime with:
+//
+//   Cannot create an instance of HybridObject "MailEngine" - It has not yet
+//   been registered in the Nitro Modules HybridObjectRegistry!
+//
+// Fix (both halves):
+//   1. Here: ship a cpp-adapter.cpp exporting JNI_OnLoad that calls
+//      registerAllNatives(), and compile it into libMailEngine.so.
+//   2. In the app: preload the library in MainApplication.onCreate (see
+//      plugins/withMailEngineOnLoad.js) so registration runs before any JS
+//      calls NitroModules.createHybridObject('MailEngine').
+
+const CMAKE = path.join(
+  __dirname,
+  '..',
+  'node_modules',
+  'react-native-mail-engine',
+  'android',
+  'CMakeLists.txt',
+);
+const ADAPTER = path.join(
+  __dirname,
+  '..',
+  'node_modules',
+  'react-native-mail-engine',
+  'android',
+  'cpp-adapter.cpp',
+);
+
+const ADAPTER_SRC = `//
+// cpp-adapter.cpp — JNI entry point for the MailEngine Nitro library.
+//
+// Added by ThreadMyMail's postinstall patch (scripts/patch-mail-engine.js).
+// The published package builds only the nitrogen-generated sources and never
+// exports JNI_OnLoad, so registerAllNatives() never runs and the "MailEngine"
+// HybridObject is missing from Nitro's HybridObjectRegistry at runtime.
+// See https://nitro.margelo.com/docs/getting-started/how-to-build-a-nitro-module
+// ("call the C++/JNI registerAllNatives() function inside your library's
+// JNI_OnLoad(...) entry point").
+//
+
+#include <fbjni/fbjni.h>
+
+#include "../nitrogen/generated/android/MailEngineOnLoad.hpp"
+
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
+  return facebook::jni::initialize(vm, []() {
+    margelo::nitro::mailengine::registerAllNatives();
+  });
+}
+`;
+
+function writeAdapter() {
+  try {
+    const existing = fs.existsSync(ADAPTER) ? fs.readFileSync(ADAPTER, 'utf8') : '';
+    if (existing === ADAPTER_SRC) {
+      console.log('[patch] cpp-adapter.cpp: already up to date');
+      return true;
+    }
+    fs.writeFileSync(ADAPTER, ADAPTER_SRC);
+    console.log('[patch] cpp-adapter.cpp: written (JNI_OnLoad → registerAllNatives)');
+    return true;
+  } catch (err) {
+    console.error('[patch] failed to write cpp-adapter.cpp:', err.message);
+    return false;
+  }
+}
+
+function patchCmake() {
+  try {
+    const src = fs.readFileSync(CMAKE, 'utf8');
+    if (src.includes('cpp-adapter.cpp')) {
+      console.log('[patch] CMakeLists.txt: already includes cpp-adapter.cpp');
+      return true;
+    }
+    // Compile the JNI entry point into libMailEngine.so.
+    const patched = src.replace(
+      'add_library(MailEngine SHARED)',
+      'add_library(MailEngine SHARED cpp-adapter.cpp)',
+    );
+    if (patched === src) {
+      console.error('[patch] CMakeLists.txt: could not find `add_library(MailEngine SHARED)`');
+      return false;
+    }
+    fs.writeFileSync(CMAKE, patched);
+    console.log('[patch] CMakeLists.txt: added cpp-adapter.cpp to libMailEngine sources');
+    return true;
+  } catch (err) {
+    console.error('[patch] failed to patch CMakeLists.txt:', err.message);
+    return false;
+  }
+}
+
+const adapterOk = writeAdapter();
+const cmakeOk = patchCmake();
+
+if (!sharedOk || !jniOk || !adapterOk || !cmakeOk) {
   process.exit(1);
 }
 
