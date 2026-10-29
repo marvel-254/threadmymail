@@ -439,10 +439,15 @@ export class MailSync {
     let lastUid: number | undefined;
 
     while (batch < MAX_IMPORT_BATCHES) {
+      // fetchHeaders returns the newest limit messages first, so to advance
+      // into older history we cap the range below the oldest uid imported last
+      // batch. `sinceUid` cannot drive this loop: it keeps uids ABOVE the given
+      // one, so every batch would refetch the same newest messages and
+      // `lastUid` would never move.
       const headers = await this.mailbox.fetchHeaders({
         limit: IMPORT_BATCH_SIZE,
         since,
-        ...(lastUid !== undefined ? { sinceUid: lastUid } : {}),
+        ...(lastUid !== undefined ? { uidRange: [1, lastUid - 1] as [number, number] } : {}),
       });
       if (headers.length === 0) break;
 
@@ -461,6 +466,8 @@ export class MailSync {
 
       // If we got fewer than a full batch, we've reached the end.
       if (headers.length < IMPORT_BATCH_SIZE) break;
+      // The range bottom would fall below uid 1; nothing older exists.
+      if (lastUid <= 1) break;
     }
     return imported;
   }
