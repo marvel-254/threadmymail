@@ -446,6 +446,21 @@ export function mayAct(action: GuardrailAction = 'outward'): boolean {
 }
 
 /**
+ * Non-consuming pre-flight for scheduled work.
+ *
+ * Applies the same day-rollover reset as the consume* helpers and evaluates the
+ * `scheduled` gate (kill switch, quiet hours, budget) without counting a run.
+ * Budget consumption stays the responsibility of the engine that actually does
+ * the work (e.g. `runTriage` via `consumeTriageRun`), so gate checks that do
+ * not lead to a run never burn budget.
+ */
+export async function preflightScheduledRun(): Promise<GuardrailDecision> {
+  await loadGuardrails();
+  if (resetBudgetIfNewDay()) await persistConfig();
+  return checkGuardrails('scheduled');
+}
+
+/**
  * Reserve one autonomous action for today.
  *
  * Scheduled work obeys quiet hours and the budget; manual triggers skip the

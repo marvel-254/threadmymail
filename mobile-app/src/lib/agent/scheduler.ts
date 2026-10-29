@@ -10,7 +10,7 @@
  * - Single-flight lock per job (no overlapping runs of the same job).
  */
 import { AppState, AppStateStatus } from 'react-native';
-import { isQuietHours, loadGuardrails, consumeTriageRun, getGuardrails } from '../guardrails';
+import { isQuietHours, loadGuardrails, preflightScheduledRun, getGuardrails } from '../guardrails';
 import { logActivity } from './activityStore';
 import {
   getDueJobs,
@@ -262,8 +262,10 @@ async function runJob(job: Job, now: number): Promise<RunOutcome> {
 }
 
 async function checkScheduledGuardrails(): Promise<{ allowed: boolean; reason: string | null }> {
-  // Use the same gate as scheduled triage runs (kill switch, quiet hours, budget).
-  const gate = await consumeTriageRun('scheduled');
+  // Check-only pre-flight (kill switch, quiet hours, budget). Budget consumption
+  // stays with the engine that actually does the work (runTriage consumes via
+  // consumeTriageRun), so no runs firing without executing cannot burn budget.
+  const gate = await preflightScheduledRun();
   return { allowed: gate.allowed, reason: gate.reason };
 }
 
