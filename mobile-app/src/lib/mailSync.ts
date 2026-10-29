@@ -484,16 +484,19 @@ export class MailSync {
 
   private async onIdleMail(event: { uids: number[] }): Promise<void> {
     // IDLE is already stopped here (the event handler did it). Fetch the new
-    // headers, persist them, then restart IDLE.
-    if (!this.mailbox) return;
+    // headers through the serialization queue — the single connection must
+    // never run interleaved commands while a queued mailbox operation runs.
     try {
-      const headers = await this.mailbox.fetchHeaders({ limit: event.uids.length || 50 });
-      const messages: Message[] = headers.map((h) => this.headerToMessage(h));
-      await upsertMessages(messages);
-      void notifyNewMessages(messages);
-      // Trigger bus: new mail arriving via IDLE finally has a consumer.
-      void emit(TriggerEvents.MAIL_NEW, messages);
-      this.setState({ lastSyncedAt: new Date().toISOString() });
+      await this.enqueue(async () => {
+        if (!this.mailbox) return;
+        const headers = await this.mailbox.fetchHeaders({ limit: event.uids.length || 50 });
+        const messages: Message[] = headers.map((h) => this.headerToMessage(h));
+        await upsertMessages(messages);
+        void notifyNewMessages(messages);
+        // Trigger bus: new mail arriving via IDLE finally has a consumer.
+        void emit(TriggerEvents.MAIL_NEW, messages);
+        this.setState({ lastSyncedAt: new Date().toISOString() });
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.setState({ phase: 'error', error: message });
@@ -502,10 +505,9 @@ export class MailSync {
         outcome: 'error',
         detail: `Realtime mail fetch failed: ${message}`,
       });
-    } finally {
-      // Restart IDLE unless we're shutting down.
-      if (this.mailbox) this.startIdle();
     }
+    // Restart IDLE unless we're shutting down.
+    if (this.mailbox) this.startIdle();
   }
 
   private onIdleError(err: unknown): void {
