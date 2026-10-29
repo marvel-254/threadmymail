@@ -149,8 +149,10 @@ export async function runFollowUps(
       return { count: 0, notified: false };
     }
 
+    // Check the gate before recording the reminder marker: a blocked run
+    // (quiet hours, kill switch, shadow mode) must not consume today's
+    // reminder — once quiet hours end, the next scheduler tick retries.
     const gate = checkGuardrails('notification');
-    await markFollowUpReminder(items.length);
     if (!gate.allowed) {
       await logActivity({
         type: 'follow_up_skipped',
@@ -165,6 +167,7 @@ export async function runFollowUps(
       return { count: items.length, notified: false };
     }
 
+    await markFollowUpReminder(items.length);
     const notified = await notifyFollowUps(items.length);
     const subjects = items
       .slice(0, 3)
