@@ -304,6 +304,11 @@ export async function touchMemory(id: string): Promise<void> {
 
 export type RecallResult = Memory & { rank: number };
 
+/** Escape a string for a SQLite LIKE pattern where ESCAPE '\' is declared. */
+function escapeLikePattern(s: string): string {
+  return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 export async function recallMemories(query: string, limit = 10): Promise<RecallResult[]> {
   if (!query.trim()) return [];
   const db = await openDb();
@@ -312,14 +317,17 @@ export async function recallMemories(query: string, limit = 10): Promise<RecallR
   // simple) when the module isn't available or the query contains punctuation
   // that might confuse FTS5.
   if (!ftsAvailable || query.match(/[\[\]*?"'\\]|^[{\}]| MATCH \w+/)) {
+    // Escape LIKE wildcards in the user query before binding; the ESCAPE
+    // clause declares '\' (sent as two chars via '\\' inside the template).
+    const pattern = `%${escapeLikePattern(query)}%`;
     const rows = await db.getAllAsync<Memory & { rank: number }>(
       `SELECT * FROM agent_memories
-       WHERE content LIKE ? ESCAPE '\'
-         OR kind LIKE ? ESCAPE '\' ESCAPE '\''
-         OR (source_ref IS NOT NULL AND source_ref LIKE ? ESCAPE '\'')
+       WHERE content LIKE ? ESCAPE '\\'
+         OR kind LIKE ? ESCAPE '\\'
+         OR (source_ref IS NOT NULL AND source_ref LIKE ? ESCAPE '\\')
        ORDER BY importance DESC, created_at DESC
        LIMIT ?`,
-      [`%${query}%`, `%${query}%`, `%${query}%`, limit],
+      [pattern, pattern, pattern, limit],
     );
     return rows.map((r) => ({ ...r, rank: 1000 - Math.min(999, r.importance * 100) }));
   }
