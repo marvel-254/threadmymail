@@ -239,6 +239,20 @@ export class MailSync {
     try {
       this.setState({ phase: 'importing', progress: 0, imported: 0, error: null });
       const alreadyConnected = !!this.account;
+      if (this.account) {
+        // Retrying after an error reconnects; drop the previous native
+        // connection first so its IMAP socket is not leaked.
+        this.stopIdle?.();
+        this.stopIdle = null;
+        this.mailbox = null;
+        const previous = this.account;
+        this.account = null;
+        try {
+          await previous.disconnect();
+        } catch {
+          // Best-effort cleanup; the fresh connect below proceeds anyway.
+        }
+      }
       // SMTP is optional in the bridge type but required for the harness to be able
       // to send at all — pass it whenever the account has one, so send() works.
       this.account = await this.bridge.connect({
