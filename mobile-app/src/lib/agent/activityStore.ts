@@ -34,6 +34,12 @@ export type MailRestoreUndo = {
   /** Folder to move back into when the action was a folder move. */
   folder: string;
   operation: 'move' | 'delete';
+  /**
+   * Folder the move sent the message to (Archive/Trash). Undo opens this to
+   * move back into `folder`. Absent for `delete` (no Trash) or when the
+   * server change failed, in which case no server-side undo is needed.
+   */
+  destinationFolder?: string;
 };
 
 export type MailThreadFlagsUndo = {
@@ -52,6 +58,8 @@ export type MailThreadRestoreUndo = {
   messages: Message[];
   folder: string;
   operation: 'move' | 'delete';
+  /** Folder the move sent the thread to; see MailRestoreUndo. */
+  destinationFolder?: string;
 };
 
 export type UndoPayload =

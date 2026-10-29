@@ -98,13 +98,19 @@ export class MailSync {
       const uid = uidFromMessageId(payload.message.id);
       if (!this.account || !Number.isFinite(uid)) return;
       try {
-        await this.withMailbox(payload.message.folder ?? 'INBOX', false, async (mailbox) => {
-          if (payload.operation === 'move') {
+        if (payload.operation === 'move') {
+          // The server move moved the message to Archive/Trash. Undo must open
+          // that destination folder — not the original — and move back.
+          const destination = payload.destinationFolder;
+          if (!destination) return; // device-only or failed move: nothing to undo server-side
+          await this.withMailbox(destination, false, async (mailbox) => {
             await mailbox.moveMessages([uid], payload.folder);
-          } else {
+          });
+        } else {
+          await this.withMailbox(payload.message.folder ?? 'INBOX', false, async (mailbox) => {
             await mailbox.removeFlags([uid], ['\\Deleted']);
-          }
-        });
+          });
+        }
       } catch {
         // Local Undo already succeeded; server Undo is best-effort.
       }
@@ -118,13 +124,18 @@ export class MailSync {
         .filter((uid) => Number.isFinite(uid));
       if (!this.account || uids.length === 0) return;
       try {
-        await this.withMailbox(payload.messages[0]?.folder ?? 'INBOX', false, async (mailbox) => {
-          if (payload.operation === 'move') {
+        if (payload.operation === 'move') {
+          // See the single-message branch: undo opens the destination folder.
+          const destination = payload.destinationFolder;
+          if (!destination) return;
+          await this.withMailbox(destination, false, async (mailbox) => {
             await mailbox.moveMessages(uids, payload.folder);
-          } else {
+          });
+        } else {
+          await this.withMailbox(payload.messages[0]?.folder ?? 'INBOX', false, async (mailbox) => {
             await mailbox.removeFlags(uids, ['\\Deleted']);
-          }
-        });
+          });
+        }
       } catch {
         // Local Undo already succeeded; server Undo is best-effort.
       }
@@ -709,6 +720,7 @@ export class MailSync {
       .filter((uid) => Number.isFinite(uid));
     let serverChanged = false;
     let operation: 'move' | 'delete' = 'move';
+    let destinationFolder: string | undefined;
     let error: string | undefined;
 
     if (uids.length > 0) {
@@ -718,10 +730,12 @@ export class MailSync {
             const destination = await this.resolveFolder('archive');
             if (!destination) throw new Error('This server did not advertise an Archive folder.');
             await mailbox.moveMessages(uids, destination);
+            destinationFolder = destination;
           } else {
             const trash = await this.resolveFolder('trash');
             if (trash) {
               await mailbox.moveMessages(uids, trash);
+              destinationFolder = trash;
             } else {
               await mailbox.deleteMessages(uids, false);
               operation = 'delete';
@@ -755,6 +769,7 @@ export class MailSync {
         messages,
         folder: first.folder,
         operation,
+        destinationFolder: serverChanged ? destinationFolder : undefined,
       },
     });
     this.emit();
@@ -771,6 +786,7 @@ export class MailSync {
 
     const uid = uidFromMessageId(id);
     let serverChanged = false;
+    let destinationFolder: string | undefined;
     let error: string | undefined;
     if (Number.isFinite(uid)) {
       try {
@@ -778,6 +794,7 @@ export class MailSync {
           const destination = await this.resolveFolder('archive');
           if (!destination) throw new Error('This server did not advertise an Archive folder.');
           await mailbox.moveMessages([uid], destination);
+          destinationFolder = destination;
         });
         serverChanged = true;
       } catch (err) {
@@ -802,6 +819,7 @@ export class MailSync {
         message,
         folder: message.folder,
         operation: 'move',
+        destinationFolder: serverChanged ? destinationFolder : undefined,
       },
     });
     this.emit();
@@ -819,6 +837,7 @@ export class MailSync {
     const uid = uidFromMessageId(id);
     let serverChanged = false;
     let operation: 'move' | 'delete' = 'move';
+    let destinationFolder: string | undefined;
     let error: string | undefined;
     if (Number.isFinite(uid)) {
       try {
@@ -826,6 +845,7 @@ export class MailSync {
           const trash = await this.resolveFolder('trash');
           if (trash) {
             await mailbox.moveMessages([uid], trash);
+            destinationFolder = trash;
           } else {
             await mailbox.deleteMessages([uid], false);
             operation = 'delete';
@@ -854,6 +874,7 @@ export class MailSync {
         message,
         folder: message.folder,
         operation,
+        destinationFolder: serverChanged ? destinationFolder : undefined,
       },
     });
     this.emit();
