@@ -132,6 +132,10 @@ export type ProviderTestResult =
  * prompt, and fails for exactly the reasons we care about — wrong key, wrong
  * base URL, unreachable host. A chat call would also burn the user's tokens to
  * answer a question a model list answers.
+ *
+ * Anthropic rejects Bearer auth outright, so match its endpoint (same
+ * heuristic as `providerEndpoint` in aiClient.ts) and send `x-api-key` plus
+ * the required version header instead.
  */
 export async function testProvider(input: {
   baseUrl: string;
