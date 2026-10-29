@@ -60,6 +60,9 @@ export async function addProvider(input: Omit<SavedProvider, 'primary'>): Promis
   const list = await loadProviders();
   const existing = list.find((p) => p.id === input.id);
   // Re-adding the same preset replaces the old entry rather than duplicating it.
+  // The entry being replaced may itself be primary — preserve that flag, or a
+  // re-saved primary would leave the list with no primary at all.
+  const wasPrimary = list.some((p) => p.id === input.id && p.primary);
   const next = list.filter((p) => p.id !== input.id);
   const saved: SavedProvider = {
     ...input,
