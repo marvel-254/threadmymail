@@ -252,8 +252,11 @@ export async function notifyNewMessages(messages: Message[]): Promise<void> {
   });
   if (fresh.length === 0) return;
 
-  // Keep the tray readable after a burst; the badge count carries the rest.
-  for (const message of fresh.slice(0, 5)) {
+  // Keep the tray readable after a burst. Individual alerts cover the first
+  // few messages; the overflow gets one summary alert so those messages are
+  // not silently marked as notified and never alerted at all.
+  const shown = fresh.slice(0, 5);
+  for (const message of shown) {
     const channelId = state.sound ? ALERT_CHANNEL : SILENT_CHANNEL;
     try {
       await Notifications.scheduleNotificationAsync({
@@ -262,6 +265,23 @@ export async function notifyNewMessages(messages: Message[]): Promise<void> {
           body: message.subject,
           sound: state.sound ? 'default' : false,
           data: { messageId: message.id, threadId: message.threadId },
+        },
+        trigger: Platform.OS === 'android' ? { channelId } : null,
+      });
+    } catch {
+      // A failed alert must never break the sync loop.
+    }
+  }
+  const overflow = fresh.length - shown.length;
+  if (overflow > 0) {
+    const channelId = state.sound ? ALERT_CHANNEL : SILENT_CHANNEL;
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `${overflow} more new message${overflow === 1 ? '' : 's'}`,
+          body: 'Open the app to read the rest.',
+          sound: state.sound ? 'default' : false,
+          data: { overflowCount: overflow },
         },
         trigger: Platform.OS === 'android' ? { channelId } : null,
       });
