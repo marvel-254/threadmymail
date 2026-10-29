@@ -4,7 +4,7 @@
  *
  * Schema:
  * - conversations: id, title, created_at, updated_at, wallpaper_override
- * - messages: id, conversation_id, role, text, references, created_at
+ * - messages: id, conversation_id, role, text, refs, created_at
  *
  * Migrations are additive only; no destructive schema changes.
  */
@@ -16,9 +16,11 @@ let db: SQLite.SQLiteDatabase | null = null;
 
 export async function getConversationDb(): Promise<SQLite.SQLiteDatabase> {
   if (db) return db;
-  db = await SQLite.openDatabaseAsync(DB_NAME);
-  await initSchema(db);
-  return db;
+  const opened = await SQLite.openDatabaseAsync(DB_NAME);
+  await opened.execAsync('PRAGMA foreign_keys = ON');
+  await initSchema(opened);
+  db = opened;
+  return opened;
 }
 
 async function initSchema(db: SQLite.SQLiteDatabase) {
@@ -40,7 +42,7 @@ async function initSchema(db: SQLite.SQLiteDatabase) {
       conversation_id TEXT NOT NULL,
       role TEXT NOT NULL, -- 'user' | 'agent' | 'tool' | 'escalation' | 'notice'
       text TEXT NOT NULL,
-      references TEXT, -- JSON string for tool args, email refs, etc.
+      refs TEXT, -- JSON string for tool args, email refs, etc.
       created_at INTEGER NOT NULL,
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     );
@@ -132,7 +134,7 @@ export async function saveMessage(message: Omit<Message, 'createdAt'> & { create
   const db = await getConversationDb();
   const createdAt = message.createdAt ?? Date.now();
   await db.runAsync(
-    'INSERT OR REPLACE INTO messages (id, conversation_id, role, text, references, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    'INSERT OR REPLACE INTO messages (id, conversation_id, role, text, refs, created_at) VALUES (?, ?, ?, ?, ?, ?)',
     [message.id, message.conversationId, message.role, message.text, message.references, createdAt]
   );
   // Update conversation's updated_at
@@ -145,7 +147,7 @@ export async function saveMessages(messages: (Omit<Message, 'createdAt'> & { cre
     for (const msg of messages) {
       const createdAt = msg.createdAt ?? Date.now();
       await db.runAsync(
-        'INSERT OR REPLACE INTO messages (id, conversation_id, role, text, references, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT OR REPLACE INTO messages (id, conversation_id, role, text, refs, created_at) VALUES (?, ?, ?, ?, ?, ?)',
         [msg.id, msg.conversationId, msg.role, msg.text, msg.references, createdAt]
       );
     }
@@ -159,7 +161,7 @@ export async function saveMessages(messages: (Omit<Message, 'createdAt'> & { cre
 export async function getMessages(conversationId: string): Promise<Message[]> {
   const db = await getConversationDb();
   const rows = await db.getAllAsync<Message>(
-    'SELECT id, conversation_id as conversationId, role, text, references, created_at as createdAt FROM messages WHERE conversation_id = ? ORDER BY created_at ASC',
+    'SELECT id, conversation_id as conversationId, role, text, refs as "references", created_at as createdAt FROM messages WHERE conversation_id = ? ORDER BY created_at ASC',
     [conversationId]
   );
   return rows;
@@ -230,8 +232,25 @@ export function messageToStreamItem(msg: Message): StreamItem {
     case 'agent':
       return { type: 'agent', id: msg.id, text: msg.text, streaming: false, emailRefs: parsedRefs.emailRefs };
     case 'tool': {
-      const refs = msg.references ? JSON.parse(msg.references) : {};
-      return { type: 'tool', id: msg.id, name: msg.text, args: refs.args ?? '', latencyMs: refs.latencyMs ?? 0, ok: refs.ok ?? true };
+      let refs: Partial<Record<'args' | 'latencyMs' | 'ok', unknown>> = {};
+      if (msg.references) {
+        try {
+          const parsed: unknown = JSON.parse(msg.references);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            refs = parsed as Partial<Record<'args' | 'latencyMs' | 'ok', unknown>>;
+          }
+        } catch {
+          // Malformed references — treat as absent.
+        }
+      }
+      return {
+        type: 'tool',
+        id: msg.id,
+        name: msg.text,
+        args: typeof refs.args === 'string' ? refs.args : '',
+        latencyMs: typeof refs.latencyMs === 'number' ? refs.latencyMs : 0,
+        ok: typeof refs.ok === 'boolean' ? refs.ok : true,
+      };
     }
     case 'escalation':
       return { type: 'escalation', id: msg.id, question: msg.text };
