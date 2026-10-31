@@ -7,13 +7,13 @@ export function userAgentName(userId: string): string {
   return `user:${userId}`;
 }
 
-export function userAgent(
-  env: { AGENT: DurableObjectNamespace },
+export function userAgent<T>(
+  env: { AGENT: DurableObjectNamespace<T> },
   userId: string,
-): DurableObjectStub {
+): DurableObjectStub<T> {
   return env.AGENT.get(env.AGENT.idFromName(userAgentName(userId)));
 }
 
-export function hubAgent(env: { AGENT: DurableObjectNamespace }): DurableObjectStub {
+export function hubAgent<T>(env: { AGENT: DurableObjectNamespace<T> }): DurableObjectStub<T> {
   return env.AGENT.get(env.AGENT.idFromName(HUB_NAME));
 }
