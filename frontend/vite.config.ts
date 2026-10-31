@@ -90,6 +90,8 @@ export default defineConfig({
   ],
   server: {
     port: 3000,
+    host: true,
+    allowedHosts: true,
     proxy: {
       // Point this at the deployed Worker, or set VITE_API_BASE for a
       // deployed environment.

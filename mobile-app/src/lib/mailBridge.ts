@@ -89,7 +89,21 @@ export function createMailBridge(): MailBridge {
   return {
     async connect(config: BridgeConfig): Promise<BridgeAccount> {
       // Lazy require: throws only when a real connection is attempted.
-      const { MailEngine } = require('react-native-mail-engine') as typeof import('react-native-mail-engine');
+      let MailEngine: typeof import('react-native-mail-engine').MailEngine;
+      try {
+        ({ MailEngine } = require('react-native-mail-engine') as typeof import('react-native-mail-engine'));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          'IMAP is not available in this build. Use a development or release APK (`npx expo run:android`), not Expo Go. ' +
+            msg,
+        );
+      }
+      if (!MailEngine?.connect) {
+        throw new Error(
+          'IMAP native module is not linked. Rebuild the app with `npx expo run:android`.',
+        );
+      }
       const connectConfig: ConnectConfig = {
         imap: config.imap,
         smtp: config.smtp,

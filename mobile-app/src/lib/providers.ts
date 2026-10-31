@@ -88,3 +88,12 @@ export function findPreset(id: string): ProviderPreset | undefined {
 export function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '');
 }
+
+/** Android emulator cannot reach the host via 127.0.0.1 — that is the emulator itself. */
+export function reachableBaseUrl(url: string, platform: string = 'android'): string {
+  const trimmed = normalizeBaseUrl(url);
+  if (platform === 'android' && /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/i.test(trimmed)) {
+    return trimmed.replace(/127\.0\.0\.1|localhost/i, '10.0.2.2');
+  }
+  return trimmed;
+}

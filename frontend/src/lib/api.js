@@ -30,7 +30,7 @@ export class ApiError extends Error {
 
   /** True when the backend is simply not there yet (Phase 0+ not deployed). */
   get notConnected() {
-    return this.status === 0 || this.code === 'INTERNAL';
+    return this.status === 0 || this.status === 502 || this.status === 503;
   }
 
   get needsReauth() {

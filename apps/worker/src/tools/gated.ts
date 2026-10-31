@@ -59,6 +59,10 @@ export function needsConnectionMessage(onceConnected: string): string {
   );
 }
 
+const READONLY_SCOPE_MESSAGE =
+  'Google is connected with read-only scopes (gmail.readonly, calendar.readonly). ' +
+  'Sending mail or changing calendar events is not granted on this deployment.';
+
 export interface GatedSpec {
   /** Namespaced tool name: `email.send`, `calendar.create_event`. */
   name: string;
@@ -73,6 +77,11 @@ export interface GatedSpec {
   outward?: boolean;
   /** Completes the sentence "Once it is connected, this tool will …". */
   onceConnected: string;
+  /** Optional live implementation used once Google is connected. */
+  run?: (
+    args: Record<string, unknown>,
+    ctx: ToolContext,
+  ) => Promise<ReturnType<typeof fail> | { ok: true; data: unknown; summary?: string }>;
 }
 
 /**
@@ -90,13 +99,17 @@ export function gatedTool(spec: GatedSpec): ToolDefinition<Record<string, unknow
     sideEffecting: spec.sideEffecting,
     outward: spec.outward,
     source: 'builtin',
-    async execute(_args, ctx) {
+    async execute(args, ctx) {
       if (!(await googleConnected(ctx))) {
         return fail(ERROR.NEEDS_CONNECTION, needsConnectionMessage(spec.onceConnected));
       }
-      // Connected, but the implementation has not landed. Never fabricate a
-      // result here — an empty success would be indistinguishable from real
-      // work in the activity feed.
+      if (spec.run) return spec.run(args, ctx);
+      const writes = spec.permissions.some(
+        (p) => p.includes(':write') || spec.sideEffecting || spec.outward,
+      );
+      if (writes) {
+        return fail(ERROR.NEEDS_SCOPE, READONLY_SCOPE_MESSAGE);
+      }
       return fail(
         ERROR.NOT_IMPLEMENTED,
         `${spec.name} is specified but not implemented yet. ` +

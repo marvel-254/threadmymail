@@ -42,6 +42,7 @@ import { buildSchedule } from '../agent/heartbeat.js';
 import { isValidCron } from '../agent/schedule.js';
 import { loadAgentConfigFresh } from '../agent/config.js';
 import { ERROR } from '../tools/registry.js';
+import { hubAgent, userAgent } from '../agent/ids.js';
 
 export type { Bindings, Vars } from './types.js';
 
@@ -105,6 +106,7 @@ async function resolveUserId(c: Context<Vars>): Promise<string | null> {
       sessionSecret: env.SESSION_SECRET,
       environment: env.ENVIRONMENT,
       userHeader: c.req.header('X-User-Id'),
+      authorization: c.req.header('Authorization'),
     });
   } catch (error) {
     // A malformed X-User-Id is a client error worth reporting — but only where
@@ -156,7 +158,7 @@ function credentials(c: Context<Vars>): CredentialStore {
 async function refreshSchedule(c: Context<Vars>, userId: string): Promise<number> {
   try {
     const entries = await buildSchedule(db(c), userId, Date.now());
-    const res = await c.env.AGENT.get(c.env.AGENT.idFromName('main')).fetch(
+    const res = await hubAgent(c.env).fetch(
       new Request('https://do/schedule', {
         method: 'POST',
         body: JSON.stringify({ entries }),
@@ -1225,7 +1227,7 @@ routes.get('/skills', handler(async (c) => {
 
 routes.get('/skills/schedule', handler(async (c) => {
   const userId = getUserId(c);
-  const res = await c.env.AGENT.get(c.env.AGENT.idFromName('main')).fetch(
+  const res = await hubAgent(c.env).fetch(
     new Request('https://do/schedule'),
   );
   const body = (await res.json().catch(() => ({}))) as {
@@ -1272,7 +1274,7 @@ routes.post('/skills/sync', handler(async (c) => {
  */
 routes.post('/skills/tick', handler(async (c) => {
   const userId = getUserId(c);
-  const res = await c.env.AGENT.get(c.env.AGENT.idFromName('main')).fetch(
+  const res = await hubAgent(c.env).fetch(
     new Request('https://do/heartbeat', {
       method: 'POST',
       body: JSON.stringify({ user_id: userId }),
@@ -1496,7 +1498,7 @@ routes.post('/skills/:id/run', handler(async (c) => {
   // dryRun is false here even inside a skill's shadow window: the user pressed
   // the button, having just read the instructions in front of them. The shadow
   // window exists to catch what an UNATTENDED run would do.
-  const res = await c.env.AGENT.get(c.env.AGENT.idFromName('main')).fetch(
+  const res = await userAgent(c.env, userId).fetch(
     new Request('https://do/runs', {
       method: 'POST',
       body: JSON.stringify({
@@ -1540,9 +1542,7 @@ routes.post('/agent/runs', handler(async (c) => {
   const content = requireString(body, 'content', 20_000);
   const skillId = nullableString(body, 'skill_id', 64);
 
-  const doRes = await c.env.AGENT
-    .get(c.env.AGENT.idFromName('main'))
-    .fetch('https://do/runs', {
+  const doRes = await userAgent(c.env, userId).fetch('https://do/runs', {
       method: 'POST',
       body: JSON.stringify({ user_id: userId, content, skill_id: skillId ?? null }),
     });
@@ -1621,12 +1621,10 @@ routes.post('/agent/runs/:id/abort', handler(async (c) => {
   // the in-flight execution. A finished run is returned untouched.
   let signalSent = false;
   if (run['completed_at'] === null) {
-    const doRes = await c.env.AGENT
-      .get(c.env.AGENT.idFromName('main'))
-      .fetch('https://do/runs/abort', {
-        method: 'POST',
-        body: JSON.stringify({ run_id: id }),
-      });
+    const doRes = await userAgent(c.env, userId).fetch('https://do/runs/abort', {
+      method: 'POST',
+      body: JSON.stringify({ run_id: id }),
+    });
     signalSent = ((await doRes.json()) as { live: boolean }).live;
   }
 

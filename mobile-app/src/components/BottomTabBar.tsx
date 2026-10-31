@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { themedStyles, colors, radii, spacing, touch, typography } from '../theme/theme';
+import { themedStyles, colors, radii, shadows, spacing, touch, typography } from '../theme/theme';
 import { IconActivity, IconAgent, IconMail, IconSettings, IconToday } from './Icons';
 
 export type TabId = 'today' | 'mail' | 'agent' | 'activity' | 'settings';
@@ -121,12 +121,13 @@ export function BottomTabBar({ active, onSelect, unreadCount = 0 }: BottomTabBar
 
 const styles = themedStyles(() => ({
   wrapper: {
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bgDeep,
     justifyContent: 'center',
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
   },
   topRule: {
-    height: 1,
-    backgroundColor: colors.borderStrong,
+    height: 0,
   },
   row: {
     flexDirection: 'row',
@@ -142,10 +143,7 @@ const styles = themedStyles(() => ({
     paddingVertical: spacing.xs,
     overflow: 'hidden',
   },
-  slotDivider: {
-    borderLeftWidth: 1,
-    borderLeftColor: colors.border,
-  },
+  slotDivider: {},
   slotPressed: {
     opacity: 0.72,
   },
@@ -182,17 +180,15 @@ const styles = themedStyles(() => ({
   },
   // Millo breaks the grid: a raised pill that reads as the primary action.
   milloSlot: {
-    width: 50,
-    height: 32,
+    width: 52,
+    height: 52,
     borderRadius: radii.pill,
-    backgroundColor: colors.bgSurfaceHover,
-    borderWidth: 1,
-    borderColor: colors.borderPrimary,
-    marginTop: -8,
+    backgroundColor: colors.secondary,
+    marginTop: -22,
+    ...shadows.float,
   },
   milloSlotActive: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   label: {
     ...typography.caption,

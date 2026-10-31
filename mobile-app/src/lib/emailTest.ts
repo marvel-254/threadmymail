@@ -24,6 +24,9 @@ export async function testImap(config: {
   if (!config.user.trim() || !config.password) {
     return { ok: false, detail: 'Enter an email address and app password first.' };
   }
+  if (!config.imap.host.trim()) {
+    return { ok: false, detail: 'IMAP host is missing. Pick a provider or enter a custom host.' };
+  }
 
   const bridge = createMailBridge();
   let account: Awaited<ReturnType<BridgeConfig extends never ? never : typeof bridge.connect>> | null = null;
@@ -31,7 +34,11 @@ export async function testImap(config: {
     account = await bridge.connect({
       imap: config.imap,
       smtp: config.smtp,
-      auth: { type: 'password', user: config.user.trim(), password: config.password },
+      auth: {
+        type: 'password',
+        user: config.user.trim(),
+        password: config.password.replace(/\s+/g, ''),
+      },
     });
     const mailbox = await account.openInbox();
     const headers = await mailbox.fetchHeaders({ limit: 1 });

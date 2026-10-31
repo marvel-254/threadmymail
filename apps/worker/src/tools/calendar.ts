@@ -15,8 +15,9 @@
  * activity feed can list and reverse them (docs/AI-SKILLS.md §6).
  */
 
-import type { ToolDefinition } from './registry';
+import { ok, fail, ERROR, type ToolDefinition } from './registry';
 import { gatedTool } from './gated';
+import { googleFetch } from './google';
 
 const RANGE_PARAMS = {
   type: 'object',
@@ -38,6 +39,37 @@ export const calendarTools: ToolDefinition<never, unknown>[] = [
     onceConnected: 'list events in a date range',
     parameters: RANGE_PARAMS,
     permissions: ['data:calendar:read'],
+    async run(args, ctx) {
+      const from = typeof args.from === 'string' ? args.from : '';
+      const to = typeof args.to === 'string' ? args.to : '';
+      if (!from || !to) return fail(ERROR.INVALID_ARGS, 'from and to are required ISO timestamps.');
+      const url =
+        'https://www.googleapis.com/calendar/v3/calendars/primary/events?' +
+        new URLSearchParams({
+          timeMin: from,
+          timeMax: to,
+          singleEvents: 'true',
+          orderBy: 'startTime',
+          maxResults: '50',
+        }).toString();
+      const res = await googleFetch(ctx, url);
+      if (!res.ok) return res.error;
+      const items = Array.isArray((res.json as { items?: unknown }).items)
+        ? ((res.json as { items: Array<Record<string, unknown>> }).items)
+        : [];
+      const events = items.map((item) => ({
+        id: item.id,
+        title: item.summary ?? '(no title)',
+        start: (item.start as { dateTime?: string; date?: string } | undefined)?.dateTime
+          ?? (item.start as { date?: string } | undefined)?.date,
+        end: (item.end as { dateTime?: string; date?: string } | undefined)?.dateTime
+          ?? (item.end as { date?: string } | undefined)?.date,
+        attendees: Array.isArray(item.attendees)
+          ? (item.attendees as Array<{ email?: string }>).map((a) => a.email).filter(Boolean)
+          : [],
+      }));
+      return ok({ events, count: events.length }, `${events.length} events`);
+    },
   }),
 
   gatedTool({
@@ -63,6 +95,22 @@ export const calendarTools: ToolDefinition<never, unknown>[] = [
       additionalProperties: false,
     },
     permissions: ['data:calendar:read', 'network:google_calendar'],
+    async run(args, ctx) {
+      const from = typeof args.from === 'string' ? args.from : '';
+      const to = typeof args.to === 'string' ? args.to : '';
+      if (!from || !to) return fail(ERROR.INVALID_ARGS, 'from and to are required ISO timestamps.');
+      const extra = Array.isArray(args.attendees)
+        ? args.attendees.filter((a): a is string => typeof a === 'string')
+        : [];
+      const items = [{ id: 'primary' }, ...extra.map((email) => ({ id: email }))];
+      const res = await googleFetch(ctx, 'https://www.googleapis.com/calendar/v3/freeBusy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timeMin: from, timeMax: to, items }),
+      });
+      if (!res.ok) return res.error;
+      return ok(res.json, 'free/busy');
+    },
   }),
 
   gatedTool({

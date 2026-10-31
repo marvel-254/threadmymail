@@ -33,14 +33,32 @@ export interface IdentityInput {
   cookie?: string | null;
   /** Session signing key. Absent means no session can exist. */
   sessionSecret?: string;
-  /** "production" turns on authentication. Anything else is development. */
+  /** Only "development" / "test" / "dev" honour X-User-Id and the dev user. */
   environment?: string;
   /** The X-User-Id header, if present. */
   userHeader?: string;
+  /** Authorization header (Bearer session token). */
+  authorization?: string | null;
   /** Cookie values, already parsed, so the caller does not parse them twice. */
   cookies: Record<string, string>;
   /** Injectable for tests; defaults to the wall clock. */
   now?: number;
+}
+
+/** True only for explicit local/test environments — never for an unset var. */
+export function isDevEnvironment(environment: string | undefined): boolean {
+  return environment === 'development' || environment === 'test' || environment === 'dev';
+}
+
+export function sessionTokenFrom(input: {
+  cookies: Record<string, string>;
+  authorization?: string | null;
+}): string | undefined {
+  const cookie = input.cookies['tmm_session'];
+  if (cookie) return cookie;
+  const header = input.authorization ?? '';
+  const match = /^Bearer\s+(\S+)/i.exec(header);
+  return match?.[1];
 }
 
 /**
@@ -60,12 +78,12 @@ export interface IdentityInput {
  */
 export async function resolveIdentity(input: IdentityInput): Promise<string | null> {
   if (input.sessionSecret) {
-    const token = input.cookies['tmm_session'];
+    const token = sessionTokenFrom(input);
     const payload = await verifySession(token, input.sessionSecret, input.now);
     if (payload) return payload.uid;
   }
 
-  if (input.environment === 'production') return null;
+  if (!isDevEnvironment(input.environment)) return null;
 
   const header = input.userHeader;
   if (!header) return DEV_USER_ID;

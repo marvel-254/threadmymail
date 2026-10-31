@@ -26,6 +26,8 @@ export type Bindings = DbEnv & {
   GOOGLE_REDIRECT_URI?: string;
   /** Comma-separated browser origins. Also the post-login redirect target. */
   CORS_ORIGINS?: string;
+  /** Preferred post-login origin. Falls back to the first non-API CORS origin. */
+  FRONTEND_ORIGIN?: string;
 };
 
 export type Vars = {

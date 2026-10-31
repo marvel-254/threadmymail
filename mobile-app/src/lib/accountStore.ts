@@ -170,17 +170,26 @@ export async function saveAccount(input: {
   const provider = EMAIL_PROVIDERS.find((p) => p.id === input.providerId) ?? EMAIL_PROVIDERS[0];
   const isCustom = input.providerId === 'custom';
   const email = input.email.trim();
+  const password = input.password.replace(/\s+/g, '');
+  if (!email || !password) {
+    throw new Error('Enter an email address and app password.');
+  }
+  const imapHost = isCustom && input.customImapHost ? input.customImapHost.trim() : provider.imapHost;
+  const smtpHost = isCustom && input.customSmtpHost ? input.customSmtpHost.trim() : provider.smtpHost;
+  if (!imapHost) {
+    throw new Error('IMAP host is required for a custom server.');
+  }
   const resolved: Omit<AccountConfig, 'id' | 'primary'> = {
     providerId: input.providerId,
     email,
-    password: input.password,
+    password,
     imap: {
-      host: isCustom && input.customImapHost ? input.customImapHost.trim() : provider.imapHost,
+      host: imapHost,
       port: isCustom && input.customImapPort ? input.customImapPort : provider.imapPort,
       security: provider.imapSecurity,
     },
     smtp: {
-      host: isCustom && input.customSmtpHost ? input.customSmtpHost.trim() : provider.smtpHost,
+      host: smtpHost,
       port: isCustom && input.customSmtpPort ? input.customSmtpPort : provider.smtpPort,
       security: provider.smtpSecurity,
     },

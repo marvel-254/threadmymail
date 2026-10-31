@@ -339,7 +339,7 @@ export default function Landing() {
           <Link to="/docs">Docs</Link>
           <Link to="/privacy">Privacy</Link>
           <Link to="/terms">Terms</Link>
-          <span className="lp-build">Retro · 1997</span>
+            <span className="lp-build">Millo</span>
         </div>
       </footer>
     </div>

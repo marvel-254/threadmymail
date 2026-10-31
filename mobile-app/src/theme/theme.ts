@@ -1,20 +1,8 @@
 /**
  * ThreadMyMail Android — Design Tokens
  * =========================================================
- * Nordic-inspired dark-first theme with pure-black OLED support.
- *
- * Design Principals:
- * - Pure black (#000000) for OLED dark theme, pure white (#FFFFFF) for light
- * - Nordic palette: warm neutrals with expressive, restrained accents
- * - System fonts: native iOS (SF Pro) / Android (Roboto/system-ui)
- * - Minimal chrome, content-first, clean surfaces
- * - No decorative gradients, no glassmorphism by default
- *
- * Colors:
- * - Dark: #000000 (ocean black) base
- * - Light: #FFFFFF (pure white) base
- * - Surface layers at #0F0F0F (dark) / #F5F5F5 (light) for depth
- * - Expressive accent: BT Nordic flame (#EA2B16) — warm and distinctive
+ * Social-kit language: deep plum canvases, magenta→violet heroes,
+ * white overlapping cards, pill CTAs. Mail-first product, not a meetup app.
  *
  * Usage: import { colors, typography, spacing, radii } from './theme';
  *        const styles = themedStyles(() => ({ ... }));
@@ -40,27 +28,27 @@ import { StyleSheet, type ImageStyle, type TextStyle, type ViewStyle } from 'rea
  */
 
 export const darkPalette = {
-  // ── Backgrounds (OLED black for dark mode) ─────────────────────────────────
-  bg: '#000000',           // ocean black — pure OLED black
-  bgDeep: '#050505',       // deepest layer — subtle gradient end
-  bgSurface: '#0F0F0F',    // main card/surface layer
-  bgSurfaceHover: '#141414', // pressed/hover state
+  // ── Backgrounds (plum night, matching the kit) ────────────────────────────
+  bg: '#160C28',
+  bgDeep: '#0E071C',
+  bgSurface: '#241536',
+  bgSurfaceHover: '#2E1B44',
 
-  // ── Text (warm gray scales, crafted for pure black) ───────────────────────
-  text: '#F2F2F2',         // primary text — warm white
-  textMuted: '#A0A0A0',    // secondary text
-  textSubtle: '#707070',   // tertiary / captions
-  textOnAccent: '#FFFFFF', // text on accent buttons
-  textOnPrimary: '#FFFFFF', // text on primary surfaces
+  // ── Text ──────────────────────────────────────────────────────────────────
+  text: '#F7F2FF',
+  textMuted: '#C4B4D8',
+  textSubtle: '#8E7AA8',
+  textOnAccent: '#FFFFFF',
+  textOnPrimary: '#FFFFFF',
 
-  // ── Primary (expressive accent) ───────────────────────────────────────────
-  primary: '#EA2B16',      // BT Nordic flame — warm, distinctive, not generic
-  primaryText: '#FFD1D1',  // primary-colored text on dark surfaces
-  primaryDark: '#C41C11',  // pressed state
-  primaryBg: 'rgba(234, 42, 22, 0.12)',
+  // ── Primary (magenta → violet) ────────────────────────────────────────────
+  primary: '#E84B8A',
+  primaryText: '#FFD0E4',
+  primaryDark: '#C0266A',
+  primaryBg: 'rgba(232, 75, 138, 0.16)',
 
-  // ── Secondary (darker warm signal) ────────────────────────────────────────
-  secondary: '#C55A12',    // darker warm signal
+  // ── Secondary ─────────────────────────────────────────────────────────────
+  secondary: '#7B5CFF',
 
   // ── Semantic states ───────────────────────────────────────────────────────
   danger: '#FF3B30',       // stop/delete — native red, highly recognizable
@@ -81,9 +69,9 @@ export const darkPalette = {
   infoBg: 'rgba(0, 122, 255, 0.12)',
 
   // ── Borders ───────────────────────────────────────────────────────────────
-  border: 'rgba(255,255,255,0.08)',
-  borderStrong: 'rgba(255,255,255,0.12)',
-  borderPrimary: 'rgba(234, 42, 22, 0.5)', // accent border/outline
+  border: 'rgba(255,255,255,0.10)',
+  borderStrong: 'rgba(255,255,255,0.16)',
+  borderPrimary: 'rgba(232, 75, 138, 0.55)',
 
   // ── Overlays ──────────────────────────────────────────────────────────────
   overlay: 'rgba(0,0,0,0.75)', // modal backdrop (darker for OLED: black base)
@@ -104,27 +92,23 @@ export type ColorPalette = typeof darkPalette;
  * On pure white, text needs to be darker to meet WCAG AA.
  */
 export const lightPalette: ColorPalette = {
-  // ── Backgrounds (pure white) ─────────────────────────────────────────────
-  bg: '#FFFFFF',
-  bgDeep: '#FFFFFF',       // gradient end
-  bgSurface: '#F5F5F5',    // warmed white for surface layers
-  bgSurfaceHover: '#EFEFEF',
+  bg: '#F6F1FB',
+  bgDeep: '#FFFFFF',
+  bgSurface: '#FFFFFF',
+  bgSurfaceHover: '#F0E8F8',
 
-  // ── Text (darker grays, crafted for white base) ───────────────────────────
-  text: '#1A1A1A',         // primary text — deep charcoal
-  textMuted: '#666666',    // secondary text
-  textSubtle: '#999999',   // tertiary / captions
+  text: '#1B1030',
+  textMuted: '#6B5A7A',
+  textSubtle: '#9A8890',
   textOnAccent: '#FFFFFF',
   textOnPrimary: '#FFFFFF',
 
-  // ── Primary (accent edge-colored for light mode) ──────────────────────────
-  primary: '#D32F2F',      // darker red for legibility on white
-  primaryText: '#FFCDD2',  // primary-colored text on surfaces
-  primaryDark: '#B71C1C',  // pressed state
-  primaryBg: 'rgba(197, 66, 18, 0.10)',
+  primary: '#D946A0',
+  primaryText: '#9D174D',
+  primaryDark: '#A21CAF',
+  primaryBg: 'rgba(217, 70, 160, 0.12)',
 
-  // ── Secondary ──────────────────────────────────────────────────────────────
-  secondary: '#C55A12',    // warmer version for expressiveness on white
+  secondary: '#7C3AED',
 
   // ── Semantic states ───────────────────────────────────────────────────────
   danger: '#DC2626',       // stop/delete
@@ -145,9 +129,9 @@ export const lightPalette: ColorPalette = {
   infoBg: 'rgba(0, 102, 204, 0.10)',
 
   // ── Borders ───────────────────────────────────────────────────────────────
-  border: 'rgba(0,0,0,0.08)',
-  borderStrong: 'rgba(0,0,0,0.12)',
-  borderPrimary: 'rgba(211, 47, 47, 0.4)',
+  border: 'rgba(27, 16, 48, 0.08)',
+  borderStrong: 'rgba(27, 16, 48, 0.14)',
+  borderPrimary: 'rgba(217, 70, 160, 0.45)',
 
   // ── Overlays ──────────────────────────────────────────────────────────────
   overlay: 'rgba(0,0,0,0.4)', // lighter for white base
@@ -283,10 +267,10 @@ export const spacing = {
  * - pill: 999px (horizontal scroll pills, badges)
  */
 export const radii = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
+  sm: 12,
+  md: 18,
+  lg: 24,
+  xl: 28,
   pill: 999,
 } as const;
 

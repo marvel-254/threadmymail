@@ -51,6 +51,12 @@ export interface ToolContext {
    * soften its own wording.
    */
   dryRun: boolean;
+  /** Secrets needed to call Google with the user's sealed OAuth tokens. */
+  oauth?: {
+    encryptionKey?: string;
+    googleClientId?: string;
+    googleClientSecret?: string;
+  };
 }
 
 export interface ToolDefinition<TArgs = Record<string, unknown>, TResult = unknown> {
@@ -118,6 +124,8 @@ export const ERROR = {
    * NEEDS_CONNECTION so the UI can tell "connect me" from "not built yet".
    */
   NOT_IMPLEMENTED: 'NOT_IMPLEMENTED',
+  /** Connected, but the OAuth grant does not include this action. */
+  NEEDS_SCOPE: 'NEEDS_SCOPE',
 } as const;
 
 /**

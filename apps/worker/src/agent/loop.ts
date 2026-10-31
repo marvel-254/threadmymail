@@ -68,6 +68,7 @@ export interface AgentDeps {
   model: ModelClient;
   /** Reads per-user BYOK credentials. Absent means "no key available". */
   credentials?: CredentialStore;
+  oauth?: ToolContext['oauth'];
 }
 
 export class Agent {
@@ -351,6 +352,7 @@ export class Agent {
       emit: args.emit,
       isAborted: args.isAborted,
       dryRun: args.dryRun,
+      oauth: this.deps.oauth,
       describe: async (action) => {
         await db.queryFresh(
           `INSERT INTO activity (user_id, run_id, kind, summary, reversible, undo_ref)

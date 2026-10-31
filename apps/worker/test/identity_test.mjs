@@ -121,11 +121,24 @@ await t('development prefers a session cookie over the header', async () => {
   assert.equal(result, UID_B);
 });
 
-await t('an unset environment behaves as development', async () => {
+await t('an unset environment does not fall back to the dev user', async () => {
   const result = await resolveIdentity({
     cookies: {}, cookie: null, sessionSecret: SECRET, now: NOW,
   });
-  assert.equal(result, DEV_USER_ID);
+  assert.equal(result, null);
+});
+
+await t('Bearer session tokens are accepted', async () => {
+  const token = await tok(UID_B);
+  const result = await resolveIdentity({
+    cookies: {},
+    cookie: null,
+    sessionSecret: SECRET,
+    environment: 'production',
+    authorization: `Bearer ${token}`,
+    now: NOW,
+  });
+  assert.equal(result, UID_B);
 });
 
 // ── The dev user id is a well-formed UUID ───────────────────────────────────
