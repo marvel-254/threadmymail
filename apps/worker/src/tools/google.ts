@@ -6,13 +6,13 @@ import { GOOGLE_PROVIDER } from './gated.js';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
-interface TokenRow {
+type TokenRow = {
   id: string;
   access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
   expires_at: Date | string | null;
   needs_reauth: boolean;
-}
+} & Record<string, unknown>;
 
 export async function googleAccessToken(
   ctx: ToolContext,

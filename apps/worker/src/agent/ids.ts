@@ -7,13 +7,16 @@ export function userAgentName(userId: string): string {
   return `user:${userId}`;
 }
 
-export function userAgent(
-  env: { AGENT: DurableObjectNamespace },
-  userId: string,
-): DurableObjectStub {
+/** Structural so both `Env.AGENT` (AgentObject) and Hono `Bindings.AGENT` type-check. */
+type AgentNs = {
+  idFromName(name: string): DurableObjectId;
+  get(id: DurableObjectId): DurableObjectStub;
+};
+
+export function userAgent(env: { AGENT: AgentNs }, userId: string): DurableObjectStub {
   return env.AGENT.get(env.AGENT.idFromName(userAgentName(userId)));
 }
 
-export function hubAgent(env: { AGENT: DurableObjectNamespace }): DurableObjectStub {
+export function hubAgent(env: { AGENT: AgentNs }): DurableObjectStub {
   return env.AGENT.get(env.AGENT.idFromName(HUB_NAME));
 }
