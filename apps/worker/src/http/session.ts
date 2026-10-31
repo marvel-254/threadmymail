@@ -164,10 +164,12 @@ export async function verifySession(
 
   let ok = false;
   try {
+    const macCopy = new Uint8Array(providedMac.byteLength);
+    macCopy.set(providedMac);
     ok = await crypto.subtle.verify(
       'HMAC',
       key,
-      providedMac as unknown as ArrayBuffer,
+      macCopy,
       new TextEncoder().encode(encoded),
     );
   } catch {
@@ -199,7 +201,12 @@ export function parseCookies(header?: string | null): Record<string, string> {
     if (eq < 0) continue;
     const name = part.slice(0, eq).trim();
     if (!name) continue;
-    out[name] = decodeURIComponent(part.slice(eq + 1).trim());
+    const raw = part.slice(eq + 1).trim();
+    try {
+      out[name] = decodeURIComponent(raw);
+    } catch {
+      out[name] = raw;
+    }
   }
   return out;
 }
@@ -269,9 +276,11 @@ export function newState(): string {
  * why this exists.
  */
 export function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  const len = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < len; i++) {
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  }
   return diff === 0;
 }
 

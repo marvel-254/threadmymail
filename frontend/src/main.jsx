@@ -26,6 +26,7 @@ import './styles/retro.css';
 import './styles/retro-landing.css';
 import './styles/retro-auth.css';
 import './styles/retro-mail.css';
+import './styles/kit.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

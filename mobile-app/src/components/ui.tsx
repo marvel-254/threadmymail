@@ -107,7 +107,7 @@ const styles = themedStyles(() => ({
     minHeight: touch.minTarget,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
-    borderRadius: radii.md,
+    borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',

@@ -56,6 +56,8 @@ export interface AgentEnv {
    */
   ENCRYPTION_KEY?: string;
   ENVIRONMENT: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   /**
    * Durable wrapper for skill runs. Optional so the DO boots without it in
    * local dev when the workflow binding is not registered.
@@ -185,9 +187,13 @@ export class AgentObject extends DurableObject<AgentEnv> {
 
     const url = new URL(request.url);
 
-    if (url.pathname === '/ws') {
+    if (url.pathname === '/ws' || url.pathname.endsWith('/agent/stream')) {
       if (request.headers.get('Upgrade') !== 'websocket') {
         return new Response('expected websocket upgrade', { status: 426 });
+      }
+      const userId = url.searchParams.get('user_id') ?? '';
+      if (!UUID_RE.test(userId)) {
+        return new Response('unauthenticated', { status: 401 });
       }
       const pair = new WebSocketPair();
       this.ctx.acceptWebSocket(pair[1]);
@@ -249,10 +255,14 @@ export class AgentObject extends DurableObject<AgentEnv> {
     }
 
     if (url.pathname === '/kill-switch') {
-      if (request.method === 'POST') {
-        const body = (await request.json()) as { engaged: boolean };
-        await this.ctx.storage.put('kill_switch', body.engaged);
-        if (body.engaged) this.abortAll();
+      if (request.method === 'POST' || request.method === 'PUT') {
+        const body = (await request.json()) as { engaged: boolean; user_id?: string };
+        const scoped =
+          typeof body.user_id === 'string' && UUID_RE.test(body.user_id)
+            ? `kill:${body.user_id}`
+            : 'kill_switch';
+        await this.ctx.storage.put(scoped, body.engaged);
+        if (body.engaged && scoped === 'kill_switch') this.abortAll();
         return Response.json({ engaged: body.engaged });
       }
       return Response.json({ engaged: (await this.ctx.storage.get<boolean>('kill_switch')) ?? false });
@@ -292,6 +302,7 @@ export class AgentObject extends DurableObject<AgentEnv> {
   private attach(socket: WebSocket, url: URL): void {
     const id = url.searchParams.get('session') ?? crypto.randomUUID();
     const userId = url.searchParams.get('user_id') ?? '';
+    if (!UUID_RE.test(userId)) return;
     const session: Session = { id, socket, userId, aborted: false };
     this.sessions.set(id, session);
 
@@ -436,7 +447,18 @@ export class AgentObject extends DurableObject<AgentEnv> {
       depth,
       maxDepth: MAX_SUBAGENT_DEPTH,
       delegate: async (args) => {
-        const sub = new Agent({ db, bodies, registry: baseRegistry, model, credentials });
+        const sub = new Agent({
+          db,
+          bodies,
+          registry: baseRegistry,
+          model,
+          credentials,
+          oauth: {
+            encryptionKey: this.env.ENCRYPTION_KEY,
+            googleClientId: this.env.GOOGLE_CLIENT_ID,
+            googleClientSecret: this.env.GOOGLE_CLIENT_SECRET,
+          },
+        });
         const subInput: RunInput = {
           userId: session.userId,
           messages: args.messages,
@@ -456,7 +478,18 @@ export class AgentObject extends DurableObject<AgentEnv> {
       },
     };
 
-    const agent = new Agent({ db, bodies, registry: baseRegistry, model, credentials });
+    const agent = new Agent({
+      db,
+      bodies,
+      registry: baseRegistry,
+      model,
+      credentials,
+      oauth: {
+        encryptionKey: this.env.ENCRYPTION_KEY,
+        googleClientId: this.env.GOOGLE_CLIENT_ID,
+        googleClientSecret: this.env.GOOGLE_CLIENT_SECRET,
+      },
+    });
 
     const input: RunInput = {
       userId: session.userId,
@@ -778,7 +811,7 @@ export class AgentObject extends DurableObject<AgentEnv> {
     const started = Date.now();
     const now = Date.now();
 
-    if ((await this.ctx.storage.get<boolean>('kill_switch')) === true) {
+    if (userId && (await this.ctx.storage.get<boolean>(`kill:${userId}`)) === true) {
       return { ran: 0, processed: 0, aborted: 'kill_switch', ms: Date.now() - started };
     }
 
@@ -797,6 +830,11 @@ export class AgentObject extends DurableObject<AgentEnv> {
 
     const results: Array<Record<string, unknown>> = [];
     for (const entry of due) {
+      if ((await this.ctx.storage.get<boolean>(`kill:${entry.user_id}`)) === true) {
+        this.finishEntry(entry.skill_id, null);
+        results.push({ skill_id: entry.skill_id, status: 'skipped', reason: 'kill_switch' });
+        continue;
+      }
       try {
         results.push(await this.runScheduledSkill(entry.skill_id, entry.user_id, entry.kind, now));
       } catch (error) {

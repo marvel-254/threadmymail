@@ -21,6 +21,9 @@ import { BodyStore, bodyKey } from './storage/bodystore.js';
 import { ModelClient } from './agent/model.js';
 import { routes } from './http/routes.js';
 import { withCors } from './http/cors.js';
+import { parseCookies } from './http/session.js';
+import { resolveIdentity } from './http/identity.js';
+import { hubAgent, userAgent } from './agent/ids.js';
 
 export { AgentObject };
 export { SkillRunWorkflow } from './workflows/skill-run.js';
@@ -94,8 +97,11 @@ export default {
       if (request.headers.get('Upgrade') !== 'websocket') {
         return new Response('expected websocket upgrade', { status: 426 });
       }
-      const id = env.AGENT.idFromName('main');
-      return env.AGENT.get(id).fetch(request);
+      const uid = await requireUid(request, env);
+      if (uid instanceof Response) return uid;
+      const dest = new URL(`https://do/ws`);
+      dest.searchParams.set('user_id', uid);
+      return userAgent(env, uid).fetch(new Request(dest.toString(), request));
     }
 
     // ── Kill switch ───────────────────────────────────────────────────────
@@ -108,16 +114,32 @@ export default {
     // agent happily running. A safety control that can disagree with itself is
     // not a safety control.
     if (path === '/kill-switch') {
-      const id = env.AGENT.idFromName('main');
-      const doRes = await env.AGENT.get(id).fetch(
+      const uid = await requireUid(request, env);
+      if (uid instanceof Response) return uid;
+      const engagedBody = await readEngaged(request);
+      const doRes = await userAgent(env, uid).fetch(
         new Request('https://do/kill-switch', {
-          method: request.method,
+          method: request.method === 'GET' ? 'GET' : 'POST',
           ...(request.method === 'PUT' || request.method === 'POST'
-            ? { body: JSON.stringify(await readEngaged(request)) }
+            ? { body: JSON.stringify(engagedBody) }
             : {}),
         }),
       );
       const live = (await doRes.json()) as { engaged: boolean };
+
+      if (request.method === 'PUT' || request.method === 'POST') {
+        await hubAgent(env).fetch(
+          new Request('https://do/kill-switch', {
+            method: 'POST',
+            body: JSON.stringify({ engaged: engagedBody.engaged, user_id: uid }),
+          }),
+        );
+        const persisted = await routes.fetch(
+          new Request(new URL('/kill-switch', url.origin), request),
+          env,
+        );
+        if (persisted.ok) return persisted;
+      }
 
       if (request.method === 'GET') {
         const persisted = await routes.fetch(
@@ -141,8 +163,9 @@ export default {
 
     // ── Kill switch (DO live state) ───────────────────────────────────────
     if (path === '/kill-switch/live') {
-      const id = env.AGENT.idFromName('main');
-      return env.AGENT.get(id).fetch(
+      const uid = await requireUid(request, env);
+      if (uid instanceof Response) return uid;
+      return userAgent(env, uid).fetch(
         new Request('https://do/kill-switch', {
           method: request.method,
           ...(request.method === 'POST' ? { body: await request.text() } : {}),
@@ -152,8 +175,9 @@ export default {
 
     // ── Sync cursor (DO-owned; keeps the tick off Postgres) ───────────────
     if (path === '/emails/sync/cursor') {
-      const id = env.AGENT.idFromName('main');
-      return env.AGENT.get(id).fetch(
+      const uid = await requireUid(request, env);
+      if (uid instanceof Response) return uid;
+      return userAgent(env, uid).fetch(
         new Request('https://do/sync-cursor', {
           method: request.method,
           ...(request.method === 'POST' ? { body: await request.text() } : {}),
@@ -162,12 +186,13 @@ export default {
     }
 
     // ── Storage diagnostics ───────────────────────────────────────────────
-    if (path === '/storage/usage') {
-      const usage = await new BodyStore(env.BODIES).usage();
-      return Response.json({ backend: 'd1', ...usage });
-    }
-
-    if (path === '/storage/roundtrip') {
+    if (path === '/storage/usage' || path === '/storage/roundtrip') {
+      const uid = await requireUid(request, env);
+      if (uid instanceof Response) return uid;
+      if (path === '/storage/usage') {
+        const usage = await new BodyStore(env.BODIES).usage();
+        return Response.json({ backend: 'd1', ...usage });
+      }
       return Response.json(await storageRoundTrip(new BodyStore(env.BODIES)));
     }
 
@@ -249,6 +274,28 @@ export default {
     }
   },
 };
+
+async function requireUid(request: Request, env: Env): Promise<string | Response> {
+  const uid = await resolveIdentity({
+    cookie: request.headers.get('Cookie'),
+    cookies: parseCookies(request.headers.get('Cookie')),
+    sessionSecret: env.SESSION_SECRET,
+    environment: env.ENVIRONMENT,
+    userHeader: request.headers.get('X-User-Id') ?? undefined,
+    authorization: request.headers.get('Authorization'),
+  });
+  if (!uid) {
+    return Response.json(
+      {
+        success: false,
+        data: null,
+        error: { code: 'UNAUTHENTICATED', message: 'Sign in to use ThreadMyMail.', detail: null },
+      },
+      { status: 401 },
+    );
+  }
+  return uid;
+}
 
 /** The kill switch lives on the DO so it can abort in-flight runs. */
 /** Accept either `{ engaged }` (DO shape) or `{ global }` (API shape). */

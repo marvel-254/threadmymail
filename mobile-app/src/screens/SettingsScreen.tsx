@@ -209,16 +209,18 @@ export function SettingsScreen() {
   };
 
   const doTestProvider = async (p: SavedProvider) => {
-    const r = await testProvider({ baseUrl: p.baseUrl, apiKey: p.apiKey, model: p.model });
+    const r = await testProvider({ baseUrl: p.baseUrl, apiKey: p.apiKey, model: p.model, id: p.id });
     toast(r.detail, r.ok);
   };
 
   const saveNewProvider = async () => {
-    if (!providerKey.trim()) { setAddResult({ ok: false, detail: 'Paste your API key first.' }); return; }
+    const local = providerPresetId === 'local';
+    if (!providerKey.trim() && !local) { setAddResult({ ok: false, detail: 'Paste your API key first.' }); return; }
+    if (!providerUrl.trim()) { setAddResult({ ok: false, detail: 'Set a base URL first.' }); return; }
     setAdding(true);
     setAddResult(null);
     const preset = PROVIDER_PRESETS.find((p) => p.id === providerPresetId) ?? PROVIDER_PRESETS[0];
-    const result = await testProvider({ baseUrl: providerUrl, apiKey: providerKey, model: providerModel });
+    const result = await testProvider({ baseUrl: providerUrl, apiKey: providerKey, model: providerModel, id: providerPresetId });
     if (!result.ok) { setAddResult(result); setAdding(false); return; }
     setProviders(await addProvider({ id: providerPresetId, label: preset.label, baseUrl: providerUrl, model: providerModel, apiKey: providerKey }));
     setShowAddProvider(false);

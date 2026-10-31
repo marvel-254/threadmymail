@@ -9,8 +9,9 @@
  * presets in `providers.ts` supply sensible defaults; a custom entry carries
  * whatever base URL the user typed.
  */
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { normalizeBaseUrl } from './providers';
+import { normalizeBaseUrl, reachableBaseUrl } from './providers';
 
 const PROVIDERS_KEY = 'threadmymail.providers.v1';
 
@@ -57,9 +58,18 @@ async function writeProviders(list: SavedProvider[]): Promise<void> {
  */
 export async function addProvider(input: Omit<SavedProvider, 'primary'>): Promise<SavedProvider[]> {
   const list = await loadProviders();
+  const existing = list.find((p) => p.id === input.id);
   // Re-adding the same preset replaces the old entry rather than duplicating it.
   const next = list.filter((p) => p.id !== input.id);
-  const saved: SavedProvider = { ...input, baseUrl: normalizeBaseUrl(input.baseUrl), primary: next.length === 0 };
+  const saved: SavedProvider = {
+    ...input,
+    baseUrl: normalizeBaseUrl(input.baseUrl),
+    // Keep primary if we are updating the current primary; otherwise first one wins.
+    primary: existing?.primary === true || next.length === 0,
+  };
+  if (saved.primary) {
+    for (const p of next) p.primary = false;
+  }
   next.push(saved);
   await writeProviders(next);
   return next;
@@ -124,19 +134,37 @@ export async function testProvider(input: {
   baseUrl: string;
   apiKey: string;
   model?: string;
+  id?: string;
 }): Promise<ProviderTestResult> {
-  const baseUrl = normalizeBaseUrl(input.baseUrl);
+  const baseUrl = reachableBaseUrl(input.baseUrl, Platform.OS);
   if (!baseUrl) return { ok: false, detail: 'No base URL — set one first.' };
+
+  const anthropic = input.id === 'anthropic' || baseUrl.includes('api.anthropic.com');
+  const openrouter = input.id === 'openrouter' || baseUrl.includes('openrouter.ai');
+  const local = input.id === 'local' || /127\.0\.0\.1|10\.0\.2\.2|localhost/i.test(baseUrl);
+  const key = input.apiKey.trim();
+  if (!key && !local) {
+    return { ok: false, detail: 'Paste your API key first.' };
+  }
+
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (anthropic) {
+    headers['x-api-key'] = key;
+    headers['anthropic-version'] = '2023-06-01';
+  } else if (key) {
+    headers.Authorization = `Bearer ${key}`;
+  }
+  if (openrouter) {
+    headers['HTTP-Referer'] = 'https://threadmymail.omixsystems.store';
+    headers['X-Title'] = 'ThreadMyMail';
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12_000);
   try {
     const res = await fetch(`${baseUrl}/models`, {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${input.apiKey.trim()}`,
-        Accept: 'application/json',
-      },
+      headers,
       signal: controller.signal,
     });
 

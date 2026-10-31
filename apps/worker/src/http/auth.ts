@@ -162,7 +162,7 @@ export function authRoutes() {
       const state = url.searchParams.get('state');
       const oauthError = url.searchParams.get('error');
 
-      const frontend = frontendOrigin(env);
+      const frontend = frontendOrigin(env, c.req.url);
       const cookies = parseCookies(c.req.header('Cookie'));
 
       // Consume the state cookie on every path, successful or not, so a failed
@@ -234,7 +234,7 @@ export function authRoutes() {
       c.header('Set-Cookie', clearState, { append: true });
       // Keep successful sign-ins inside the authenticated app. Returning to
       // `/` silently showed the landing page and made login appear discarded.
-      return c.redirect(`${frontend}/app`, 302);
+      return c.redirect(`${frontend}/`, 302);
     },
 
     /**
@@ -297,13 +297,14 @@ export function authRoutes() {
 }
 
 /** Where to send the browser after the callback. */
-function frontendOrigin(env: Bindings): string {
-  const configured = env.CORS_ORIGINS ?? '';
-  const first = configured
+function frontendOrigin(env: Bindings, requestUrl?: string): string {
+  const configured = (env.FRONTEND_ORIGIN ?? env.CORS_ORIGINS ?? '')
     .split(',')
     .map((s) => s.trim())
-    .filter(Boolean)[0];
-  return first ?? 'https://threadmymail.pages.dev';
+    .filter(Boolean);
+  const self = requestUrl ? new URL(requestUrl).origin : '';
+  const match = configured.find((origin) => origin !== self && origin !== '*');
+  return match ?? configured[0] ?? 'https://threadmymail.pages.dev';
 }
 
 function redirectWith(
@@ -314,7 +315,7 @@ function redirectWith(
 ): Response {
   c.header('Set-Cookie', setCookie, { append: true });
   // Sign-in reads the fragment and displays the failure reason.
-  return c.redirect(`${target}/signin${hash}`, 302);
+  return c.redirect(`${target}/${hash}`, 302);
 }
 
 /**
@@ -370,20 +371,20 @@ async function storeTokens(
 
   await db.tx(async (tx) => {
     const found = await tx.query<{ id: string }>(
-      'SELECT id FROM oauth_tokens WHERE user_id = $1 AND provider = $2 LIMIT 1',
+      'SELECT id FROM oauth_tokens WHERE user_id = $1 AND provider = $2 LIMIT 1 FOR UPDATE',
       [userId, GOOGLE_PROVIDER],
     );
     const existing = found.rows[0];
     if (existing) {
       await tx.query(
         `UPDATE oauth_tokens
-            SET scopes = $3,
-                access_token_encrypted = $4,
-                refresh_token_encrypted = COALESCE($5, refresh_token_encrypted),
-                expires_at = $6,
+            SET scopes = $2,
+                access_token_encrypted = $3,
+                refresh_token_encrypted = COALESCE($4, refresh_token_encrypted),
+                expires_at = $5,
                 needs_reauth = FALSE
           WHERE id = $1`,
-        [existing.id, GOOGLE_PROVIDER, scopes, access, refresh, expiresAt],
+        [existing.id, scopes, access, refresh, expiresAt],
       );
       return;
     }

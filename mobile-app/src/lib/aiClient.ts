@@ -10,8 +10,10 @@
  *
  * The key comes from SecureStore via `providerStore`; it is never logged.
  */
+import { Platform } from 'react-native';
 import { getPrimaryProvider, type SavedProvider } from './providerStore';
 import { getGuardrails } from './guardrails';
+import { reachableBaseUrl } from './providers';
 
 export type ChatRole = 'system' | 'user' | 'assistant';
 
@@ -61,9 +63,10 @@ export function buildSystemPrompt(): string {
 }
 
 function providerEndpoint(provider: SavedProvider): { url: string; anthropic: boolean } {
-  const anthropic = provider.id === 'anthropic' || provider.baseUrl.includes('api.anthropic.com');
+  const base = reachableBaseUrl(provider.baseUrl, Platform.OS);
+  const anthropic = provider.id === 'anthropic' || base.includes('api.anthropic.com');
   return {
-    url: anthropic ? `${provider.baseUrl}/messages` : `${provider.baseUrl}/chat/completions`,
+    url: anthropic ? `${base}/messages` : `${base}/chat/completions`,
     anthropic,
   };
 }
@@ -117,11 +120,16 @@ function buildHeaders(provider: SavedProvider, anthropic: boolean): Record<strin
       'anthropic-version': '2023-06-01',
     };
   }
-  return {
+  const headers: Record<string, string> = {
     'content-type': 'application/json',
     accept: 'text/event-stream',
     authorization: `Bearer ${key}`,
   };
+  if (provider.id === 'openrouter' || provider.baseUrl.includes('openrouter.ai')) {
+    headers['HTTP-Referer'] = 'https://threadmymail.omixsystems.store';
+    headers['X-Title'] = 'ThreadMyMail';
+  }
+  return headers;
 }
 
 /** Pull a readable message out of a provider error body. */

@@ -12,11 +12,11 @@ import {
   Switch,
   Text,
   View,
- ImageBackground } from 'react-native';
+} from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Button } from '../components/ui';
 import { Field } from '../components/settings';
-import { IconBack, IconSparkle } from '../components/Icons';
+import { IconBack } from '../components/Icons';
 import { PROVIDER_PRESETS, CUSTOM_PROVIDER_ID } from '../lib/providers';
 import {
   EMAIL_PROVIDERS,
@@ -76,22 +76,25 @@ export function Onboarding({ onDone }: OnboardingProps) {
   const runEmailTest = async () => {
     setEmailTesting(true);
     setEmailResult(null);
-    const result = await testImap({
-      imap: {
-        host: emailProviderId === 'custom' ? customImapHost.trim() : selectedEmailProvider.imapHost,
-        port: emailProviderId === 'custom'
-          ? Number(customImapPort) || 993
-          : selectedEmailProvider.imapPort,
-        security: selectedEmailProvider.imapSecurity,
-      },
-      smtp: emailProviderId === 'custom'
-        ? { host: customSmtpHost.trim(), port: Number(customSmtpPort) || 587, security: 'starttls' }
-        : { host: selectedEmailProvider.smtpHost, port: selectedEmailProvider.smtpPort, security: selectedEmailProvider.smtpSecurity },
-      user: emailAddress,
-      password: appPassword,
-    });
-    setEmailTesting(false);
-    setEmailResult(result);
+    try {
+      const result = await testImap({
+        imap: {
+          host: emailProviderId === 'custom' ? customImapHost.trim() : selectedEmailProvider.imapHost,
+          port: emailProviderId === 'custom'
+            ? Number(customImapPort) || 993
+            : selectedEmailProvider.imapPort,
+          security: selectedEmailProvider.imapSecurity,
+        },
+        smtp: emailProviderId === 'custom'
+          ? { host: customSmtpHost.trim(), port: Number(customSmtpPort) || 587, security: 'starttls' }
+          : { host: selectedEmailProvider.smtpHost, port: selectedEmailProvider.smtpPort, security: selectedEmailProvider.smtpSecurity },
+        user: emailAddress,
+        password: appPassword,
+      });
+      setEmailResult(result);
+    } finally {
+      setEmailTesting(false);
+    }
   };
 
   const runEmailSave = async () => {
@@ -110,6 +113,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
       next();
     } catch (err) {
       setEmailResult({ ok: false, detail: err instanceof Error ? err.message : 'Could not save.' });
+    } finally {
       setEmailSaving(false);
     }
   };
@@ -133,23 +137,34 @@ export function Onboarding({ onDone }: OnboardingProps) {
   };
 
   const runAiTest = async () => {
-    if (!apiKey.trim()) {
+    const local = aiPresetId === 'local';
+    if (!apiKey.trim() && !local) {
       setAiResult({ ok: false, detail: 'Paste your API key first.' });
+      return;
+    }
+    if (!baseUrl.trim()) {
+      setAiResult({ ok: false, detail: 'Set a base URL first.' });
       return;
     }
     setAiTesting(true);
     setAiResult(null);
-    // testProvider is imported dynamically to avoid circular deps (not actually
-    // circular here but it's a local import at module level — safe to lazy-gate).
-    const { testProvider } = await import('../lib/providerStore');
-    const result = await testProvider({ baseUrl, apiKey, model });
-    setAiTesting(false);
-    setAiResult(result);
+    try {
+      const { testProvider } = await import('../lib/providerStore');
+      const result = await testProvider({ baseUrl, apiKey, model, id: aiPresetId });
+      setAiResult(result);
+    } finally {
+      setAiTesting(false);
+    }
   };
 
   const runAiSave = async () => {
-    if (!apiKey.trim()) {
+    const local = aiPresetId === 'local';
+    if (!apiKey.trim() && !local) {
       setAiResult({ ok: false, detail: 'Paste your API key first.' });
+      return;
+    }
+    if (!baseUrl.trim()) {
+      setAiResult({ ok: false, detail: 'Set a base URL first.' });
       return;
     }
     setAiSaving(true);
@@ -164,6 +179,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
       next();
     } catch (err) {
       setAiResult({ ok: false, detail: err instanceof Error ? err.message : 'Could not save.' });
+    } finally {
       setAiSaving(false);
     }
   };
@@ -254,19 +270,21 @@ export function Onboarding({ onDone }: OnboardingProps) {
         {/* ── Step 0: Welcome ─────────────────────────────────────── */}
         {step === 0 && (
           <View style={styles.welcome}>
-            <View style={styles.videoContainer}>
-              <VideoView
-                player={videoPlayer}
-                style={styles.video}
-                nativeControls={false}
-                contentFit="cover"
-              />
-              <IconSparkle size={36} color={colors.primary} />
+            <View style={styles.heroCard}>
+              <View style={styles.videoContainer}>
+                <VideoView
+                  player={videoPlayer}
+                  style={styles.video}
+                  nativeControls={false}
+                  contentFit="cover"
+                />
+              </View>
+              <Text style={styles.heroKicker}>MILLO</Text>
+              <Text style={styles.welcomeTitle}>Your inbox, run by an agent you control.</Text>
+              <Text style={styles.welcomeBody}>
+                Credentials and AI key stay on this phone. Triage, drafts, and follow-ups — on your schedule.
+              </Text>
             </View>
-            <Text style={styles.welcomeTitle}>Your inbox, run by an agent you control.</Text>
-            <Text style={styles.welcomeBody}>
-              Your credentials and AI key never leave this phone.
-            </Text>
           </View>
         )}
 
@@ -313,13 +331,6 @@ export function Onboarding({ onDone }: OnboardingProps) {
               </>
             )}
             <ResultBanner result={emailResult} />
-            <Button
-              label={emailTesting ? 'Testing…' : 'Test connection'}
-              variant="secondary"
-              disabled={emailTesting || !emailAddress.trim() || !appPassword}
-              loading={emailTesting}
-              onPress={runEmailTest}
-            />
           </>
         )}
 
@@ -362,13 +373,6 @@ export function Onboarding({ onDone }: OnboardingProps) {
               helper="Used unless a skill specifies a different one."
             />
             <ResultBanner result={aiResult} />
-            <Button
-              label={aiTesting ? 'Testing…' : 'Test connection'}
-              variant="secondary"
-              disabled={aiTesting || !apiKey.trim()}
-              loading={aiTesting}
-              onPress={runAiTest}
-            />
           </>
         )}
 
@@ -423,13 +427,13 @@ export function Onboarding({ onDone }: OnboardingProps) {
             <Button
               label={aiTesting ? 'Testing…' : 'Test connection'}
               variant="secondary"
-              disabled={aiTesting || !apiKey.trim()}
+              disabled={aiTesting || (!apiKey.trim() && aiPresetId !== 'local')}
               loading={aiTesting}
               onPress={runAiTest}
             />
             <Button
               label={aiSaving ? 'Saving…' : 'Save & continue'}
-              disabled={aiSaving || !apiKey.trim()}
+              disabled={aiSaving || (!apiKey.trim() && aiPresetId !== 'local') || !baseUrl.trim()}
               loading={aiSaving}
               onPress={runAiSave}
             />
@@ -437,7 +441,7 @@ export function Onboarding({ onDone }: OnboardingProps) {
         )}
         {/* Steps 0 and 3: single Continue button */}
         {step !== 1 && step !== 2 && (
-          <Button label={step === 3 ? 'Done' : 'Continue'} onPress={next} fullWidth />
+          <Button label={step === 3 ? 'Done' : step === 0 ? 'Get started' : 'Continue'} onPress={next} fullWidth />
         )}
       </View>
     </View>
@@ -464,28 +468,31 @@ const styles = themedStyles(() => ({
   stepCount: { ...typography.caption, color: colors.textSubtle },
   skipText: { ...typography.bodySmall, color: colors.primaryText, fontWeight: '600' },
   content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxl * 2 },
-  welcome: { alignItems: 'center', gap: spacing.md, paddingTop: spacing.xl * 1.5 },
-  videoContainer: {
-    width: 180,
-    height: 220,
-    borderRadius: radii.xl,
-    overflow: 'hidden',
+  welcome: { alignItems: 'stretch', gap: spacing.md, paddingTop: spacing.sm },
+  heroCard: {
     backgroundColor: colors.bgSurface,
+    borderRadius: radii.xl,
+    padding: spacing.xl,
+    gap: spacing.md,
+    overflow: 'hidden',
+  },
+  videoContainer: {
+    width: '100%',
+    height: 220,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+    backgroundColor: colors.secondary,
   },
   video: {
     width: '100%',
     height: '100%',
   },
-  logo: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.bgSurfaceHover,
-    alignItems: 'center',
-    justifyContent: 'center',
+  heroKicker: {
+    ...typography.label,
+    color: colors.primary,
   },
-  welcomeTitle: { ...typography.h1, color: colors.text, textAlign: 'center' },
-  welcomeBody: { ...typography.body, color: colors.textMuted, textAlign: 'center', maxWidth: 280 },
+  welcomeTitle: { ...typography.h1, color: colors.text, textAlign: 'left' },
+  welcomeBody: { ...typography.body, color: colors.textMuted, textAlign: 'left' },
   stepTitle: { ...typography.h2, color: colors.text },
   stepBody: { ...typography.bodySmall, color: colors.textMuted },
   pickerGroup: { gap: spacing.sm },
