@@ -50,6 +50,18 @@ export const PROVIDERS: readonly ProviderSpec[] = [
     keyUrl: 'https://openrouter.ai/keys',
   },
   {
+    id: 'demonroute',
+    label: 'Demon Route',
+    dialect: 'openai',
+    baseUrl: 'https://api.demonroute.com/v1',
+    keyHint: '',
+    // Open-weight models only. Primary is tagged for tool calling (262K ctx);
+    // background is a free-lane 8B with 131K ctx.
+    suggestPrimary: 'huihui-ai/Huihui-gemma-4-31B-it-abliterated-v2',
+    suggestBackground: 'mlabonne/Meta-Llama-3.1-8B-Instruct-abliterated',
+    keyUrl: 'https://demonroute.com',
+  },
+  {
     id: 'anthropic',
     label: 'Anthropic',
     dialect: 'anthropic',
