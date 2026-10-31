@@ -31,6 +31,13 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     keyHint: 'sk-or-…',
   },
   {
+    id: 'demonroute',
+    label: 'Demon Route',
+    baseUrl: 'https://api.demonroute.com/v1',
+    defaultModel: 'huihui-ai/Huihui-gemma-4-31B-it-abliterated-v2',
+    keyHint: 'your key',
+  },
+  {
     id: 'openai',
     label: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
