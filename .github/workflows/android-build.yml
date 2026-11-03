@@ -24,6 +24,8 @@ env:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: mobile-app
@@ -123,12 +125,12 @@ jobs:
 
       # ── GitHub Release ───────────────────────────────────────────────────
       - name: Create GitHub Release
-        if: github.event.inputs.release_tag != '' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
         env:
-          TAG: ${{ github.event.inputs.release_tag || inputs.release_tag }}
+          TAG: ${{ github.event.inputs.release_tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ env.TAG }}"
+          TAG="${{ github.event.inputs.release_tag }}"
           APK="android/app/build/outputs/apk/release/app-release.apk"
 
           # Try to create the tag; if it already exists (e.g. created out-of-band),
